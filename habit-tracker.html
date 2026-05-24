@@ -181,7 +181,7 @@ function getSups(tr,isPerna){
 const SLEEPS=[{id:'s1',l:'< 6h',ok:false},{id:'s2',l:'6–7h',ok:false},{id:'s3',l:'7–8h',ok:true},{id:'s4',l:'8h+',ok:true}];
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
-const DEFAULT_GOALS={pesoMeta:'',calorias:1800,aguaCopos:8,treinosSemana:5,cardioMin:30};
+const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,cardioMin:30};
 let goals=loadGoals();
 function loadGoals(){
   try{const s=localStorage.getItem('ht:goals');return s?{...DEFAULT_GOALS,...JSON.parse(s)}:{...DEFAULT_GOALS};}
@@ -196,30 +196,58 @@ function saveGoals(g){
 function showGoals(){
   const g=goals;
   const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:15px;outline:none';
-  const copos=[6,7,8,9,10,11,12];
-  const coposBtns=copos.map(n=>{const sel=g.aguaCopos===n;return`<button onclick="goalsSelectAgua(${n})" id="ga-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#1d4ed8':'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?'#3b82f6':'#21262d'}">${n}</button>`;}).join('');
   const dias=[1,2,3,4,5,6,7];
   const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#16a34a':'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?'#16a34a':'#21262d'}">${n}d</button>`;}).join('');
+  const isMasc=g.sexo==='m';
   document.getElementById('goals-body').innerHTML=`
     <div class="card fade-in">
+      <div class="sec-hdr"><div class="sec-lbl"><span>👤</span> MEU PERFIL</div></div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:6px">Sexo</div>
+      <div style="display:flex;gap:6px;margin-bottom:12px">
+        <button id="gs-f" onclick="goalsSelectSexo('f')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${!isMasc?'#1f6feb':'#0d1117'};color:${!isMasc?'#fff':'#6e7681'};border:1px solid ${!isMasc?'#388bfd':'#21262d'}">♀ Feminino</button>
+        <button id="gs-m" onclick="goalsSelectSexo('m')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${isMasc?'#1f6feb':'#0d1117'};color:${isMasc?'#fff':'#6e7681'};border:1px solid ${isMasc?'#388bfd':'#21262d'}">♂ Masculino</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Idade</div>
+          <input type="number" id="g-idade" value="${g.idade}" placeholder="ex: 28" oninput="goalsCalcUpdate()" style="${inp}">
+        </div>
+        <div>
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Altura (cm)</div>
+          <input type="number" id="g-altura" value="${g.altura}" placeholder="ex: 165" oninput="goalsCalcUpdate()" style="${inp}">
+        </div>
+      </div>
+    </div>
+    <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><span>⚖️</span> PESO</div></div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Meta de peso (kg)</div>
-      <input type="number" id="g-peso" value="${g.pesoMeta}" placeholder="ex: 65" style="${inp}">
-    </div>
-    <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>🔥</span> CALORIAS</div></div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Meta diária (kcal)</div>
-      <input type="number" id="g-calorias" value="${g.calorias}" placeholder="ex: 1800" style="${inp}">
-    </div>
-    <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div></div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Copos por dia</div>
-      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">${coposBtns}</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Peso atual (kg)</div>
+          <input type="number" id="g-peso-atual" value="${g.pesoAtual}" placeholder="ex: 70" oninput="goalsCalcUpdate()" style="${inp}">
+        </div>
+        <div>
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Peso meta (kg)</div>
+          <input type="number" id="g-peso-meta" value="${g.pesoMeta}" placeholder="ex: 65" oninput="goalsCalcUpdate()" style="${inp}">
+        </div>
+      </div>
+      <div id="g-peso-info" style="margin-top:8px;font-size:11px;min-height:16px"></div>
     </div>
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><span>🏋️</span> TREINOS</div></div>
       <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Dias de treino por semana</div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">${diasBtns}</div>
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🔥</span> CALORIAS</div><span id="g-cal-badge" style="font-size:10px;color:#6e7681"></span></div>
+      <div id="g-cal-formula" style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#6e7681;line-height:1.6">Preencha perfil e peso para calcular automaticamente</div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Meta diária (kcal) — aceite o sugerido ou ajuste:</div>
+      <input type="number" id="g-calorias" value="${g.calorias}" style="${inp}">
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span id="g-agua-badge" style="font-size:10px;color:#6e7681"></span></div>
+      <div id="g-agua-formula" style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#6e7681;line-height:1.6">Preencha o peso atual para calcular automaticamente</div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Copos por dia — aceite o sugerido ou ajuste:</div>
+      <div id="g-agua-btns" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>
     </div>
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><span>🚴</span> CARDIO</div></div>
@@ -228,18 +256,98 @@ function showGoals(){
     </div>
     <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#1f6feb;border-radius:12px;color:#fff;font-size:15px;font-weight:700;margin-bottom:10px">Salvar metas</button>`;
   showScreen('goals');
+  goalsCalcUpdate();
+}
+function goalsSelectSexo(s){
+  goals={...goals,sexo:s};
+  const isMasc=s==='m';
+  const f=document.getElementById('gs-f'),m=document.getElementById('gs-m');
+  if(f){f.style.background=!isMasc?'#1f6feb':'#0d1117';f.style.color=!isMasc?'#fff':'#6e7681';f.style.borderColor=!isMasc?'#388bfd':'#21262d';}
+  if(m){m.style.background=isMasc?'#1f6feb':'#0d1117';m.style.color=isMasc?'#fff':'#6e7681';m.style.borderColor=isMasc?'#388bfd':'#21262d';}
+  goalsCalcUpdate();
 }
 function goalsSelectAgua(n){
   goals={...goals,aguaCopos:n};
-  document.querySelectorAll('[id^="ga-"]').forEach(b=>{const sel=b.id===`ga-${n}`;b.style.background=sel?'#1d4ed8':'#0d1117';b.style.color=sel?'#fff':'#6e7681';b.style.borderColor=sel?'#3b82f6':'#21262d';});
+  goalsCalcUpdate();
 }
 function goalsSelectTreinos(n){
   goals={...goals,treinosSemana:n};
   document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#16a34a':'#0d1117';b.style.color=sel?'#fff':'#6e7681';b.style.borderColor=sel?'#16a34a':'#21262d';});
+  goalsCalcUpdate();
+}
+function goalsCalcUpdate(){
+  const peso=parseFloat(document.getElementById('g-peso-atual')?.value)||0;
+  const meta=parseFloat(document.getElementById('g-peso-meta')?.value)||0;
+  const alt=parseFloat(document.getElementById('g-altura')?.value)||0;
+  const idade=parseInt(document.getElementById('g-idade')?.value)||0;
+  const sexo=goals.sexo||'f';
+  const treinos=goals.treinosSemana||5;
+
+  // Peso info
+  const pesoInfoEl=document.getElementById('g-peso-info');
+  if(pesoInfoEl&&peso>0&&meta>0){
+    const diff=+(meta-peso).toFixed(1);
+    if(Math.abs(diff)<=1) pesoInfoEl.innerHTML=`<span style="color:#34d399">✓ Manutenção — peso próximo da meta</span>`;
+    else if(diff<0) pesoInfoEl.innerHTML=`<span style="color:#38bdf8">↓ Objetivo: perder ${Math.abs(diff)} kg</span>`;
+    else pesoInfoEl.innerHTML=`<span style="color:#fb923c">↑ Objetivo: ganhar ${diff} kg</span>`;
+  } else if(pesoInfoEl) pesoInfoEl.innerHTML='';
+
+  // ── Água: 35 ml/kg (recomendação EFSA/IOM) ─────────────────────────────
+  const aguaFormulaEl=document.getElementById('g-agua-formula');
+  const aguaBtnsEl=document.getElementById('g-agua-btns');
+  const aguaBadgeEl=document.getElementById('g-agua-badge');
+  let aguaSug=goals.aguaCopos;
+  if(peso>0){
+    const ml=Math.round(peso*35);
+    const copos=Math.max(6,Math.min(12,Math.round(ml/250)));
+    aguaSug=copos;
+    if(aguaFormulaEl) aguaFormulaEl.innerHTML=`🧮 <b>${peso} kg</b> × 35 ml = <b>${ml} ml</b> ÷ 250 ml/copo = <span style="color:#38bdf8;font-weight:700">${copos} copos/dia</span><br><span style="color:#4d5863;font-size:10px">Base: 30–40 ml/kg — EFSA & Institute of Medicine</span>`;
+    if(aguaBadgeEl) aguaBadgeEl.textContent='calculado automaticamente';
+  } else {
+    if(aguaFormulaEl) aguaFormulaEl.innerHTML='Preencha o peso atual para calcular automaticamente';
+    if(aguaBadgeEl) aguaBadgeEl.textContent='';
+  }
+  if(aguaBtnsEl){
+    const coposList=[6,7,8,9,10,11,12];
+    const cur=goals.aguaCopos;
+    aguaBtnsEl.innerHTML=coposList.map(n=>{
+      const sel=cur===n;const isSug=n===aguaSug&&peso>0;
+      return`<button onclick="goalsSelectAgua(${n})" id="ga-${n}" style="padding:8px 2px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?'#1d4ed8':'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?'#3b82f6':isSug?'#38bdf860':'#21262d'}">${n}${isSug?'<sup style="color:#38bdf8;font-size:8px">✦</sup>':''}</button>`;
+    }).join('');
+  }
+
+  // ── Calorias: Mifflin-St Jeor + fator atividade + ajuste de meta ────────
+  const calFormulaEl=document.getElementById('g-cal-formula');
+  const calInpEl=document.getElementById('g-calorias');
+  const calBadgeEl=document.getElementById('g-cal-badge');
+  if(peso>0&&alt>0&&idade>0){
+    const bmr=sexo==='m'
+      ?(10*peso+6.25*alt-5*idade+5)
+      :(10*peso+6.25*alt-5*idade-161);
+    const actMap=[[1,1.2,'sedentário'],[3,1.375,'leve'],[5,1.55,'moderado'],[7,1.725,'intenso']];
+    const [,fac,lbl]=actMap.find(([d])=>treinos<=d)||actMap[actMap.length-1];
+    const tdee=Math.round(bmr*fac);
+    let adj=0,adjHtml='';
+    if(meta>0&&Math.abs(meta-peso)>1){
+      if(meta<peso){adj=-400;adjHtml=` <span style="color:#38bdf8">− 400 kcal <span style="color:#4d5863">(déficit para perda)</span></span>`;}
+      else{adj=300;adjHtml=` <span style="color:#fb923c">+ 300 kcal <span style="color:#4d5863">(superávit para ganho)</span></span>`;}
+    }
+    const cal=tdee+adj;
+    if(calFormulaEl) calFormulaEl.innerHTML=`🧮 BMR <b>${Math.round(bmr)}</b> kcal × <b>${fac}</b> <span style="color:#8b949e">(treino ${lbl})</span> = <b>${tdee}</b> kcal${adjHtml}<br>→ <span style="color:#fb923c;font-weight:700">${cal} kcal/dia</span><br><span style="color:#4d5863;font-size:10px">Fórmula Mifflin-St Jeor (2005) — padrão ISSN/ACSM</span>`;
+    if(calInpEl) calInpEl.value=cal;
+    if(calBadgeEl) calBadgeEl.textContent='calculado automaticamente';
+  } else {
+    if(calFormulaEl) calFormulaEl.innerHTML='Preencha perfil, peso e altura para calcular automaticamente';
+    if(calBadgeEl) calBadgeEl.textContent='';
+  }
 }
 function saveGoalsForm(){
   const g={
-    pesoMeta:document.getElementById('g-peso').value,
+    pesoAtual:document.getElementById('g-peso-atual').value,
+    pesoMeta:document.getElementById('g-peso-meta').value,
+    altura:document.getElementById('g-altura').value,
+    idade:document.getElementById('g-idade').value,
+    sexo:goals.sexo||'f',
     calorias:parseInt(document.getElementById('g-calorias').value)||1800,
     aguaCopos:goals.aguaCopos,
     treinosSemana:goals.treinosSemana,
