@@ -91,11 +91,24 @@ textarea,input{font-family:inherit;}
         </div>
         <button class="nav-btn" id="btn-next" onclick="changeDay(1)">→</button>
       </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+      <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
+        <button onclick="showGoals()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">⚙️ Metas</button>
         <button onclick="signOut()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">Sair</button>
       </div>
     </div>
     <div class="body" id="main-body"></div>
+  </div>
+
+  <!-- GOALS SCREEN -->
+  <div id="screen-goals" class="screen">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="showScreen('home')">←</button>
+        <div style="font-size:16px;font-weight:800;color:#e6edf3">Minhas Metas</div>
+        <div style="width:44px"></div>
+      </div>
+    </div>
+    <div class="body" id="goals-body"></div>
   </div>
 
   <!-- HISTORY SCREEN -->
@@ -165,8 +178,77 @@ function getSups(tr,isPerna){
   ];
   return a.filter(s=>!s.showIf||s.showIf===true||(s.id==='pump'&&tr!=='descanso')||(s.id==='oxi'&&isPerna));
 }
-const WATER=8;
 const SLEEPS=[{id:'s1',l:'< 6h',ok:false},{id:'s2',l:'6–7h',ok:false},{id:'s3',l:'7–8h',ok:true},{id:'s4',l:'8h+',ok:true}];
+
+// ─── GOALS ───────────────────────────────────────────────────────────────────
+const DEFAULT_GOALS={pesoMeta:'',calorias:1800,aguaCopos:8,treinosSemana:5,cardioMin:30};
+let goals=loadGoals();
+function loadGoals(){
+  try{const s=localStorage.getItem('ht:goals');return s?{...DEFAULT_GOALS,...JSON.parse(s)}:{...DEFAULT_GOALS};}
+  catch{return{...DEFAULT_GOALS};}
+}
+function saveGoals(g){
+  goals=g;
+  try{localStorage.setItem('ht:goals',JSON.stringify(g));}catch{}
+  if(!USE_API||!authToken) return;
+  fetch(`${API_URL}?date=__goals__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(g)}).catch(()=>{});
+}
+function showGoals(){
+  const g=goals;
+  const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:15px;outline:none';
+  const copos=[6,7,8,9,10,11,12];
+  const coposBtns=copos.map(n=>{const sel=g.aguaCopos===n;return`<button onclick="goalsSelectAgua(${n})" id="ga-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#1d4ed8':'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?'#3b82f6':'#21262d'}">${n}</button>`;}).join('');
+  const dias=[1,2,3,4,5,6,7];
+  const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#16a34a':'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?'#16a34a':'#21262d'}">${n}d</button>`;}).join('');
+  document.getElementById('goals-body').innerHTML=`
+    <div class="card fade-in">
+      <div class="sec-hdr"><div class="sec-lbl"><span>⚖️</span> PESO</div></div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Meta de peso (kg)</div>
+      <input type="number" id="g-peso" value="${g.pesoMeta}" placeholder="ex: 65" style="${inp}">
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🔥</span> CALORIAS</div></div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Meta diária (kcal)</div>
+      <input type="number" id="g-calorias" value="${g.calorias}" placeholder="ex: 1800" style="${inp}">
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div></div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Copos por dia</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">${coposBtns}</div>
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🏋️</span> TREINOS</div></div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Dias de treino por semana</div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">${diasBtns}</div>
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🚴</span> CARDIO</div></div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Meta diária (min)</div>
+      <input type="number" id="g-cardio" value="${g.cardioMin}" placeholder="ex: 30" style="${inp}">
+    </div>
+    <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#1f6feb;border-radius:12px;color:#fff;font-size:15px;font-weight:700;margin-bottom:10px">Salvar metas</button>`;
+  showScreen('goals');
+}
+function goalsSelectAgua(n){
+  goals={...goals,aguaCopos:n};
+  document.querySelectorAll('[id^="ga-"]').forEach(b=>{const sel=b.id===`ga-${n}`;b.style.background=sel?'#1d4ed8':'#0d1117';b.style.color=sel?'#fff':'#6e7681';b.style.borderColor=sel?'#3b82f6':'#21262d';});
+}
+function goalsSelectTreinos(n){
+  goals={...goals,treinosSemana:n};
+  document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#16a34a':'#0d1117';b.style.color=sel?'#fff':'#6e7681';b.style.borderColor=sel?'#16a34a':'#21262d';});
+}
+function saveGoalsForm(){
+  const g={
+    pesoMeta:document.getElementById('g-peso').value,
+    calorias:parseInt(document.getElementById('g-calorias').value)||1800,
+    aguaCopos:goals.aguaCopos,
+    treinosSemana:goals.treinosSemana,
+    cardioMin:parseInt(document.getElementById('g-cardio').value)||30,
+  };
+  saveGoals(g);
+  showScreen('home');
+  renderUI();
+}
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
 let currentDate=today();
@@ -217,7 +299,7 @@ async function authSubmit(){
       authRefresh=res.AuthenticationResult.RefreshToken;
       localStorage.setItem('ht:token',authToken);
       localStorage.setItem('ht:refresh',authRefresh);
-      showScreen('home');render();
+      showScreen('home');render(true);
     }else{
       const t=res.__type||'';
       if(t.includes('NotAuthorized')) errEl.textContent='E-mail ou senha incorretos.';
@@ -253,7 +335,7 @@ async function confirmCode(){
     authRefresh=login.AuthenticationResult.RefreshToken;
     localStorage.setItem('ht:token',authToken);
     localStorage.setItem('ht:refresh',authRefresh);
-    showScreen('home');render();
+    showScreen('home');render(true);
   }else{
     document.getElementById('auth-form').style.display='block';
     document.getElementById('auth-tabs').style.display='flex';
@@ -304,10 +386,10 @@ function saveDay(date,d){
 function calcScore(d){
   const sups=getSups(d.tr,d.isPerna);
   const mD=MEALS.filter(m=>d.meals[m.id]).length;
-  const wD=d.water>=WATER?1:0;
+  const wD=d.water>=goals.aguaCopos?1:0;
   const slD=SLEEPS.find(s=>s.id===d.sleep)?.ok?1:0;
   const coD=d.sleepOk?1:0;
-  const cD=d.cardio>=30?1:0;
+  const cD=d.cardio>=goals.cardioMin?1:0;
   const spD=sups.filter(s=>d.sups[s.id]).length;
   const isGym=d.tr==='musc_bike'||d.tr==='musculacao';
   const tD=isGym?(d.sups['treino_ok']?1:0):0;
@@ -319,11 +401,21 @@ function calcScore(d){
          pct:total>0?Math.round(done/total*100):0,done,total};
 }
 
+// ─── GOALS SYNC ──────────────────────────────────────────────────────────────
+async function syncGoals(){
+  if(!USE_API||!authToken) return;
+  try{
+    const r=await fetch(`${API_URL}?date=__goals__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'){goals={...DEFAULT_GOALS,...d};try{localStorage.setItem('ht:goals',JSON.stringify(goals));}catch{}}}
+  }catch{}
+}
+
 // ─── RENDER ──────────────────────────────────────────────────────────────────
-async function render(){
+async function render(syncG=false){
   dayData=loadDay(currentDate);
   renderUI();
   if(USE_API){
+    if(syncG) await syncGoals();
     const remote=await fetchRemote(currentDate);
     if(remote){
       if(JSON.stringify(remote)!==JSON.stringify(dayData)){
@@ -461,16 +553,16 @@ function renderUI(){
   const cmins=[15,20,30,40,45,60];
   const cBtns=cmins.map(m=>`<button onclick="setCardio(${m})" style="flex:1 1 60px;padding:9px 4px;border-radius:9px;font-size:12px;font-weight:700;background:${dayData.cardio>=m?'#166534':'#0d1117'};color:${dayData.cardio>=m?'#86efac':'#6e7681'};border:1px solid ${dayData.cardio>=m?'#16a34a':'#21262d'}">${m}min</button>`).join('');
   html+=`<div class="card">
-    <div class="sec-hdr"><div class="sec-lbl"><span>🚴</span> CARDIO DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.cardio>=30?'#34d399':'#6e7681'}">${dayData.cardio} min</span></div>
-    <div style="font-size:11px;color:#6e7681;margin-bottom:8px">Meta: 30–40 min diários (indicação da nutróloga)</div>
+    <div class="sec-hdr"><div class="sec-lbl"><span>🚴</span> CARDIO DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.cardio>=goals.cardioMin?'#34d399':'#6e7681'}">${dayData.cardio} min</span></div>
+    <div style="font-size:11px;color:#6e7681;margin-bottom:8px">Meta: ${goals.cardioMin} min diários (indicação da nutróloga)</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${cBtns}</div>
-    ${dayData.cardio>=30?'<div style="font-size:11px;color:#34d399;text-align:center;font-weight:600">✓ Meta diária atingida!</div>':''}
+    ${dayData.cardio>=goals.cardioMin?'<div style="font-size:11px;color:#34d399;text-align:center;font-weight:600">✓ Meta diária atingida!</div>':''}
   </div>`;
 
   // ÁGUA
-  const wBars=Array.from({length:WATER}).map((_,i)=>`<button class="water-bar ${i<dayData.water?'active':''}" onclick="setWater(${i})"></button>`).join('');
+  const wBars=Array.from({length:goals.aguaCopos}).map((_,i)=>`<button class="water-bar ${i<dayData.water?'active':''}" onclick="setWater(${i})"></button>`).join('');
   html+=`<div class="card">
-    <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=WATER?'#34d399':'#6e7681'}">${dayData.water}/${WATER}</span></div>
+    <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=goals.aguaCopos?'#34d399':'#6e7681'}">${dayData.water}/${goals.aguaCopos}</span></div>
     <div style="display:flex;gap:5px;margin-bottom:8px">${wBars}</div>
     <div style="display:flex;gap:8px">
       <button onclick="addWater(-1)" style="flex:1;padding:8px;background:#0d1117;border:1px solid #21262d;color:#6e7681;border-radius:8px;font-size:12px;font-weight:600">− 1</button>
@@ -510,8 +602,8 @@ function renderUI(){
   // PENDÊNCIAS
   const missing=[];
   MEALS.forEach(m=>{if(!dayData.meals[m.id])missing.push(m.icon+' '+m.label);});
-  if(dayData.water<WATER) missing.push('💧 Água — '+dayData.water+'/'+WATER+' copos');
-  if(dayData.cardio<30)   missing.push('🚴 Cardio — '+(dayData.cardio||0)+'/30 min');
+  if(dayData.water<goals.aguaCopos) missing.push('💧 Água — '+dayData.water+'/'+goals.aguaCopos+' copos');
+  if(dayData.cardio<goals.cardioMin) missing.push('🚴 Cardio — '+(dayData.cardio||0)+'/'+goals.cardioMin+' min');
   getSups(dayData.tr,dayData.isPerna).forEach(s=>{if(!dayData.sups[s.id])missing.push(s.icon+' '+s.label);});
   if(!dayData.sleep||!SLEEPS.find(o=>o.id===dayData.sleep)?.ok) missing.push('😴 Sono — menos de 7h');
   if(missing.length){
@@ -597,7 +689,7 @@ function setNotes(v){dayData.notes=v;save();}
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-if(authToken){showScreen('home');render();}else{showScreen('auth');}
+if(authToken){showScreen('home');render(true);}else{showScreen('auth');}
 </script>
 </body>
 </html>
