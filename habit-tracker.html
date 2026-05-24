@@ -151,12 +151,33 @@ function makeEmpty(date){
          meals:{},sups:{},water:0,cardio:0,sleep:null,sleepOk:null,notes:''};
 }
 
+// ─── API ─────────────────────────────────────────────────────────────────────
+const API_URL='__API_URL__';
+const USE_API=API_URL.startsWith('https://');
+
+function getUserId(){
+  let id=localStorage.getItem('ht:userId');
+  if(!id){id=crypto.randomUUID();localStorage.setItem('ht:userId',id);}
+  return id;
+}
+
 function loadDay(date){
   try{const s=localStorage.getItem('ht:'+date);return s?JSON.parse(s):makeEmpty(date);}
   catch{return makeEmpty(date);}
 }
+async function fetchRemote(date){
+  try{
+    const r=await fetch(`${API_URL}?userId=${getUserId()}&date=${date}`);
+    if(r.ok){const d=await r.json();return d||null;}
+  }catch{}
+  return null;
+}
 function saveDay(date,d){
   try{localStorage.setItem('ht:'+date,JSON.stringify(d));}catch{}
+  if(!USE_API) return;
+  fetch(`${API_URL}?userId=${getUserId()}&date=${date}`,{
+    method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(d)
+  }).catch(()=>{});
 }
 
 function calcScore(d){
@@ -178,8 +199,19 @@ function calcScore(d){
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
-function render(){
+async function render(){
   dayData=loadDay(currentDate);
+  renderUI();
+  if(USE_API){
+    const remote=await fetchRemote(currentDate);
+    if(remote&&JSON.stringify(remote)!==JSON.stringify(dayData)){
+      dayData=remote;
+      try{localStorage.setItem('ht:'+currentDate,JSON.stringify(dayData));}catch{}
+      renderUI();
+    }
+  }
+}
+function renderUI(){
   const sc=calcScore(dayData);
   const{day,date}=dispDate(currentDate);
   const isT=currentDate===today();
@@ -426,16 +458,16 @@ function showHistory(){
 function save(){saveDay(currentDate,dayData);}
 function changeDay(n){currentDate=addDays(currentDate,n);render();}
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+id).classList.add('active');}
-function toggleMeal(id){dayData.meals[id]=!dayData.meals[id];save();render();}
-function toggleSup(id){dayData.sups[id]=!dayData.sups[id];save();render();}
-function setTr(id){dayData.tr=id;if(id==='musc_bike'&&getDow(currentDate)===4)dayData.isPerna=true;save();render();}
-function toggle(k){dayData[k]=!dayData[k];save();render();}
-function setJantar(v){dayData.jantarV=v;save();render();}
-function setCardio(m){dayData.cardio=dayData.cardio===m?0:m;save();render();}
-function setWater(i){dayData.water=i<dayData.water?i:i+1;save();render();}
-function addWater(n){dayData.water=Math.max(0,Math.min(12,dayData.water+n));save();render();}
-function setSleep(id){dayData.sleep=id;save();render();}
-function setSleepOk(v){dayData.sleepOk=v;save();render();}
+function toggleMeal(id){dayData.meals[id]=!dayData.meals[id];save();renderUI();}
+function toggleSup(id){dayData.sups[id]=!dayData.sups[id];save();renderUI();}
+function setTr(id){dayData.tr=id;if(id==='musc_bike'&&getDow(currentDate)===4)dayData.isPerna=true;save();renderUI();}
+function toggle(k){dayData[k]=!dayData[k];save();renderUI();}
+function setJantar(v){dayData.jantarV=v;save();renderUI();}
+function setCardio(m){dayData.cardio=dayData.cardio===m?0:m;save();renderUI();}
+function setWater(i){dayData.water=i<dayData.water?i:i+1;save();renderUI();}
+function addWater(n){dayData.water=Math.max(0,Math.min(12,dayData.water+n));save();renderUI();}
+function setSleep(id){dayData.sleep=id;save();renderUI();}
+function setSleepOk(v){dayData.sleepOk=v;save();renderUI();}
 function setNotes(v){dayData.notes=v;save();}
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
 

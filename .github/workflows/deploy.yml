@@ -20,10 +20,33 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: sa-east-1
 
+      - name: Deploy infraestrutura (DynamoDB + Lambda)
+        run: |
+          aws cloudformation deploy \
+            --template-file infrastructure/template.yaml \
+            --stack-name tracker-habitos-backend \
+            --capabilities CAPABILITY_NAMED_IAM \
+            --region sa-east-1 \
+            --no-fail-on-empty-changeset
+
+      - name: Obter URL da API
+        id: api
+        run: |
+          URL=$(aws cloudformation describe-stacks \
+            --stack-name tracker-habitos-backend \
+            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
+            --output text \
+            --region sa-east-1)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Injetar URL da API no HTML
+        run: sed -i "s|__API_URL__|${{ steps.api.outputs.url }}|g" habit-tracker.html
+
       - name: Sincronizar arquivos com o S3
         run: |
           aws s3 sync . s3://tracker-habitos \
             --exclude ".git/*" \
             --exclude ".github/*" \
+            --exclude "infrastructure/*" \
             --exclude "README.md" \
             --delete
