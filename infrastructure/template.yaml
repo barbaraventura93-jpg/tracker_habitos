@@ -141,7 +141,9 @@ Resources:
 
   TrackerFunctionUrlPermission:
     Type: AWS::Lambda::Permission
+    DependsOn: TrackerFunctionUrl
     Properties:
+      StatementId: AllowPublicFunctionUrlAccess
       Action: lambda:InvokeFunctionUrl
       FunctionName: !Ref TrackerFunction
       Principal: '*'
