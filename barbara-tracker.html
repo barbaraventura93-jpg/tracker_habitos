@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0d1117">
+<title>Bárbara · Rotina Diária</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0;}
+body{font-family:'Sora',system-ui,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh;-webkit-tap-highlight-color:transparent;}
+button{cursor:pointer;border:none;font-family:inherit;transition:all .13s ease;}
+button:active{transform:scale(.96);opacity:.85;}
+textarea,input{font-family:inherit;}
+::-webkit-scrollbar{width:3px;}
+::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px;}
+.fade-in{animation:fadeIn .22s ease;}
+@keyframes fadeIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+#app{max-width:460px;margin:0 auto;}
+.header{background:#161b22;border-bottom:1px solid #21262d;padding:12px 16px;position:sticky;top:0;z-index:50;}
+.header-inner{display:flex;align-items:center;justify-content:space-between;}
+.nav-btn{background:#21262d;color:#8b949e;padding:7px 13px;border-radius:8px;font-size:14px;}
+.body{padding:12px 13px 60px;}
+.card{background:#161b22;border:1px solid #21262d;border-radius:16px;padding:15px 13px;margin-bottom:10px;}
+.sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.sec-lbl{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:700;color:#8b949e;letter-spacing:.1em;text-transform:uppercase;}
+.check-row{width:100%;display:flex;align-items:flex-start;gap:12px;padding:11px 12px;border-radius:10px;text-align:left;background:#0d1117;border:1px solid #21262d;margin-bottom:7px;}
+.check-row.done{background:#0d2818;border-color:#16a34a;}
+.check-circle{width:22px;height:22px;border-radius:50%;flex-shrink:0;margin-top:1px;background:transparent;border:2px solid #30363d;display:flex;align-items:center;justify-content:center;transition:all .2s ease;font-size:12px;font-weight:800;color:#fff;}
+.check-circle.done{background:#16a34a;border-color:#16a34a;}
+.score-bar-wrap{display:flex;align-items:center;gap:10px;margin-bottom:9px;}
+.score-bar-bg{flex:1;height:5px;background:#21262d;border-radius:99px;overflow:hidden;}
+.score-bar-fill{height:100%;border-radius:99px;transition:width .45s ease;}
+.meal-card{width:100%;text-align:left;border-radius:12px;padding:12px 13px;background:#0d1117;border:1px solid #21262d;display:flex;align-items:flex-start;gap:12px;margin-bottom:7px;}
+.meal-card.done{background:#0d2818;border-color:#16a34a;}
+.badge{display:inline-block;background:#21262d;border-radius:4px;padding:2px 7px;font-size:10px;color:#8b949e;font-weight:600;margin-top:5px;}
+.water-bar{flex:1;height:32px;border-radius:6px;transition:background .2s;background:#0d1117;border:1px solid #21262d;}
+.water-bar.active{background:#1d4ed8;border-color:#3b82f6;}
+.toggle-chip{flex:1;padding:7px 8px;border-radius:8px;font-size:11px;font-weight:600;background:#0d1117;color:#6e7681;border:1px solid #21262d;}
+.toggle-chip.active{background:rgba(249,115,22,.12);color:#f97316;border-color:rgba(249,115,22,.35);}
+.toggle-chip.active.fds{background:rgba(52,211,153,.12);color:#34d399;border-color:rgba(52,211,153,.35);}
+.day-type-btn{padding:10px 8px;border-radius:10px;font-size:11px;font-weight:700;line-height:1.3;background:#0d1117;color:#6e7681;border:1px solid #21262d;}
+.pending-dot{width:5px;height:5px;border-radius:50%;background:#f87171;margin-top:7px;flex-shrink:0;}
+.screen{display:none;}.screen.active{display:block;}
+</style>
+</head>
+<body>
+<div id="app">
+  <!-- HOME SCREEN -->
+  <div id="screen-home" class="screen active">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="changeDay(-1)">←</button>
+        <div style="text-align:center">
+          <div id="hdr-day" style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.14em;text-transform:uppercase"></div>
+          <div id="hdr-date" style="font-size:18px;font-weight:800;color:#e6edf3"></div>
+          <div id="hdr-status" style="font-size:10px;height:14px;color:#34d399;font-weight:600">● HOJE</div>
+        </div>
+        <button class="nav-btn" id="btn-next" onclick="changeDay(1)">→</button>
+      </div>
+    </div>
+    <div class="body" id="main-body"></div>
+  </div>
+
+  <!-- HISTORY SCREEN -->
+  <div id="screen-history" class="screen">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="showScreen('home')">←</button>
+        <div style="font-size:16px;font-weight:800;color:#e6edf3">Histórico</div>
+        <div style="width:44px"></div>
+      </div>
+    </div>
+    <div class="body" id="history-body"></div>
+  </div>
+</div>
+
+<script>
+// ─── DATA ────────────────────────────────────────────────────────────────────
+const DAYS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+const DOW={
+  0:{tr:'descanso',  isFds:true, carb:false,perna:false},
+  1:{tr:'musc_bike', isFds:false,carb:false,perna:false},
+  2:{tr:'musc_bike', isFds:false,carb:true, perna:false},
+  3:{tr:'bike',      isFds:false,carb:false,perna:false},
+  4:{tr:'musc_bike', isFds:false,carb:true, perna:true },
+  5:{tr:'musc_bike', isFds:false,carb:true, perna:false},
+  6:{tr:'cardio',    isFds:true, carb:false,perna:false},
+};
+const TRAININGS=[
+  {id:'musc_bike',label:'Musc + Bike',  icon:'🏋️🚴',color:'#818cf8'},
+  {id:'musculacao',label:'Só Musculação',icon:'🏋️',  color:'#818cf8'},
+  {id:'bike',      label:'Bike',         icon:'🚴',  color:'#38bdf8'},
+  {id:'cardio',    label:'Cardio Longo', icon:'🏃',  color:'#34d399'},
+  {id:'descanso',  label:'Descanso ativo',icon:'🛌', color:'#6e7681'},
+];
+const MEALS=[
+  {id:'cafe',  label:'Café da manhã',icon:'☀️',time:'08:00'},
+  {id:'almoco',label:'Almoço',       icon:'🥗',time:'12:00'},
+  {id:'lanche',label:'Lanche',       icon:'🥛',time:'16:00'},
+  {id:'jantar',label:'Jantar',       icon:'🌙',time:'19:00'},
+  {id:'ceia',  label:'Ceia',         icon:'🍓',time:'21:00'},
+];
+function getMealDetail(id,d){
+  if(id==='cafe') return d.isFds
+    ?{macro:'~350 kcal · ~28g prot',hint:'Pão francês + 2 ovos + Requeijão light + Whey 14g',badge:'Final de semana'}
+    :{macro:'~380 kcal · ~35g prot',hint:'Whey 28g + Banana 100g + Creatina + Leite em pó desnatado',badge:'Semana'};
+  if(id==='almoco') return d.almocoCarb
+    ?{macro:'~520 kcal · ~38g prot',hint:'Salada à vontade + Frango 100g + Macarrão 110g + Legumes 150g',badge:'Com carboidrato'}
+    :{macro:'~380 kcal · ~36g prot',hint:'Salada à vontade + Frango 100g + Legumes assados 150g + Azeite 8g',badge:'Low carb'};
+  if(id==='lanche') return{macro:'~250 kcal · ~20g prot',hint:'Barrinha de proteína 60g  —  ou  —  3 ovos + Pão grãos + Creme de ricota',badge:'Doce ou salgada'};
+  if(id==='jantar'){
+    if(d.jantarV==='hamburguer') return{macro:'~480 kcal · ~35g prot',hint:'Pão francês + Hambúrguer patinho 100g + Maionese light + Queijo',badge:'🍔 Hambúrguer'};
+    if(d.jantarV==='rap10')      return{macro:'~330 kcal · ~30g prot',hint:'Rap10 fibras + Frango desfiado 80g + Requeijão light 30g',badge:'🌯 Rap10'};
+    return{macro:'~380 kcal · ~34g prot',hint:'Salada + Frango 100g + Batata inglesa 120g + Ketchup',badge:'🍽️ Refeição'};
+  }
+  return{macro:'~200 kcal · ~22g prot',hint:'Iogurte grego + cacau em pó + morangos + Whey misturado',badge:'21:00'};
+}
+function getSups(tr,isPerna){
+  const a=[
+    {id:'pump',  label:'PUMP — pré-treino',sub:'Cafeína + Ioimbina + Capsaicina + Astaxantina',icon:'⚡',cond:true,showIf:tr!=='descanso'},
+    {id:'oxi',   label:'Oximetalona 4mg',  sub:'1 comprimido antes do treino de perna',icon:'💪',cond:true,showIf:isPerna},
+    {id:'f2',    label:'Fórmula 2',         sub:'Berberina + Inositol + Cromo + Topiramato — antes do jantar',icon:'🟣'},
+    {id:'dhea',  label:'DHEA 25mg',         sub:'1 comprimido à noite',icon:'🟡'},
+    {id:'omega', label:'Ômega-3',           sub:'Dose diária',icon:'🐟'},
+    {id:'zm',    label:'Zinco + Magnésio',  sub:'Growth — dose diária',icon:'⚪'},
+    {id:'col',   label:'Colágeno',          sub:'Dose diária',icon:'🟤'},
+  ];
+  return a.filter(s=>!s.showIf||s.showIf===true||(s.id==='pump'&&tr!=='descanso')||(s.id==='oxi'&&isPerna));
+}
+const WATER=8;
+const SLEEPS=[{id:'s1',l:'< 6h',ok:false},{id:'s2',l:'6–7h',ok:false},{id:'s3',l:'7–8h',ok:true},{id:'s4',l:'8h+',ok:true}];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let currentDate=today();
+let dayData={};
+
+function today(){return new Date().toISOString().split('T')[0];}
+function getDow(s){const[y,m,d]=s.split('-');return new Date(+y,+m-1,+d).getDay();}
+function addDays(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().split('T')[0];}
+function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
+
+function makeEmpty(date){
+  const def=DOW[getDow(date)]||DOW[0];
+  return{tr:def.tr,isPerna:def.perna,isFds:def.isFds,almocoCarb:def.carb,jantarV:'refeicao',
+         meals:{},sups:{},water:0,cardio:0,sleep:null,sleepOk:null,notes:''};
+}
+
+function loadDay(date){
+  try{const s=localStorage.getItem('bvt:'+date);return s?JSON.parse(s):makeEmpty(date);}
+  catch{return makeEmpty(date);}
+}
+function saveDay(date,d){
+  try{localStorage.setItem('bvt:'+date,JSON.stringify(d));}catch{}
+}
+
+function calcScore(d){
+  const sups=getSups(d.tr,d.isPerna);
+  const mD=MEALS.filter(m=>d.meals[m.id]).length;
+  const wD=d.water>=WATER?1:0;
+  const slD=SLEEPS.find(s=>s.id===d.sleep)?.ok?1:0;
+  const coD=d.sleepOk?1:0;
+  const cD=d.cardio>=30?1:0;
+  const spD=sups.filter(s=>d.sups[s.id]).length;
+  const isGym=d.tr==='musc_bike'||d.tr==='musculacao';
+  const tD=isGym?(d.sups['treino_ok']?1:0):0;
+  const tT=isGym?1:0;
+  const total=MEALS.length+1+2+1+sups.length+tT;
+  const done=mD+wD+slD+coD+cD+spD+tD;
+  return{meals:{d:mD,t:MEALS.length},water:{d:wD,t:1},sleep:{d:slD+coD,t:2},
+         cardio:{d:cD,t:1},sups:{d:spD,t:sups.length},treino:{d:tD,t:tT},
+         pct:total>0?Math.round(done/total*100):0,done,total};
+}
+
+// ─── RENDER ──────────────────────────────────────────────────────────────────
+function render(){
+  dayData=loadDay(currentDate);
+  const sc=calcScore(dayData);
+  const{day,date}=dispDate(currentDate);
+  const isT=currentDate===today();
+
+  document.getElementById('hdr-day').textContent=day;
+  document.getElementById('hdr-date').textContent=date;
+  document.getElementById('hdr-status').textContent=isT?'● HOJE':'';
+  document.getElementById('btn-next').style.opacity=isT?0.3:1;
+  document.getElementById('btn-next').disabled=isT;
+
+  const body=document.getElementById('main-body');
+  body.innerHTML='';
+
+  // PROGRESS RING
+  const ring=2*Math.PI*40;
+  const pct=sc.pct;
+  const rc=pct>=80?'#34d399':pct>=55?'#fbbf24':pct>0?'#f87171':'#30363d';
+  const msg=pct===100?'🎉 Dia perfeito!':pct>=80?'💪 Ótimo dia!':pct>=55?'👍 Progredindo':'🔄 Vamos lá!';
+
+  const bars=[
+    {l:'Refeições',s:sc.meals, c:'#fb923c'},
+    {l:'Água',     s:sc.water, c:'#38bdf8'},
+    {l:'Cardio',   s:sc.cardio,c:'#34d399'},
+    {l:'Sono',     s:sc.sleep, c:'#a78bfa'},
+    {l:'Suplementos',s:sc.sups,c:'#fbbf24'},
+    ...(sc.treino.t>0?[{l:'Treino',s:sc.treino,c:'#818cf8'}]:[]),
+  ];
+  const barsHtml=bars.map(b=>{
+    const bp=b.s.t>0?Math.round(b.s.d/b.s.t*100):0;
+    return`<div class="score-bar-wrap">
+      <div style="width:80px;font-size:11px;color:#6e7681;font-weight:600">${b.l}</div>
+      <div class="score-bar-bg"><div class="score-bar-fill" style="width:${bp}%;background:${b.c}"></div></div>
+      <div style="font-size:11px;color:#6e7681;font-family:'DM Mono',monospace;width:28px;text-align:right">${b.s.d}/${b.s.t}</div>
+    </div>`;
+  }).join('');
+
+  let html=`
+  <div class="card fade-in">
+    <div style="display:flex;align-items:center;gap:18px;margin-bottom:18px">
+      <svg width="96" height="96" viewBox="0 0 96 96" style="flex-shrink:0">
+        <circle cx="48" cy="48" r="40" fill="none" stroke="#1c2128" stroke-width="10"/>
+        <circle cx="48" cy="48" r="40" fill="none" stroke="${rc}" stroke-width="10"
+          stroke-linecap="round" stroke-dasharray="${ring}" stroke-dashoffset="${ring-(pct/100)*ring}"
+          transform="rotate(-90 48 48)" style="transition:stroke-dashoffset .5s ease"/>
+        <text x="48" y="44" text-anchor="middle" font-size="20" font-weight="800" fill="#e6edf3" font-family="Sora">${pct}%</text>
+        <text x="48" y="58" text-anchor="middle" font-size="9" fill="#6e7681" font-family="Sora" letter-spacing="0.08em">SUCESSO</text>
+      </svg>
+      <div style="flex:1">
+        <div style="font-size:15px;font-weight:800;color:#e6edf3;margin-bottom:5px">${msg}</div>
+        <div style="font-size:11px;color:#6e7681;font-family:'DM Mono',monospace">${sc.done}/${sc.total} pontos</div>
+        <button onclick="showHistory()" style="margin-top:8px;background:#21262d;border:1px solid #30363d;color:#8b949e;padding:5px 12px;border-radius:8px;font-size:11px;font-weight:600">📊 Ver histórico</button>
+      </div>
+    </div>
+    ${barsHtml}
+  </div>`;
+
+  // TIPO DE DIA
+  const trBtns=TRAININGS.map(t=>{
+    const sel=dayData.tr===t.id;
+    return`<button class="day-type-btn" onclick="setTr('${t.id}')" style="${sel?`background:${t.color}25;color:${t.color};border-color:${t.color}60`:''}">
+      <div style="font-size:15px;margin-bottom:2px">${t.icon}</div>${t.label}
+    </button>`;
+  }).join('');
+  html+=`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>📅</span> TIPO DE DIA</div></div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px">${trBtns}</div>
+    <div style="display:flex;gap:7px">
+      <button class="toggle-chip ${dayData.isPerna?'active':''}" onclick="toggle('isPerna')">Treino de perna 🦵</button>
+      <button class="toggle-chip ${dayData.isFds?'active fds':''}" onclick="toggle('isFds')">Final de semana 🌅</button>
+    </div>
+  </div>`;
+
+  // TREINO FEITO
+  if(dayData.tr==='musc_bike'||dayData.tr==='musculacao'){
+    const done=!!dayData.sups['treino_ok'];
+    const t=TRAININGS.find(t=>t.id===dayData.tr);
+    html+=`<div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🏋️</span> TREINO CONCLUÍDO</div></div>
+      <button class="check-row ${done?'done':''}" onclick="toggleSup('treino_ok')">
+        <div class="check-circle ${done?'done':''}">${done?'✓':''}</div>
+        <div><div style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${t?.label} — sessão completa</div>
+        <div style="font-size:11px;color:#4d5863;margin-top:2px">Marque ao concluir o treino</div></div>
+      </button>
+    </div>`;
+  }
+
+  // REFEIÇÕES
+  const jBtns=[{id:'refeicao',l:'🍽️ Refeição'},{id:'rap10',l:'🌯 Rap10'},{id:'hamburguer',l:'🍔 Hambúrguer'}].map(v=>`
+    <button onclick="setJantar('${v.id}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;background:${dayData.jantarV===v.id?'#1f6feb':'#0d1117'};color:${dayData.jantarV===v.id?'#fff':'#6e7681'};border:1px solid ${dayData.jantarV===v.id?'#388bfd':'#21262d'}">${v.l}</button>`).join('');
+
+  const mealCards=MEALS.map(m=>{
+    const det=getMealDetail(m.id,dayData);
+    const done=!!dayData.meals[m.id];
+    return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')">
+      <div class="check-circle ${done?'done':''}">${done?'✓':''}</div>
+      <div style="flex:1">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+          <span style="font-size:14px">${m.icon}</span>
+          <span style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${m.label}</span>
+          <span style="margin-left:auto;font-size:10px;color:#6e7681;font-family:'DM Mono',monospace">${m.time}</span>
+        </div>
+        <div style="font-size:10px;color:${done?'#3d5040':'#6e7681'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div>
+        <div style="font-size:11px;color:${done?'#3d5040':'#4d5863'};line-height:1.45">${det.hint}</div>
+        <div class="badge">${det.badge}</div>
+      </div>
+    </button>`;
+  }).join('');
+
+  html+=`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.meals.d===sc.meals.t?'#fb923c':'#6e7681'}">${sc.meals.d}/${sc.meals.t}</span></div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.08em;margin-bottom:6px">VARIANTE DO JANTAR</div>
+      <div style="display:flex;gap:6px">${jBtns}</div>
+    </div>
+    ${mealCards}
+  </div>`;
+
+  // CARDIO
+  const cmins=[15,20,30,40,45,60];
+  const cBtns=cmins.map(m=>`<button onclick="setCardio(${m})" style="flex:1 1 60px;padding:9px 4px;border-radius:9px;font-size:12px;font-weight:700;background:${dayData.cardio>=m?'#166534':'#0d1117'};color:${dayData.cardio>=m?'#86efac':'#6e7681'};border:1px solid ${dayData.cardio>=m?'#16a34a':'#21262d'}">${m}min</button>`).join('');
+  html+=`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>🚴</span> CARDIO DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.cardio>=30?'#34d399':'#6e7681'}">${dayData.cardio} min</span></div>
+    <div style="font-size:11px;color:#6e7681;margin-bottom:8px">Meta: 30–40 min diários (indicação da nutróloga)</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${cBtns}</div>
+    ${dayData.cardio>=30?'<div style="font-size:11px;color:#34d399;text-align:center;font-weight:600">✓ Meta diária atingida!</div>':''}
+  </div>`;
+
+  // ÁGUA
+  const wBars=Array.from({length:WATER}).map((_,i)=>`<button class="water-bar ${i<dayData.water?'active':''}" onclick="setWater(${i})"></button>`).join('');
+  html+=`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=WATER?'#34d399':'#6e7681'}">${dayData.water}/${WATER}</span></div>
+    <div style="display:flex;gap:5px;margin-bottom:8px">${wBars}</div>
+    <div style="display:flex;gap:8px">
+      <button onclick="addWater(-1)" style="flex:1;padding:8px;background:#0d1117;border:1px solid #21262d;color:#6e7681;border-radius:8px;font-size:12px;font-weight:600">− 1</button>
+      <button onclick="addWater(1)" style="flex:1;padding:8px;background:#1d4ed8;border:1px solid #3b82f6;color:#fff;border-radius:8px;font-size:12px;font-weight:600">+ 1 copo</button>
+    </div>
+  </div>`;
+
+  // SUPLEMENTOS
+  const sups=getSups(dayData.tr,dayData.isPerna);
+  const supRows=sups.map(s=>{
+    const done=!!dayData.sups[s.id];
+    return`<button class="check-row ${done?'done':''}" onclick="toggleSup('${s.id}')">
+      <div class="check-circle ${done?'done':''}" style="${done?'':'border-color:#30363d'}">${done?'✓':''}</div>
+      <div><div style="display:flex;align-items:center;gap:6px"><span>${s.icon}</span><span style="font-size:13px;color:${done?'#6e7681':'#c9d1d9'};text-decoration:${done?'line-through':'none'}">${s.label}</span></div>
+      <div style="font-size:11px;color:${done?'#3d5040':'#4d5863'};margin-top:2px">${s.sub}</div></div>
+    </button>`;
+  }).join('');
+  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>💊</span> SUPLEMENTOS</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.sups.d===sc.sups.t?'#fbbf24':'#6e7681'}">${sc.sups.d}/${sc.sups.t}</span></div>${supRows}</div>`;
+
+  // SONO
+  const sOpts=SLEEPS.map(o=>{const sel=dayData.sleep===o.id;return`<button onclick="setSleep('${o.id}')" style="padding:9px 4px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?(o.ok?'#166534':'#7f1d1d'):'#0d1117'};color:${sel?(o.ok?'#86efac':'#fca5a5'):'#6e7681'};border:1px solid ${sel?(o.ok?'#16a34a':'#dc2626'):'#21262d'}">${o.l}</button>`;}).join('');
+  const sOk=[{v:'true',l:'✓ Sim'},{v:'false',l:'✗ Não'}].map(o=>{const sel=String(dayData.sleepOk)===o.v;return`<button onclick="setSleepOk(${o.v})" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?(o.v==='true'?'#166534':'#7f1d1d'):'#0d1117'};color:${sel?(o.v==='true'?'#86efac':'#fca5a5'):'#6e7681'};border:1px solid ${sel?(o.v==='true'?'#16a34a':'#dc2626'):'#21262d'}">${o.l}</button>`;}).join('');
+  html+=`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>😴</span> SONO</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.sleep.d===sc.sleep.t?'#a78bfa':'#6e7681'}">${sc.sleep.d}/${sc.sleep.t}</span></div>
+    <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORAS DORMIDAS</div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">${sOpts}</div>
+    <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORÁRIO CONSISTENTE?</div>
+    <div style="display:flex;gap:7px">${sOk}</div>
+  </div>`;
+
+  // OBSERVAÇÕES
+  html+=`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>📝</span> OBSERVAÇÕES</div></div>
+    <textarea placeholder="Como foi o dia? O que dificultou? O que funcionou bem?" onchange="setNotes(this.value)" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 12px;color:#e6edf3;font-size:13px;resize:none;height:72px;outline:none;line-height:1.5">${dayData.notes||''}</textarea>
+  </div>`;
+
+  // PENDÊNCIAS
+  const missing=[];
+  MEALS.forEach(m=>{if(!dayData.meals[m.id])missing.push(m.icon+' '+m.label);});
+  if(dayData.water<WATER) missing.push('💧 Água — '+dayData.water+'/'+WATER+' copos');
+  if(dayData.cardio<30)   missing.push('🚴 Cardio — '+(dayData.cardio||0)+'/30 min');
+  getSups(dayData.tr,dayData.isPerna).forEach(s=>{if(!dayData.sups[s.id])missing.push(s.icon+' '+s.label);});
+  if(!dayData.sleep||!SLEEPS.find(o=>o.id===dayData.sleep)?.ok) missing.push('😴 Sono — menos de 7h');
+  if(missing.length){
+    const rows=missing.map(m=>`<div style="display:flex;gap:10px;align-items:flex-start"><div class="pending-dot"></div><span style="font-size:13px;color:#fca5a5;line-height:1.5">${m}</span></div>`).join('');
+    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🔍</span> PENDÊNCIAS</div></div><div style="display:flex;flex-direction:column;gap:6px">${rows}</div></div>`;
+  }
+
+  if(pct===100) html+=`<div style="background:#0d2818;border:1px solid #16a34a;border-radius:14px;padding:22px;text-align:center;margin-bottom:10px"><div style="font-size:28px;margin-bottom:6px">🎉</div><div style="font-size:16px;font-weight:800;color:#34d399">100% — dia perfeito!</div><div style="font-size:12px;color:#4ade80;margin-top:4px">Cada dia assim te leva aos 70kg.</div></div>`;
+
+  body.innerHTML=html;
+}
+
+// ─── HISTORY ─────────────────────────────────────────────────────────────────
+function showHistory(){
+  const days=60;
+  const hist=[];
+  for(let i=0;i<days;i++){
+    const d=addDays(today(),-i);
+    const dd=loadDay(d);
+    hist.push({date:d,pct:calcScore(dd).pct});
+  }
+  const avg=Math.round(hist.reduce((a,d)=>a+d.pct,0)/hist.length);
+  const great=hist.filter(d=>d.pct>=80).length;
+  let streak=0; for(const d of hist){if(d.pct>=80)streak++;else break;}
+
+  const stats=[{l:'Média 60d',v:avg+'%',c:'#818cf8'},{l:'Dias ótimos',v:great,c:'#34d399'},{l:'Sequência',v:streak+'d',c:'#fbbf24'}];
+  const statsHtml=stats.map(s=>`<div class="card" style="padding:14px 10px;text-align:center;margin-bottom:0"><div style="font-size:22px;font-weight:800;color:${s.c}">${s.v}</div><div style="font-size:10px;color:#6e7681;font-weight:600;margin-top:3px">${s.l}</div></div>`).join('');
+
+  const calCells=[...hist].reverse().map(({date,pct})=>{
+    const bg=pct===0?'#1c2128':pct>=80?'#166534':pct>=55?'#78350f':'#7f1d1d';
+    const c=pct===0?'#30363d':pct>=80?'#86efac':pct>=55?'#fcd34d':'#fca5a5';
+    const {day,date:d}=dispDate(date);
+    return`<div title="${d} — ${pct}%" style="aspect-ratio:1;border-radius:6px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${c}">${pct>0?pct:''}</div>`;
+  }).join('');
+
+  const listRows=hist.map(({date,pct})=>{
+    const{day,date:d}=dispDate(date);
+    const c=pct>=80?'#34d399':pct>=55?'#fbbf24':pct>0?'#f87171':'#30363d';
+    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;background:#0d1117;border-radius:10px;border:1px solid #21262d;margin-bottom:6px">
+      <div><span style="font-size:12px;font-weight:700;color:#e6edf3">${day} </span><span style="font-size:12px;color:#6e7681">${d}</span></div>
+      <div style="display:flex;align-items:center;gap:8px">
+        <div style="width:60px;height:4px;background:#21262d;border-radius:99px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${c};border-radius:99px"></div></div>
+        <span style="font-size:12px;font-weight:700;color:${c};font-family:'DM Mono',monospace;width:32px;text-align:right">${pct}%</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('history-body').innerHTML=`
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">${statsHtml}</div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>📅</span> ÚLTIMOS 60 DIAS</div></div>
+      <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
+        ${DAYS.map(d=>`<div style="font-size:9px;color:#6e7681;font-weight:700;text-align:center;margin-bottom:4px">${d}</div>`).join('')}
+        ${calCells}
+      </div>
+      <div style="display:flex;gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap">
+        ${[{c:'#166534',tc:'#86efac',l:'≥80%'},{c:'#78350f',tc:'#fcd34d',l:'55–79%'},{c:'#7f1d1d',tc:'#fca5a5',l:'<55%'},{c:'#1c2128',tc:'#30363d',l:'Sem dado'}].map(x=>`<div style="display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;border-radius:3px;background:${x.c}"></div><span style="font-size:10px;color:${x.tc}">${x.l}</span></div>`).join('')}
+      </div>
+    </div>
+    <div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📋</span> DETALHES</div></div><div style="max-height:360px;overflow-y:auto">${listRows}</div></div>`;
+
+  showScreen('history');
+}
+
+// ─── ACTIONS ─────────────────────────────────────────────────────────────────
+function save(){saveDay(currentDate,dayData);}
+function changeDay(n){currentDate=addDays(currentDate,n);render();}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+id).classList.add('active');}
+function toggleMeal(id){dayData.meals[id]=!dayData.meals[id];save();render();}
+function toggleSup(id){dayData.sups[id]=!dayData.sups[id];save();render();}
+function setTr(id){dayData.tr=id;if(id==='musc_bike'&&getDow(currentDate)===4)dayData.isPerna=true;save();render();}
+function toggle(k){dayData[k]=!dayData[k];save();render();}
+function setJantar(v){dayData.jantarV=v;save();render();}
+function setCardio(m){dayData.cardio=dayData.cardio===m?0:m;save();render();}
+function setWater(i){dayData.water=i<dayData.water?i:i+1;save();render();}
+function addWater(n){dayData.water=Math.max(0,Math.min(12,dayData.water+n));save();render();}
+function setSleep(id){dayData.sleep=id;save();render();}
+function setSleepOk(v){dayData.sleepOk=v;save();render();}
+function setNotes(v){dayData.notes=v;save();}
+function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
+
+// ─── INIT ─────────────────────────────────────────────────────────────────────
+render();
+</script>
+</body>
+</html>
