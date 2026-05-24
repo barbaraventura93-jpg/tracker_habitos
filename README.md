@@ -2,7 +2,7 @@
 
 App de acompanhamento de rotina diária — refeições, cardio, água, suplementos e sono — com histórico de 60 dias.
 
-🌐 **[Acessar o app](http://tracker-habitos.s3-website-sa-east-1.amazonaws.com)**
+🌐 **[Acessar o app](https://d1o1gejacy6m9o.cloudfront.net)**
 
 ---
 
@@ -30,11 +30,13 @@ App de acompanhamento de rotina diária — refeições, cardio, água, suplemen
 | Serviço | Uso | Custo |
 |---|---|---|
 | S3 | Hospedagem do arquivo estático | Free Tier |
+| CloudFront | CDN + HTTPS | Free Tier |
 | GitHub Actions | CI/CD automático no push | Gratuito |
 
 **Bucket:** `tracker-habitos`
 **Região:** `sa-east-1` (São Paulo)
-**Endpoint:** `http://tracker-habitos.s3-website-sa-east-1.amazonaws.com`
+**Endpoint S3:** `http://tracker-habitos.s3-website-sa-east-1.amazonaws.com`
+**URL CloudFront:** `https://d1o1gejacy6m9o.cloudfront.net`
 
 ---
 
@@ -62,6 +64,6 @@ Basta abrir o arquivo `habit-tracker.html` diretamente no navegador — não pre
 
 ## Próximos passos
 
-- [ ] CloudFront + HTTPS
+- [x] CloudFront + HTTPS
 - [ ] Domínio customizado via Route 53
 - [ ] Persistência em nuvem com DynamoDB + Lambda

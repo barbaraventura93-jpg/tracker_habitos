@@ -383,10 +383,13 @@ function showHistory(){
   const stats=[{l:'Média 60d',v:avg+'%',c:'#818cf8'},{l:'Dias ótimos',v:great,c:'#34d399'},{l:'Sequência',v:streak+'d',c:'#fbbf24'}];
   const statsHtml=stats.map(s=>`<div class="card" style="padding:14px 10px;text-align:center;margin-bottom:0"><div style="font-size:22px;font-weight:800;color:${s.c}">${s.v}</div><div style="font-size:10px;color:#6e7681;font-weight:600;margin-top:3px">${s.l}</div></div>`).join('');
 
-  const calCells=[...hist].reverse().map(({date,pct})=>{
+  const hist60=[...hist].reverse();
+  const firstDow=getDow(hist60[0].date);
+  const offsetCells=Array(firstDow).fill('<div></div>').join('');
+  const calCells=hist60.map(({date,pct})=>{
     const bg=pct===0?'#1c2128':pct>=80?'#166534':pct>=55?'#78350f':'#7f1d1d';
     const c=pct===0?'#30363d':pct>=80?'#86efac':pct>=55?'#fcd34d':'#fca5a5';
-    const {day,date:d}=dispDate(date);
+    const {date:d}=dispDate(date);
     return`<div title="${d} — ${pct}%" style="aspect-ratio:1;border-radius:6px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${c}">${pct>0?pct:''}</div>`;
   }).join('');
 
@@ -408,7 +411,7 @@ function showHistory(){
       <div class="sec-hdr"><div class="sec-lbl"><span>📅</span> ÚLTIMOS 60 DIAS</div></div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
         ${DAYS.map(d=>`<div style="font-size:9px;color:#6e7681;font-weight:700;text-align:center;margin-bottom:4px">${d}</div>`).join('')}
-        ${calCells}
+        ${offsetCells}${calCells}
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap">
         ${[{c:'#166534',tc:'#86efac',l:'≥80%'},{c:'#78350f',tc:'#fcd34d',l:'55–79%'},{c:'#7f1d1d',tc:'#fca5a5',l:'<55%'},{c:'#1c2128',tc:'#30363d',l:'Sem dado'}].map(x=>`<div style="display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;border-radius:3px;background:${x.c}"></div><span style="font-size:10px;color:${x.tc}">${x.l}</span></div>`).join('')}
