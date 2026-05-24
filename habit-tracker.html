@@ -93,6 +93,7 @@ textarea,input{font-family:inherit;}
       </div>
       <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
         <button onclick="showGoals()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">⚙️ Metas</button>
+        <button onclick="showSups()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">💊 Suplementos</button>
         <button onclick="signOut()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">Sair</button>
       </div>
     </div>
@@ -109,6 +110,18 @@ textarea,input{font-family:inherit;}
       </div>
     </div>
     <div class="body" id="goals-body"></div>
+  </div>
+
+  <!-- SUPS SCREEN -->
+  <div id="screen-sups" class="screen">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="showScreen('home')">←</button>
+        <div style="font-size:16px;font-weight:800;color:#e6edf3">Meus Suplementos</div>
+        <button onclick="editSup(null)" style="background:#1f6feb;color:#fff;padding:7px 13px;border-radius:8px;font-size:14px;font-weight:700">+ Novo</button>
+      </div>
+    </div>
+    <div class="body" id="sups-body"></div>
   </div>
 
   <!-- HISTORY SCREEN -->
@@ -167,18 +180,244 @@ function getMealDetail(id,d){
   return{macro:'~200 kcal · ~22g prot',hint:'Iogurte grego + cacau em pó + morangos + Whey misturado',badge:'21:00'};
 }
 function getSups(tr,isPerna){
+  if(customSups.length>0){
+    return customSups.filter(s=>
+      s.showOn==='always'||
+      (s.showOn==='treino'&&tr!=='descanso')||
+      (s.showOn==='descanso'&&tr==='descanso')
+    );
+  }
   const a=[
-    {id:'pump',  label:'PUMP — pré-treino',sub:'Cafeína + Ioimbina + Capsaicina + Astaxantina',icon:'⚡',cond:true,showIf:tr!=='descanso'},
-    {id:'oxi',   label:'Oximetalona 4mg',  sub:'1 comprimido antes do treino de perna',icon:'💪',cond:true,showIf:isPerna},
+    {id:'pump',  label:'PUMP — pré-treino',sub:'Cafeína + Ioimbina + Capsaicina + Astaxantina',icon:'⚡',showIf:tr!=='descanso'},
+    {id:'oxi',   label:'Oximetalona 4mg',  sub:'1 comprimido antes do treino de perna',icon:'💪',showIf:isPerna},
     {id:'f2',    label:'Fórmula 2',         sub:'Berberina + Inositol + Cromo + Topiramato — antes do jantar',icon:'🟣'},
     {id:'dhea',  label:'DHEA 25mg',         sub:'1 comprimido à noite',icon:'🟡'},
     {id:'omega', label:'Ômega-3',           sub:'Dose diária',icon:'🐟'},
     {id:'zm',    label:'Zinco + Magnésio',  sub:'Growth — dose diária',icon:'⚪'},
     {id:'col',   label:'Colágeno',          sub:'Dose diária',icon:'🟤'},
   ];
-  return a.filter(s=>!s.showIf||s.showIf===true||(s.id==='pump'&&tr!=='descanso')||(s.id==='oxi'&&isPerna));
+  return a.filter(s=>s.showIf===undefined||s.showIf);
 }
 const SLEEPS=[{id:'s1',l:'< 6h',ok:false},{id:'s2',l:'6–7h',ok:false},{id:'s3',l:'7–8h',ok:true},{id:'s4',l:'8h+',ok:true}];
+
+// ─── CUSTOM SUPPLEMENTS ──────────────────────────────────────────────────────
+let customSups=loadCustomSups();
+let _supEditId=null;
+let _importPreview=[];
+
+function loadCustomSups(){
+  try{return JSON.parse(localStorage.getItem('ht:csups')||'[]');}catch{return[];}
+}
+function saveCustomSups(){
+  try{localStorage.setItem('ht:csups',JSON.stringify(customSups));}catch{}
+  if(!USE_API||!authToken) return;
+  fetch(`${API_URL}?date=__csups__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(customSups)}).catch(()=>{});
+}
+async function syncCustomSups(){
+  if(!USE_API||!authToken) return;
+  try{
+    const r=await fetch(`${API_URL}?date=__csups__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){customSups=d;try{localStorage.setItem('ht:csups',JSON.stringify(d));}catch{}}}
+  }catch{}
+}
+
+function showSups(){_importPreview=[];renderSupsList();showScreen('sups');}
+
+function renderSupsList(){
+  const whenLbl={always:'Sempre · todos os dias',treino:'Só dias de treino',descanso:'Só dias de descanso'};
+  const rows=customSups.length>0
+    ?customSups.map(s=>`
+      <div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:12px 13px;margin-bottom:7px;display:flex;align-items:flex-start;gap:12px">
+        <div style="font-size:22px;flex-shrink:0;margin-top:1px">${s.icon||'💊'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:2px">${s.label}</div>
+          ${s.sub?`<div style="font-size:11px;color:#6e7681;margin-bottom:3px">${s.sub}</div>`:''}
+          <div style="font-size:10px;color:#4d5863">${whenLbl[s.showOn]||'Sempre'}</div>
+        </div>
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button onclick="editSup('${s.id}')" style="background:#21262d;color:#8b949e;padding:6px 10px;border-radius:7px;font-size:12px">✏️</button>
+          <button onclick="deleteSup('${s.id}')" style="background:#21262d;color:#f87171;padding:6px 10px;border-radius:7px;font-size:12px">🗑️</button>
+        </div>
+      </div>`).join('')
+    :`<div style="text-align:center;color:#6e7681;padding:28px 0;font-size:13px;line-height:1.7">Nenhum suplemento cadastrado.<br>Adicione manualmente ou importe de PDF/foto.</div>`;
+
+  const apiKey=localStorage.getItem('ht:claude-key')||'';
+  const keySection=apiKey
+    ?`<div style="font-size:11px;color:#34d399;margin-bottom:10px">✓ Chave API configurada · <button onclick="clearClaudeKey()" style="background:none;color:#6e7681;font-size:11px;text-decoration:underline;padding:0">remover</button></div>`
+    :`<div style="font-size:11px;color:#6e7681;margin-bottom:5px">Chave API Anthropic <span style="color:#4d5863">(salva só neste dispositivo)</span></div>
+      <input type="password" id="claude-key-input" placeholder="sk-ant-..." autocomplete="off" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:10px">
+      <div style="font-size:10px;color:#4d5863;margin-bottom:10px">Obtenha em console.anthropic.com · Necessária apenas para importação automática</div>`;
+
+  const prevHtml=_importPreview.length?renderImportPreviewHtml():'';
+
+  document.getElementById('sups-body').innerHTML=`
+    <div class="card fade-in">
+      <div class="sec-hdr"><div class="sec-lbl"><span>📎</span> IMPORTAR DE PDF OU FOTO</div></div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:10px">Envie uma receita, prescrição ou foto da sua suplementação. A IA extrai os itens automaticamente.</div>
+      ${keySection}
+      <label style="display:block;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:18px;text-align:center;cursor:pointer;color:#6e7681;font-size:13px;transition:border-color .2s" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='#30363d'">
+        📄 Clique para selecionar PDF ou imagem
+        <input type="file" id="sup-file-input" accept=".pdf,image/*" style="display:none" onchange="handleSupFile(this)">
+      </label>
+      <div id="import-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
+      <div id="import-preview">${prevHtml}</div>
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>💊</span> MINHA LISTA</div><span style="font-size:11px;color:#6e7681">${customSups.length} item${customSups.length!==1?'s':''}</span></div>
+      ${rows}
+    </div>`;
+}
+
+function editSup(id){
+  _supEditId=id;
+  const s=id?customSups.find(x=>x.id===id):null;
+  const showOn=s?.showOn||'always';
+  const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:15px;outline:none';
+  const whenDefs=[
+    {v:'always', l:'💊 Sempre',   c:'#1f6feb'},
+    {v:'treino',  l:'⚡ Treino',  c:'#16a34a'},
+    {v:'descanso',l:'😴 Descanso',c:'#7c3aed'},
+  ];
+  const whenBtns=whenDefs.map(w=>{
+    const sel=showOn===w.v;
+    return`<button onclick="supSelectWhen('${w.v}')" id="sw-${w.v}" style="flex:1;padding:9px 4px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?w.c:'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?w.c:'#21262d'}">${w.l}</button>`;
+  }).join('');
+  document.getElementById('sups-body').innerHTML=`
+    <div class="card fade-in">
+      <div class="sec-hdr"><div class="sec-lbl"><span>${id?'✏️':'➕'}</span> ${id?'EDITAR':'NOVO'} SUPLEMENTO</div></div>
+      <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:14px">
+        <div>
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Ícone</div>
+          <input type="text" id="se-icon" value="${s?.icon||''}" placeholder="💊" maxlength="4" style="width:58px;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px;color:#e6edf3;font-size:22px;outline:none;text-align:center">
+        </div>
+        <div style="flex:1">
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Nome e dose</div>
+          <input type="text" id="se-label" value="${s?.label||''}" placeholder="ex: Creatina 5g" style="${inp}">
+        </div>
+      </div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Horário / instrução</div>
+      <input type="text" id="se-sub" value="${s?.sub||''}" placeholder="ex: Com café da manhã · diário" style="${inp};margin-bottom:14px">
+      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Mostrar no checklist</div>
+      <input type="hidden" id="se-when" value="${showOn}">
+      <div style="display:flex;gap:6px;margin-bottom:20px">${whenBtns}</div>
+      <button onclick="saveSupForm()" style="width:100%;padding:13px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-bottom:8px">Salvar</button>
+      ${id?`<button onclick="deleteSup('${id}')" style="width:100%;padding:11px;background:#21262d;border:1px solid #30363d;border-radius:10px;color:#f87171;font-size:13px;font-weight:600;margin-bottom:8px">Excluir suplemento</button>`:''}
+      <button onclick="renderSupsList()" style="width:100%;padding:11px;background:none;border:1px solid #21262d;border-radius:10px;color:#6e7681;font-size:13px">Cancelar</button>
+    </div>`;
+}
+
+function supSelectWhen(v){
+  const el=document.getElementById('se-when');if(el) el.value=v;
+  const cols={always:'#1f6feb',treino:'#16a34a',descanso:'#7c3aed'};
+  ['always','treino','descanso'].forEach(w=>{
+    const b=document.getElementById('sw-'+w);if(!b)return;
+    const sel=w===v;
+    b.style.background=sel?cols[w]:'#0d1117';b.style.color=sel?'#fff':'#6e7681';b.style.borderColor=sel?cols[w]:'#21262d';
+  });
+}
+
+function saveSupForm(){
+  const label=(document.getElementById('se-label')?.value||'').trim();
+  if(!label){document.getElementById('se-label').style.borderColor='#f87171';return;}
+  const g={
+    id:_supEditId||'cs_'+Date.now(),
+    label,
+    sub:(document.getElementById('se-sub')?.value||'').trim(),
+    icon:(document.getElementById('se-icon')?.value||'💊').trim()||'💊',
+    showOn:document.getElementById('se-when')?.value||'always',
+  };
+  if(_supEditId){const i=customSups.findIndex(s=>s.id===_supEditId);if(i>=0)customSups[i]=g;}
+  else customSups.push(g);
+  saveCustomSups();
+  _supEditId=null;
+  renderSupsList();
+  renderUI();
+}
+
+function deleteSup(id){
+  if(!confirm('Excluir este suplemento?')) return;
+  customSups=customSups.filter(s=>s.id!==id);
+  saveCustomSups();
+  _supEditId=null;
+  renderSupsList();
+  renderUI();
+}
+
+// ── Importação via IA ─────────────────────────────────────────────────────────
+async function handleSupFile(input){
+  const file=input.files[0];if(!file) return;
+  let apiKey=localStorage.getItem('ht:claude-key')||'';
+  const keyEl=document.getElementById('claude-key-input');
+  if(keyEl?.value?.trim()){apiKey=keyEl.value.trim();localStorage.setItem('ht:claude-key',apiKey);}
+  const statusEl=document.getElementById('import-status');
+  if(!apiKey){statusEl.innerHTML='<span style="color:#f87171">Informe a chave API Anthropic acima para importar automaticamente.</span>';return;}
+  statusEl.innerHTML='<span style="color:#fbbf24">⏳ Analisando com IA — aguarde...</span>';
+  try{
+    const sups=await analyzeSupFile(file,apiKey);
+    _importPreview=sups.map((s,i)=>({...{showOn:'always'},...s,id:'cs_'+Date.now()+i,_checked:true}));
+    document.getElementById('import-preview').innerHTML=renderImportPreviewHtml();
+    statusEl.innerHTML=`<span style="color:#34d399">✓ ${sups.length} item(s) encontrado(s) — selecione os que deseja importar</span>`;
+  }catch(e){
+    statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
+  }
+}
+
+function renderImportPreviewHtml(){
+  if(!_importPreview.length) return '';
+  const rows=_importPreview.map((s,i)=>`
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#0d1117;border:1px solid #21262d;border-radius:9px;margin-bottom:6px;cursor:pointer">
+      <input type="checkbox" id="imp-${i}" ${s._checked?'checked':''} style="margin-top:3px;width:15px;height:15px;accent-color:#1f6feb;flex-shrink:0">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:#e6edf3">${s.icon||'💊'} ${s.label}</div>
+        ${s.sub?`<div style="font-size:11px;color:#6e7681;margin-top:2px">${s.sub}</div>`:''}
+        <div style="font-size:10px;color:#4d5863;margin-top:2px">${{always:'Sempre',treino:'Treino',descanso:'Descanso'}[s.showOn]||'Sempre'}</div>
+      </div>
+    </label>`).join('');
+  return`<div style="margin-top:10px">${rows}<button onclick="importSelectedSups()" style="width:100%;padding:12px;background:#16a34a;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-top:4px">Importar selecionados</button></div>`;
+}
+
+function importSelectedSups(){
+  let count=0;
+  _importPreview.forEach((s,i)=>{
+    if(document.getElementById('imp-'+i)?.checked){
+      const{_checked,...sup}=s;customSups.push(sup);count++;
+    }
+  });
+  if(count){saveCustomSups();renderUI();}
+  _importPreview=[];
+  renderSupsList();
+  if(count) document.getElementById('import-status').innerHTML=`<span style="color:#34d399">✓ ${count} suplemento(s) adicionado(s) à sua lista!</span>`;
+}
+
+async function analyzeSupFile(file,apiKey){
+  const base64=await new Promise((res,rej)=>{
+    const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);
+  });
+  const isPdf=file.type==='application/pdf';
+  const headers={'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
+  if(isPdf) headers['anthropic-beta']='pdfs-2024-09-25';
+  const block=isPdf
+    ?{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}}
+    :{type:'image',source:{type:'base64',media_type:file.type,data:base64}};
+  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',headers,
+    body:JSON.stringify({
+      model:'claude-haiku-4-5-20251001',max_tokens:2048,
+      messages:[{role:'user',content:[
+        block,
+        {type:'text',text:'Extraia todos os suplementos, vitaminas e medicamentos deste documento. Retorne APENAS um array JSON: [{"label":"nome e dose","sub":"horário e instrução de uso","icon":"emoji","showOn":"always"}]. Use showOn="treino" se for pré/pós-treino, "descanso" para dias de descanso, "always" para os demais. Somente o JSON, sem explicações.'}
+      ]}]
+    })
+  });
+  if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||'Erro na API Anthropic (verifique a chave)');}
+  const data=await resp.json();
+  const text=data.content?.[0]?.text||'';
+  const m=text.match(/\[[\s\S]*\]/);
+  if(!m) throw new Error('Nenhum suplemento identificado no arquivo');
+  try{return JSON.parse(m[0]);}catch{throw new Error('Resposta da IA em formato inválido');}
+}
+
+function clearClaudeKey(){localStorage.removeItem('ht:claude-key');renderSupsList();}
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
 const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,cardioMin:30};
@@ -510,12 +749,16 @@ function calcScore(d){
          pct:total>0?Math.round(done/total*100):0,done,total};
 }
 
-// ─── GOALS SYNC ──────────────────────────────────────────────────────────────
+// ─── CLOUD SYNC ──────────────────────────────────────────────────────────────
 async function syncGoals(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__goals__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(d&&typeof d==='object'){goals={...DEFAULT_GOALS,...d};try{localStorage.setItem('ht:goals',JSON.stringify(goals));}catch{}}}
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){goals={...DEFAULT_GOALS,...d};try{localStorage.setItem('ht:goals',JSON.stringify(goals));}catch{}}}
+  }catch{}
+  try{
+    const r=await fetch(`${API_URL}?date=__csups__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){customSups=d;try{localStorage.setItem('ht:csups',JSON.stringify(d));}catch{}}}
   }catch{}
 }
 
