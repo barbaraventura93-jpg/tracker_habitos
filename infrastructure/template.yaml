@@ -90,10 +90,15 @@ Resources:
           TABLE_NAME: tracker-habitos-data
       Code:
         ZipFile: |
-          import json,boto3,os,urllib.request
+          import json,boto3,os,urllib.request,decimal
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
           REGION=os.environ.get('AWS_REGION','sa-east-1')
+          class Dec(json.JSONEncoder):
+            def default(self,o):
+              if isinstance(o,decimal.Decimal):
+                return int(o) if o%1==0 else float(o)
+              return super().default(o)
           def get_uid(token):
             try:
               req=urllib.request.Request('https://cognito-idp.'+REGION+'.amazonaws.com/',data=json.dumps({'AccessToken':token}).encode(),headers={'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':'AWSCognitoIdentityProviderService.GetUser'})
@@ -114,7 +119,7 @@ Resources:
             if method=='GET':
               resp=table.get_item(Key={'userId':uid,'date':date})
               data=resp.get('Item',{}).get('data')
-              return{'statusCode':200,'body':json.dumps(data)}
+              return{'statusCode':200,'body':json.dumps(data,cls=Dec)}
             if method=='PUT':
               body=json.loads(event.get('body') or '{}')
               table.put_item(Item={'userId':uid,'date':date,'data':body})
