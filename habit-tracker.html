@@ -300,8 +300,9 @@ function goalsCalcUpdate(){
   if(peso>0){
     const ml=Math.round(peso*35);
     const copos=Math.max(6,Math.min(12,Math.round(ml/250)));
+    const liters=(ml/1000).toFixed(1).replace('.',',');
     aguaSug=copos;
-    if(aguaFormulaEl) aguaFormulaEl.innerHTML=`🧮 <b>${peso} kg</b> × 35 ml = <b>${ml} ml</b> ÷ 250 ml/copo = <span style="color:#38bdf8;font-weight:700">${copos} copos/dia</span><br><span style="color:#4d5863;font-size:10px">Base: 30–40 ml/kg — EFSA & Institute of Medicine</span>`;
+    if(aguaFormulaEl) aguaFormulaEl.innerHTML=`🧮 <b>${peso} kg</b> × 35 ml = <b>${ml} ml</b> (<b>${liters} L</b>) ÷ 250 ml/copo = <span style="color:#38bdf8;font-weight:700">${copos} copos · ${liters} L/dia</span><br><span style="color:#4d5863;font-size:10px">Base: 30–40 ml/kg — EFSA & Institute of Medicine</span>`;
     if(aguaBadgeEl) aguaBadgeEl.textContent='calculado automaticamente';
   } else {
     if(aguaFormulaEl) aguaFormulaEl.innerHTML='Preencha o peso atual para calcular automaticamente';
@@ -669,8 +670,12 @@ function renderUI(){
 
   // ÁGUA
   const wBars=Array.from({length:goals.aguaCopos}).map((_,i)=>`<button class="water-bar ${i<dayData.water?'active':''}" onclick="setWater(${i})"></button>`).join('');
+  const wMlCur=dayData.water*250;const wMlMeta=goals.aguaCopos*250;
+  const wLCur=wMlCur>=1000?(wMlCur/1000).toFixed(1).replace('.',',')+'L':wMlCur+'ml';
+  const wLMeta=wMlMeta>=1000?(wMlMeta/1000).toFixed(1).replace('.',',')+'L':wMlMeta+'ml';
   html+=`<div class="card">
-    <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=goals.aguaCopos?'#34d399':'#6e7681'}">${dayData.water}/${goals.aguaCopos}</span></div>
+    <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=goals.aguaCopos?'#34d399':'#6e7681'}">${dayData.water}/${goals.aguaCopos} copos</span></div>
+    <div style="font-size:11px;color:#6e7681;margin-bottom:8px">Consumido: <b style="color:${dayData.water>=goals.aguaCopos?'#34d399':'#e6edf3'}">${wLCur}</b> · Meta: <b>${wLMeta}/dia</b> (${wMlMeta} ml)</div>
     <div style="display:flex;gap:5px;margin-bottom:8px">${wBars}</div>
     <div style="display:flex;gap:8px">
       <button onclick="addWater(-1)" style="flex:1;padding:8px;background:#0d1117;border:1px solid #21262d;color:#6e7681;border-radius:8px;font-size:12px;font-weight:600">− 1</button>

@@ -11,10 +11,33 @@ App de acompanhamento de rotina diária — refeições, cardio, água, suplemen
 - Cadastro e login com e-mail/senha via AWS Cognito
 - Dados sincronizados na nuvem — acessíveis em qualquer dispositivo
 - Marcação de refeições do dia com detalhes de macros
-- Controle de água, cardio e suplementos
+- Controle de água com indicador de copos, ml e litros consumidos/meta
+- Cardio, suplementos e treino com checklist detalhado
 - Registro de sono e horário consistente
 - Score diário com anel de progresso e % no cabeçalho
 - Histórico visual dos últimos 60 dias com calendário alinhado por dia da semana
+
+### Metas pessoais inteligentes
+
+Tela de configuração de metas com cálculo automático baseado em evidências científicas:
+
+| Meta | Fórmula | Referência |
+|---|---|---|
+| **Água** | Peso atual × 35 ml/kg → converte em copos (250 ml) e exibe ml e L | EFSA & Institute of Medicine |
+| **Calorias** | BMR (Mifflin-St Jeor) × fator de atividade ± ajuste de meta de peso | ISSN / ACSM (2005) |
+
+**Perfil configurável:** sexo, idade, altura, peso atual, peso meta, dias de treino/semana e cardio mínimo.
+
+**Fator de atividade (TDEE):**
+- 0–1 dias/semana → ×1,2 (sedentário)
+- 2–3 dias → ×1,375 (leve)
+- 4–5 dias → ×1,55 (moderado)
+- 6–7 dias → ×1,725 (intenso)
+
+**Ajuste de meta de peso:**
+- Perda de peso (meta < atual): −400 kcal/dia
+- Ganho de massa (meta > atual): +300 kcal/dia
+- Manutenção: sem ajuste
 
 ---
 
@@ -85,4 +108,5 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet ou fo
 - [x] CloudFront + HTTPS
 - [x] Persistência em nuvem com DynamoDB + Lambda
 - [x] Autenticação com AWS Cognito
+- [x] Metas pessoais com cálculo científico de água e calorias
 - [ ] Domínio customizado via Route 53
