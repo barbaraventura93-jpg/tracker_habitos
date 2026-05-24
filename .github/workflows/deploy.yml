@@ -20,6 +20,20 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: sa-east-1
 
+      - name: Limpar stack em ROLLBACK_COMPLETE se necessário
+        run: |
+          STATUS=$(aws cloudformation describe-stacks \
+            --stack-name tracker-habitos-backend \
+            --query "Stacks[0].StackStatus" \
+            --output text \
+            --region sa-east-1 2>/dev/null || echo "DOES_NOT_EXIST")
+          if [ "$STATUS" = "ROLLBACK_COMPLETE" ]; then
+            echo "Stack em ROLLBACK_COMPLETE, deletando..."
+            aws cloudformation delete-stack --stack-name tracker-habitos-backend --region sa-east-1
+            aws cloudformation wait stack-delete-complete --stack-name tracker-habitos-backend --region sa-east-1
+            echo "Stack deletado."
+          fi
+
       - name: Deploy infraestrutura (Cognito + DynamoDB + Lambda)
         run: |
           aws cloudformation deploy \
