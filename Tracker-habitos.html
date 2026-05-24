@@ -58,6 +58,7 @@ textarea,input{font-family:inherit;}
           <div id="hdr-day" style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.14em;text-transform:uppercase"></div>
           <div id="hdr-date" style="font-size:18px;font-weight:800;color:#e6edf3"></div>
           <div id="hdr-status" style="font-size:10px;height:14px;color:#34d399;font-weight:600">● HOJE</div>
+          <div id="hdr-pct" style="font-size:11px;font-weight:700;margin-top:2px;height:16px"></div>
         </div>
         <button class="nav-btn" id="btn-next" onclick="changeDay(1)">→</button>
       </div>
@@ -186,6 +187,9 @@ function render(){
   document.getElementById('hdr-day').textContent=day;
   document.getElementById('hdr-date').textContent=date;
   document.getElementById('hdr-status').textContent=isT?'● HOJE':'';
+  const pctEl=document.getElementById('hdr-pct');
+  pctEl.textContent=sc.pct>0?sc.pct+'% do dia':'';
+  pctEl.style.color=sc.pct>=80?'#34d399':sc.pct>=55?'#fbbf24':sc.pct>0?'#f87171':'transparent';
   document.getElementById('btn-next').style.opacity=isT?0.3:1;
   document.getElementById('btn-next').disabled=isT;
 
