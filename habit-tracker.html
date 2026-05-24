@@ -49,8 +49,37 @@ textarea,input{font-family:inherit;}
 </head>
 <body>
 <div id="app">
+  <!-- AUTH SCREEN -->
+  <div id="screen-auth" class="screen active">
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
+      <div style="width:100%;max-width:360px">
+        <div style="text-align:center;margin-bottom:32px">
+          <div style="font-size:36px;margin-bottom:10px">📋</div>
+          <div style="font-size:22px;font-weight:800;color:#e6edf3">Rotina Diária</div>
+          <div style="font-size:13px;color:#6e7681;margin-top:5px">Seus hábitos, em qualquer dispositivo</div>
+        </div>
+        <div id="auth-tabs" style="display:flex;background:#161b22;border-radius:10px;padding:3px;margin-bottom:20px;border:1px solid #21262d">
+          <button onclick="authTab('login')" id="tab-login" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:#21262d;color:#e6edf3">Entrar</button>
+          <button onclick="authTab('register')" id="tab-register" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:transparent;color:#6e7681">Criar conta</button>
+        </div>
+        <div id="auth-form">
+          <input id="auth-email" type="email" placeholder="E-mail" autocomplete="email" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:10px;padding:13px 14px;color:#e6edf3;font-size:14px;margin-bottom:10px;outline:none">
+          <input id="auth-password" type="password" placeholder="Senha (mínimo 8 caracteres)" autocomplete="current-password" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:10px;padding:13px 14px;color:#e6edf3;font-size:14px;margin-bottom:6px;outline:none">
+          <div id="auth-error" style="font-size:12px;color:#f87171;min-height:18px;margin-bottom:8px;text-align:center"></div>
+          <button onclick="authSubmit()" id="auth-btn" style="width:100%;padding:14px;background:#1f6feb;border-radius:10px;color:#fff;font-size:15px;font-weight:700">Entrar</button>
+        </div>
+        <div id="auth-confirm" style="display:none">
+          <div style="font-size:13px;color:#8b949e;text-align:center;margin-bottom:16px;line-height:1.5">Enviamos um código para o seu e-mail.<br>Digite abaixo para confirmar a conta.</div>
+          <input id="auth-code" type="text" inputmode="numeric" placeholder="000000" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:10px;padding:13px 14px;color:#e6edf3;font-size:22px;margin-bottom:6px;outline:none;text-align:center;letter-spacing:8px">
+          <div id="auth-confirm-error" style="font-size:12px;color:#f87171;min-height:18px;margin-bottom:8px;text-align:center"></div>
+          <button onclick="confirmCode()" style="width:100%;padding:14px;background:#16a34a;border-radius:10px;color:#fff;font-size:15px;font-weight:700">Confirmar e-mail</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- HOME SCREEN -->
-  <div id="screen-home" class="screen active">
+  <div id="screen-home" class="screen">
     <div class="header">
       <div class="header-inner">
         <button class="nav-btn" onclick="changeDay(-1)">←</button>
@@ -61,6 +90,9 @@ textarea,input{font-family:inherit;}
           <div id="hdr-pct" style="font-size:11px;font-weight:700;margin-top:2px;height:16px"></div>
         </div>
         <button class="nav-btn" id="btn-next" onclick="changeDay(1)">→</button>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+        <button onclick="signOut()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">Sair</button>
       </div>
     </div>
     <div class="body" id="main-body"></div>
@@ -151,33 +183,122 @@ function makeEmpty(date){
          meals:{},sups:{},water:0,cardio:0,sleep:null,sleepOk:null,notes:''};
 }
 
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+const COGNITO_CLIENT_ID='__COGNITO_CLIENT_ID__';
+const COGNITO_URL='https://cognito-idp.sa-east-1.amazonaws.com/';
+
+let authToken=localStorage.getItem('ht:token')||null;
+let authRefresh=localStorage.getItem('ht:refresh')||null;
+let pendingEmail='';
+let authMode='login';
+
+function cognito(target,body){
+  return fetch(COGNITO_URL,{method:'POST',headers:{'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':'AWSCognitoIdentityProviderService.'+target},body:JSON.stringify(body)}).then(r=>r.json());
+}
+function authTab(mode){
+  authMode=mode;
+  const isLogin=mode==='login';
+  document.getElementById('tab-login').style.cssText=`flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${isLogin?'#21262d':'transparent'};color:${isLogin?'#e6edf3':'#6e7681'}`;
+  document.getElementById('tab-register').style.cssText=`flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${isLogin?'transparent':'#21262d'};color:${isLogin?'#6e7681':'#e6edf3'}`;
+  document.getElementById('auth-btn').textContent=isLogin?'Entrar':'Criar conta';
+  document.getElementById('auth-error').textContent='';
+}
+async function authSubmit(){
+  const email=document.getElementById('auth-email').value.trim();
+  const password=document.getElementById('auth-password').value;
+  const errEl=document.getElementById('auth-error');
+  const btn=document.getElementById('auth-btn');
+  if(!email||!password){errEl.textContent='Preencha e-mail e senha.';return;}
+  btn.disabled=true;btn.textContent='...';errEl.textContent='';
+  if(authMode==='login'){
+    const res=await cognito('InitiateAuth',{AuthFlow:'USER_PASSWORD_AUTH',ClientId:COGNITO_CLIENT_ID,AuthParameters:{USERNAME:email,PASSWORD:password}});
+    if(res.AuthenticationResult){
+      authToken=res.AuthenticationResult.AccessToken;
+      authRefresh=res.AuthenticationResult.RefreshToken;
+      localStorage.setItem('ht:token',authToken);
+      localStorage.setItem('ht:refresh',authRefresh);
+      showScreen('home');render();
+    }else{
+      const t=res.__type||'';
+      if(t.includes('NotAuthorized')) errEl.textContent='E-mail ou senha incorretos.';
+      else if(t.includes('UserNotConfirmed')) errEl.textContent='Confirme o e-mail antes de entrar.';
+      else errEl.textContent='Erro ao entrar. Tente novamente.';
+    }
+  }else{
+    const res=await cognito('SignUp',{ClientId:COGNITO_CLIENT_ID,Username:email,Password:password,UserAttributes:[{Name:'email',Value:email}]});
+    if(res.UserSub){
+      pendingEmail=email;
+      document.getElementById('auth-form').style.display='none';
+      document.getElementById('auth-tabs').style.display='none';
+      document.getElementById('auth-confirm').style.display='block';
+    }else{
+      const t=res.__type||'';
+      if(t.includes('UsernameExists')) errEl.textContent='E-mail já cadastrado.';
+      else if(t.includes('InvalidPassword')) errEl.textContent='Senha fraca. Use pelo menos 8 caracteres.';
+      else errEl.textContent='Erro ao criar conta. Tente novamente.';
+    }
+  }
+  btn.disabled=false;btn.textContent=authMode==='login'?'Entrar':'Criar conta';
+}
+async function confirmCode(){
+  const code=document.getElementById('auth-code').value.trim();
+  const errEl=document.getElementById('auth-confirm-error');
+  if(!code){errEl.textContent='Digite o código.';return;}
+  const res=await cognito('ConfirmSignUp',{ClientId:COGNITO_CLIENT_ID,Username:pendingEmail,ConfirmationCode:code});
+  if(res.__type){errEl.textContent='Código inválido ou expirado.';return;}
+  const pw=document.getElementById('auth-password').value;
+  const login=await cognito('InitiateAuth',{AuthFlow:'USER_PASSWORD_AUTH',ClientId:COGNITO_CLIENT_ID,AuthParameters:{USERNAME:pendingEmail,PASSWORD:pw}});
+  if(login.AuthenticationResult){
+    authToken=login.AuthenticationResult.AccessToken;
+    authRefresh=login.AuthenticationResult.RefreshToken;
+    localStorage.setItem('ht:token',authToken);
+    localStorage.setItem('ht:refresh',authRefresh);
+    showScreen('home');render();
+  }else{
+    document.getElementById('auth-form').style.display='block';
+    document.getElementById('auth-tabs').style.display='flex';
+    document.getElementById('auth-confirm').style.display='none';
+    authTab('login');
+    document.getElementById('auth-error').textContent='Conta confirmada! Faça login.';
+  }
+}
+async function tryRefresh(){
+  if(!authRefresh) return false;
+  const res=await cognito('InitiateAuth',{AuthFlow:'REFRESH_TOKEN_AUTH',ClientId:COGNITO_CLIENT_ID,AuthParameters:{REFRESH_TOKEN:authRefresh}});
+  if(res.AuthenticationResult){
+    authToken=res.AuthenticationResult.AccessToken;
+    localStorage.setItem('ht:token',authToken);
+    return true;
+  }
+  return false;
+}
+function signOut(){
+  authToken=null;authRefresh=null;
+  localStorage.removeItem('ht:token');localStorage.removeItem('ht:refresh');
+  showScreen('auth');
+}
+
 // ─── API ─────────────────────────────────────────────────────────────────────
 const API_URL='__API_URL__';
 const USE_API=API_URL.startsWith('https://');
-
-function getUserId(){
-  let id=localStorage.getItem('ht:userId');
-  if(!id){id=crypto.randomUUID();localStorage.setItem('ht:userId',id);}
-  return id;
-}
 
 function loadDay(date){
   try{const s=localStorage.getItem('ht:'+date);return s?JSON.parse(s):makeEmpty(date);}
   catch{return makeEmpty(date);}
 }
 async function fetchRemote(date){
+  if(!authToken) return null;
   try{
-    const r=await fetch(`${API_URL}?userId=${getUserId()}&date=${date}`);
+    const r=await fetch(`${API_URL}?date=${date}`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.status===401){const ok=await tryRefresh();if(ok)return fetchRemote(date);signOut();return null;}
     if(r.ok){const d=await r.json();return d||null;}
   }catch{}
   return null;
 }
 function saveDay(date,d){
   try{localStorage.setItem('ht:'+date,JSON.stringify(d));}catch{}
-  if(!USE_API) return;
-  fetch(`${API_URL}?userId=${getUserId()}&date=${date}`,{
-    method:'PUT',headers:{'content-type':'application/json'},body:JSON.stringify(d)
-  }).catch(()=>{});
+  if(!USE_API||!authToken) return;
+  fetch(`${API_URL}?date=${date}`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(d)}).catch(()=>{});
 }
 
 function calcScore(d){
@@ -472,7 +593,7 @@ function setNotes(v){dayData.notes=v;save();}
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-render();
+if(authToken){showScreen('home');render();}else{showScreen('auth');}
 </script>
 </body>
 </html>

@@ -20,7 +20,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: sa-east-1
 
-      - name: Deploy infraestrutura (DynamoDB + Lambda)
+      - name: Deploy infraestrutura (Cognito + DynamoDB + Lambda)
         run: |
           aws cloudformation deploy \
             --template-file infrastructure/template.yaml \
@@ -29,18 +29,23 @@ jobs:
             --region sa-east-1 \
             --no-fail-on-empty-changeset
 
-      - name: Obter URL da API
-        id: api
+      - name: Obter outputs do stack
+        id: stack
         run: |
-          URL=$(aws cloudformation describe-stacks \
+          OUTPUTS=$(aws cloudformation describe-stacks \
             --stack-name tracker-habitos-backend \
-            --query "Stacks[0].Outputs[?OutputKey=='ApiUrl'].OutputValue" \
-            --output text \
+            --query "Stacks[0].Outputs" \
+            --output json \
             --region sa-east-1)
-          echo "url=$URL" >> $GITHUB_OUTPUT
+          API_URL=$(echo $OUTPUTS | python3 -c "import sys,json; o=json.load(sys.stdin); print(next(x['OutputValue'] for x in o if x['OutputKey']=='ApiUrl'))")
+          CLIENT_ID=$(echo $OUTPUTS | python3 -c "import sys,json; o=json.load(sys.stdin); print(next(x['OutputValue'] for x in o if x['OutputKey']=='UserPoolClientId'))")
+          echo "api_url=$API_URL" >> $GITHUB_OUTPUT
+          echo "client_id=$CLIENT_ID" >> $GITHUB_OUTPUT
 
-      - name: Injetar URL da API no HTML
-        run: sed -i "s|__API_URL__|${{ steps.api.outputs.url }}|g" habit-tracker.html
+      - name: Injetar configurações no HTML
+        run: |
+          sed -i "s|__API_URL__|${{ steps.stack.outputs.api_url }}|g" habit-tracker.html
+          sed -i "s|__COGNITO_CLIENT_ID__|${{ steps.stack.outputs.client_id }}|g" habit-tracker.html
 
       - name: Sincronizar arquivos com o S3
         run: |

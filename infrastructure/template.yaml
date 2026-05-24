@@ -3,6 +3,39 @@ Description: Tracker Habitos - Backend API
 
 Resources:
 
+  # ── Cognito ──────────────────────────────────────────────────────────────────
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: tracker-habitos-users
+      UsernameAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: false
+          RequireLowercase: false
+          RequireNumbers: false
+          RequireSymbols: false
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: tracker-habitos-web
+      UserPoolId: !Ref UserPool
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 24
+      RefreshTokenValidity: 30
+      TokenValidityUnits:
+        AccessToken: hours
+        RefreshToken: days
+
+  # ── DynamoDB ─────────────────────────────────────────────────────────────────
   TrackerTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -19,6 +52,7 @@ Resources:
         - AttributeName: date
           KeyType: RANGE
 
+  # ── Lambda ───────────────────────────────────────────────────────────────────
   LambdaRole:
     Type: AWS::IAM::Role
     Properties:
@@ -56,19 +90,30 @@ Resources:
           TABLE_NAME: tracker-habitos-data
       Code:
         ZipFile: |
-          import json,boto3,os
+          import json,boto3,os,urllib.request
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
-          CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type','Access-Control-Allow-Methods':'GET,PUT,OPTIONS'}
+          REGION=os.environ.get('AWS_REGION','sa-east-1')
+          CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type,authorization','Access-Control-Allow-Methods':'GET,PUT,OPTIONS'}
+          def get_uid(token):
+            try:
+              req=urllib.request.Request('https://cognito-idp.'+REGION+'.amazonaws.com/',data=json.dumps({'AccessToken':token}).encode(),headers={'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':'AWSCognitoIdentityProviderService.GetUser'})
+              with urllib.request.urlopen(req,timeout=5) as r:
+                return json.loads(r.read())['Username']
+            except:
+              return None
           def handler(event,context):
             method=event.get('requestContext',{}).get('http',{}).get('method','')
             if method=='OPTIONS':
               return{'statusCode':200,'headers':CORS,'body':''}
+            auth=(event.get('headers') or {}).get('authorization','')
+            uid=get_uid(auth[7:]) if auth.startswith('Bearer ') else None
+            if not uid:
+              return{'statusCode':401,'headers':CORS,'body':json.dumps({'error':'unauthorized'})}
             params=event.get('queryStringParameters') or {}
-            uid=params.get('userId','')
             date=params.get('date','')
-            if not uid or not date:
-              return{'statusCode':400,'headers':CORS,'body':json.dumps({'error':'missing params'})}
+            if not date:
+              return{'statusCode':400,'headers':CORS,'body':json.dumps({'error':'missing date'})}
             if method=='GET':
               resp=table.get_item(Key={'userId':uid,'date':date})
               data=resp.get('Item',{}).get('data')
@@ -92,6 +137,7 @@ Resources:
           - OPTIONS
         AllowHeaders:
           - content-type
+          - authorization
       TargetFunctionArn: !Ref TrackerFunction
 
   TrackerFunctionUrlPermission:
@@ -106,3 +152,7 @@ Outputs:
   ApiUrl:
     Value: !GetAtt TrackerFunctionUrl.FunctionUrl
     Description: Lambda Function URL
+
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+    Description: Cognito User Pool Client ID
