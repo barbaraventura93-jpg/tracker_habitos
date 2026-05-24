@@ -27,8 +27,8 @@ jobs:
             --query "Stacks[0].StackStatus" \
             --output text \
             --region sa-east-1 2>/dev/null || echo "DOES_NOT_EXIST")
-          if [ "$STATUS" = "ROLLBACK_COMPLETE" ]; then
-            echo "Stack em ROLLBACK_COMPLETE, deletando..."
+          if [[ "$STATUS" == *"ROLLBACK_COMPLETE"* ]]; then
+            echo "Stack em $STATUS, deletando..."
             aws cloudformation delete-stack --stack-name tracker-habitos-backend --region sa-east-1
             aws cloudformation wait stack-delete-complete --stack-name tracker-habitos-backend --region sa-east-1
             echo "Stack deletado."
