@@ -136,15 +136,6 @@ Resources:
           - authorization
       TargetFunctionArn: !Ref TrackerFunction
 
-  TrackerFunctionUrlPermission:
-    Type: AWS::Lambda::Permission
-    DependsOn: TrackerFunctionUrl
-    Properties:
-      Action: lambda:InvokeFunctionUrl
-      FunctionName: !Ref TrackerFunction
-      Principal: '*'
-      FunctionUrlAuthType: NONE
-
 Outputs:
   ApiUrl:
     Value: !GetAtt TrackerFunctionUrl.FunctionUrl

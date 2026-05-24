@@ -43,6 +43,27 @@ jobs:
             --region sa-east-1 \
             --no-fail-on-empty-changeset
 
+      - name: Garantir permissão pública no Lambda URL
+        run: |
+          aws lambda add-permission \
+            --function-name tracker-habitos-api \
+            --statement-id AllowPublicFunctionUrlAccess \
+            --action lambda:InvokeFunctionUrl \
+            --principal "*" \
+            --function-url-auth-type NONE \
+            --region sa-east-1 2>/dev/null || \
+          aws lambda remove-permission \
+            --function-name tracker-habitos-api \
+            --statement-id AllowPublicFunctionUrlAccess \
+            --region sa-east-1 && \
+          aws lambda add-permission \
+            --function-name tracker-habitos-api \
+            --statement-id AllowPublicFunctionUrlAccess \
+            --action lambda:InvokeFunctionUrl \
+            --principal "*" \
+            --function-url-auth-type NONE \
+            --region sa-east-1
+
       - name: Obter outputs do stack
         id: stack
         run: |
