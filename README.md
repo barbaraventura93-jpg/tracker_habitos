@@ -1,6 +1,6 @@
 # 📋 Habit Tracker
 
-App de acompanhamento de rotina diária — refeições, cardio, água, suplementos e sono — com histórico de 60 dias.
+App de acompanhamento de rotina diária — refeições, cardio, água, suplementos e sono — com histórico de 60 dias e sincronização entre dispositivos.
 
 🌐 **[Acessar o app](https://d1o1gejacy6m9o.cloudfront.net)**
 
@@ -8,20 +8,24 @@ App de acompanhamento de rotina diária — refeições, cardio, água, suplemen
 
 ## Funcionalidades
 
+- Cadastro e login com e-mail/senha via AWS Cognito
+- Dados sincronizados na nuvem — acessíveis em qualquer dispositivo
 - Marcação de refeições do dia com detalhes de macros
 - Controle de água, cardio e suplementos
 - Registro de sono e horário consistente
-- Score diário com anel de progresso
-- Histórico visual dos últimos 60 dias
-- Dados salvos localmente via localStorage
+- Score diário com anel de progresso e % no cabeçalho
+- Histórico visual dos últimos 60 dias com calendário alinhado por dia da semana
 
 ---
 
 ## Tecnologias
 
 - HTML5 + CSS3 + JavaScript puro (sem frameworks)
-- Hospedagem: **AWS S3 Static Website Hosting**
-- Deploy automático: **GitHub Actions**
+- Hospedagem: **AWS S3 + CloudFront**
+- Autenticação: **AWS Cognito**
+- Backend: **AWS Lambda + DynamoDB**
+- Infraestrutura como código: **AWS CloudFormation**
+- CI/CD: **GitHub Actions**
 
 ---
 
@@ -30,40 +34,55 @@ App de acompanhamento de rotina diária — refeições, cardio, água, suplemen
 | Serviço | Uso | Custo |
 |---|---|---|
 | S3 | Hospedagem do arquivo estático | Free Tier |
-| CloudFront | CDN + HTTPS | Free Tier |
+| CloudFront | CDN + HTTPS + invalidação automática | Free Tier |
+| Cognito | Autenticação de usuários | Free Tier (50k MAU) |
+| DynamoDB | Persistência dos dados por usuário | Free Tier |
+| Lambda | API de leitura/escrita dos dados | Free Tier |
 | GitHub Actions | CI/CD automático no push | Gratuito |
 
 **Bucket:** `tracker-habitos`
 **Região:** `sa-east-1` (São Paulo)
-**Endpoint S3:** `http://tracker-habitos.s3-website-sa-east-1.amazonaws.com`
-**URL CloudFront:** `https://d1o1gejacy6m9o.cloudfront.net`
+**URL:** `https://d1o1gejacy6m9o.cloudfront.net`
 
 ---
 
 ## Deploy automático (CI/CD)
 
-Qualquer `push` na branch `main` dispara o workflow do GitHub Actions que sincroniza os arquivos com o bucket S3 automaticamente.
+Qualquer `push` na branch `main` dispara o workflow que:
 
-### Configuração das credenciais (feita uma única vez)
+1. Cria/atualiza a infraestrutura via CloudFormation (Cognito + Lambda + DynamoDB)
+2. Injeta a URL da API e o Client ID do Cognito no HTML
+3. Sincroniza os arquivos com o S3
+4. Invalida o cache do CloudFront
 
-1. No AWS Console, acesse **IAM → Users → Create user**
-2. Nome: `github-actions-tracker`
-3. Em **Permissions**, adicione a policy `AmazonS3FullAccess`
-4. Crie uma **Access Key** e guarde o `Access Key ID` e `Secret Access Key`
-5. No GitHub, vá em **Settings → Secrets and variables → Actions → New repository secret** e adicione:
-   - `AWS_ACCESS_KEY_ID` → seu Access Key ID
-   - `AWS_SECRET_ACCESS_KEY` → seu Secret Access Key
+### Permissões necessárias no IAM (`github-actions-tracker`)
+
+- `AmazonS3FullAccess`
+- `CloudFrontFullAccess`
+- `AWSCloudFormationFullAccess`
+- `AWSLambda_FullAccess`
+- `AmazonDynamoDBFullAccess`
+- `AmazonCognitoPowerUser`
+- `IAMFullAccess`
+
+### Secrets no GitHub
+
+| Secret | Descrição |
+|---|---|
+| `AWS_ACCESS_KEY_ID` | Access Key do usuário IAM |
+| `AWS_SECRET_ACCESS_KEY` | Secret Key do usuário IAM |
 
 ---
 
 ## Rodando localmente
 
-Basta abrir o arquivo `habit-tracker.html` diretamente no navegador — não precisa de servidor.
+Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet ou fora do deploy, o app funciona offline usando `localStorage`.
 
 ---
 
 ## Próximos passos
 
 - [x] CloudFront + HTTPS
+- [x] Persistência em nuvem com DynamoDB + Lambda
+- [x] Autenticação com AWS Cognito
 - [ ] Domínio customizado via Route 53
-- [ ] Persistência em nuvem com DynamoDB + Lambda
