@@ -325,10 +325,14 @@ async function render(){
   renderUI();
   if(USE_API){
     const remote=await fetchRemote(currentDate);
-    if(remote&&JSON.stringify(remote)!==JSON.stringify(dayData)){
-      dayData=remote;
-      try{localStorage.setItem('ht:'+currentDate,JSON.stringify(dayData));}catch{}
-      renderUI();
+    if(remote){
+      if(JSON.stringify(remote)!==JSON.stringify(dayData)){
+        dayData=remote;
+        try{localStorage.setItem('ht:'+currentDate,JSON.stringify(dayData));}catch{}
+        renderUI();
+      }
+    }else if(JSON.stringify(dayData)!==JSON.stringify(makeEmpty(currentDate))){
+      saveDay(currentDate,dayData);
     }
   }
 }
