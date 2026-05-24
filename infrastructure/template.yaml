@@ -94,7 +94,6 @@ Resources:
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
           REGION=os.environ.get('AWS_REGION','sa-east-1')
-          CORS={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type,authorization','Access-Control-Allow-Methods':'GET,PUT,OPTIONS'}
           def get_uid(token):
             try:
               req=urllib.request.Request('https://cognito-idp.'+REGION+'.amazonaws.com/',data=json.dumps({'AccessToken':token}).encode(),headers={'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':'AWSCognitoIdentityProviderService.GetUser'})
@@ -104,25 +103,23 @@ Resources:
               return None
           def handler(event,context):
             method=event.get('requestContext',{}).get('http',{}).get('method','')
-            if method=='OPTIONS':
-              return{'statusCode':200,'headers':CORS,'body':''}
             auth=(event.get('headers') or {}).get('authorization','')
             uid=get_uid(auth[7:]) if auth.startswith('Bearer ') else None
             if not uid:
-              return{'statusCode':401,'headers':CORS,'body':json.dumps({'error':'unauthorized'})}
+              return{'statusCode':401,'body':json.dumps({'error':'unauthorized'})}
             params=event.get('queryStringParameters') or {}
             date=params.get('date','')
             if not date:
-              return{'statusCode':400,'headers':CORS,'body':json.dumps({'error':'missing date'})}
+              return{'statusCode':400,'body':json.dumps({'error':'missing date'})}
             if method=='GET':
               resp=table.get_item(Key={'userId':uid,'date':date})
               data=resp.get('Item',{}).get('data')
-              return{'statusCode':200,'headers':CORS,'body':json.dumps(data)}
+              return{'statusCode':200,'body':json.dumps(data)}
             if method=='PUT':
               body=json.loads(event.get('body') or '{}')
               table.put_item(Item={'userId':uid,'date':date,'data':body})
-              return{'statusCode':200,'headers':CORS,'body':json.dumps({'ok':True})}
-            return{'statusCode':405,'headers':CORS,'body':json.dumps({'error':'not allowed'})}
+              return{'statusCode':200,'body':json.dumps({'ok':True})}
+            return{'statusCode':405,'body':json.dumps({'error':'not allowed'})}
 
   TrackerFunctionUrl:
     Type: AWS::Lambda::Url
