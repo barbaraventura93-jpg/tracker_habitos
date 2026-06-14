@@ -162,9 +162,9 @@ textarea,input{font-family:inherit;}
         <button class="nav-btn" onclick="showBnav('home')">←</button>
         <div style="text-align:center">
           <div id="gym-hdr-info" style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.12em;text-transform:uppercase"></div>
-          <div style="font-size:16px;font-weight:800;color:#e6edf3">Log de Treino</div>
+          <div id="gym-hdr-title" style="font-size:16px;font-weight:800;color:#e6edf3">Log de Treino</div>
         </div>
-        <div style="width:44px"></div>
+        <button onclick="gymTogglePlan()" id="gym-plan-btn" style="background:#21262d;color:#8b949e;padding:6px 11px;border-radius:8px;font-size:12px;font-weight:700">📋 Plano</button>
       </div>
     </div>
     <div class="body" id="gym-body"></div>
@@ -477,6 +477,9 @@ function clearClaudeKey(){localStorage.removeItem('ht:claude-key');renderSupsLis
 // ─── GYM LOG ─────────────────────────────────────────────────────────────────
 let gymPlan=loadGymPlan();
 let _gymAddOpen=false;
+let _gymViewPlan=false;
+let _gymPlanTr=null;
+let _gymPlanPreview=[];
 function loadGymPlan(){try{return JSON.parse(localStorage.getItem('ht:gymplan')||'{}');}catch{return{};}}
 function saveGymPlan(){
   try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}
@@ -502,14 +505,29 @@ function getLastGymSession(tr,beforeDate){
 }
 
 function showGym(){
-  _gymAddOpen=false;
+  _gymAddOpen=false;_gymViewPlan=false;_gymPlanPreview=[];
   const dd=loadDay(currentDate);
   const trObj=TRAININGS.find(t=>t.id===dd.tr);
   const{day}=dispDate(currentDate);
   document.getElementById('gym-hdr-info').textContent=day+' · '+(trObj?.label||dd.tr);
+  document.getElementById('gym-hdr-title').textContent='Log de Treino';
+  document.getElementById('gym-plan-btn').style.color='#8b949e';
   renderGym();
   showScreen('gym');
 }
+function gymTogglePlan(){
+  _gymViewPlan=!_gymViewPlan;
+  _gymPlanTr=_gymPlanTr||loadDay(currentDate).tr;
+  _gymPlanPreview=[];
+  const titleEl=document.getElementById('gym-hdr-title');
+  const planBtn=document.getElementById('gym-plan-btn');
+  if(titleEl) titleEl.textContent=_gymViewPlan?'Plano de Treino':'Log de Treino';
+  if(planBtn) planBtn.style.color=_gymViewPlan?'#818cf8':'#8b949e';
+  renderGym();
+}
+function gymPlanSetTr(tr){_gymPlanTr=tr;_gymPlanPreview=[];renderGym();}
+function gymPlanDelEx(tr,i){if(!gymPlan[tr]) return;gymPlan[tr].splice(i,1);saveGymPlan();renderGym();}
+function gymPlanClearAll(tr){if(!confirm('Limpar todos os exercícios do plano?')) return;gymPlan[tr]=[];saveGymPlan();renderGym();}
 
 function renderGym(){
   const date=currentDate;
@@ -519,6 +537,8 @@ function renderGym(){
   const gymBody=document.getElementById('gym-body');
   if(!gymBody) return;
 
+  if(_gymViewPlan){renderGymPlan(gymBody);return;}
+
   if(tr==='descanso'){
     gymBody.innerHTML=`<div class="card fade-in" style="text-align:center;padding:32px 20px"><div style="font-size:40px;margin-bottom:12px">🛌</div><div style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:6px">Dia de Descanso Ativo</div><div style="font-size:12px;color:#6e7681">Sem musculação hoje. Recuperação é parte do treino.</div></div>`;
     return;
@@ -527,7 +547,12 @@ function renderGym(){
   let session=loadGymSession(date);
   if(!session){
     const plan=gymPlan[tr]||[];
-    session=plan.map(ex=>({id:ex.id,name:ex.name,group:ex.group,sets:[{reps:'',kg:'',done:false}]}));
+    session=plan.map(ex=>{
+      const nSets=ex.defaultSets||1;
+      const repsVal=String(ex.defaultReps||'');
+      return{id:ex.id,name:ex.name,group:ex.group,obs:ex.obs||'',
+             sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))};
+    });
     if(session.length>0) saveGymSession(date,session);
   }
 
@@ -578,9 +603,14 @@ function renderGym(){
 
   if(_gymAddOpen){
     const GYM_GROUPS=['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo','Cardio','Outro'];
+    const inp2='background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 8px;color:#e6edf3;font-size:14px;font-weight:700;outline:none;text-align:center;width:100%';
     html+=`<div class="card fade-in"><div class="sec-hdr"><div class="sec-lbl"><span>➕</span> ADICIONAR EXERCÍCIO</div></div>
       <input type="text" id="gym-new-name" placeholder="Nome do exercício" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none;margin-bottom:8px">
-      <select id="gym-new-group" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none;margin-bottom:12px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+      <select id="gym-new-group" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div><div style="font-size:10px;color:#6e7681;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gym-new-sets" placeholder="3" value="3" style="${inp2}"></div>
+        <div><div style="font-size:10px;color:#6e7681;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gym-new-reps" placeholder="12" value="12" style="${inp2}"></div>
+      </div>
       <div style="display:flex;gap:8px">
         <button onclick="gymConfirmAdd()" style="flex:1;padding:12px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Adicionar</button>
         <button onclick="gymCancelAdd()" style="padding:12px 16px;background:#21262d;border-radius:10px;color:#6e7681;font-size:14px">Cancelar</button>
@@ -628,13 +658,131 @@ function gymConfirmAdd(){
   const name=(document.getElementById('gym-new-name')?.value||'').trim();
   if(!name){const el=document.getElementById('gym-new-name');if(el)el.style.borderColor='#f87171';return;}
   const group=document.getElementById('gym-new-group')?.value||'Outro';
+  const nSets=parseInt(document.getElementById('gym-new-sets')?.value)||1;
+  const repsVal=(document.getElementById('gym-new-reps')?.value||'').trim();
   const id='ex_'+Date.now();
-  const newEx={id,name,group,sets:[{reps:'',kg:'',done:false}]};
+  const newEx={id,name,group,sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))};
   const s=loadGymSession(currentDate)||[];s.push(newEx);saveGymSession(currentDate,s);
   const tr=loadDay(currentDate).tr;
   if(!gymPlan[tr]) gymPlan[tr]=[];
-  gymPlan[tr].push({id,name,group});saveGymPlan();
+  gymPlan[tr].push({id,name,group,defaultSets:nSets,defaultReps:repsVal,obs:''});saveGymPlan();
   _gymAddOpen=false;renderGym();
+}
+
+function renderGymPlan(gymBody){
+  const tr=_gymPlanTr||loadDay(currentDate).tr;
+  const trObj=TRAININGS.find(t=>t.id===tr)||TRAININGS[0];
+  const plan=gymPlan[tr]||[];
+  const apiKey=localStorage.getItem('ht:claude-key')||'';
+  const keySection=apiKey
+    ?`<div style="font-size:11px;color:#34d399;margin-bottom:10px">✓ Chave API configurada · <button onclick="clearClaudeKey();renderGym()" style="background:none;color:#6e7681;font-size:11px;text-decoration:underline;padding:0">remover</button></div>`
+    :`<div style="font-size:11px;color:#6e7681;margin-bottom:5px">Chave API Anthropic <span style="color:#4d5863">(salva só neste dispositivo)</span></div>
+      <input type="password" id="gym-claude-key" placeholder="sk-ant-..." autocomplete="off" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:10px">
+      <div style="font-size:10px;color:#4d5863;margin-bottom:10px">Mesma chave usada nos Suplementos · console.anthropic.com</div>`;
+  const trTabs=TRAININGS.filter(t=>t.id!=='descanso').map(t=>{
+    const sel=t.id===tr;
+    return`<button onclick="gymPlanSetTr('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#0d1117'};color:${sel?t.color:'#6e7681'};border:1px solid ${sel?t.color+'60':'#21262d'};flex-shrink:0">${t.icon} ${t.label}</button>`;
+  }).join('');
+  const previewHtml=_gymPlanPreview.length?renderGymPlanPreviewHtml():'';
+  const exList=plan.length>0?plan.map((ex,i)=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#0d1117;border:1px solid #21262d;border-radius:10px;margin-bottom:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#e6edf3">${ex.name}</div>
+        <div style="font-size:11px;color:#6e7681;margin-top:1px">${ex.group||''}${ex.defaultSets?' · '+ex.defaultSets+'×'+(ex.defaultReps||'?'):''}${ex.obs?' · '+ex.obs:''}</div>
+      </div>
+      <button onclick="gymPlanDelEx('${tr}',${i})" style="background:#21262d;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
+    </div>`).join('')
+    :`<div style="text-align:center;color:#6e7681;padding:20px 0;font-size:12px;line-height:1.7">Nenhum exercício no plano.<br>Importe um PDF ou adicione manualmente na sessão.</div>`;
+  gymBody.innerHTML=`
+    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;-webkit-overflow-scrolling:touch">${trTabs}</div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>📎</span> IMPORTAR PLANO DE PDF</div></div>
+      <div style="font-size:11px;color:#6e7681;margin-bottom:10px">Envie o PDF do seu treino. A IA extrai exercícios, séries e reps automaticamente.</div>
+      ${keySection}
+      <label style="display:block;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:16px;text-align:center;cursor:pointer;color:#6e7681;font-size:13px" onmouseover="this.style.borderColor='#818cf8'" onmouseout="this.style.borderColor='#30363d'">
+        📄 Clique para selecionar PDF ou imagem do treino
+        <input type="file" id="gym-plan-file" accept=".pdf,image/*" style="display:none" onchange="handleGymPlanFile(this,'${tr}')">
+      </label>
+      <div id="gym-import-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
+      <div id="gym-import-preview">${previewHtml}</div>
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>📋</span> PLANO: ${trObj.icon} ${trObj.label.toUpperCase()}</div><span style="font-size:11px;color:#6e7681">${plan.length} exercício${plan.length!==1?'s':''}</span></div>
+      ${exList}
+      ${plan.length>0?`<button onclick="gymPlanClearAll('${tr}')" style="width:100%;padding:8px;background:none;border:1px solid #21262d;border-radius:8px;color:#6e7681;font-size:12px;margin-top:6px">🗑️ Limpar plano</button>`:''}
+    </div>
+    <button onclick="gymTogglePlan()" style="width:100%;padding:12px;background:#21262d;border-radius:10px;color:#e6edf3;font-size:14px;font-weight:600;margin-bottom:4px">← Voltar ao log de treino</button>`;
+}
+
+function renderGymPlanPreviewHtml(){
+  if(!_gymPlanPreview.length) return '';
+  const rows=_gymPlanPreview.map((ex,i)=>`
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#0d1117;border:1px solid #21262d;border-radius:9px;margin-bottom:6px;cursor:pointer">
+      <input type="checkbox" id="gimp-${i}" ${ex._checked?'checked':''} style="margin-top:3px;width:15px;height:15px;accent-color:#818cf8;flex-shrink:0">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:#e6edf3">${ex.name}</div>
+        <div style="font-size:11px;color:#6e7681;margin-top:2px">${ex.group||''}${ex.sets?' · '+ex.sets+'×'+(ex.reps||'?')+'reps':''}</div>
+        ${ex.obs?`<div style="font-size:10px;color:#4d5863;margin-top:1px">${ex.obs}</div>`:''}
+      </div>
+    </label>`).join('');
+  return`<div style="margin-top:10px">${rows}<button onclick="importGymPlanSelected()" style="width:100%;padding:12px;background:#818cf8;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-top:4px">Importar selecionados para o plano</button></div>`;
+}
+
+function importGymPlanSelected(){
+  const tr=_gymPlanTr||loadDay(currentDate).tr;
+  if(!gymPlan[tr]) gymPlan[tr]=[];
+  let count=0;
+  _gymPlanPreview.forEach((ex,i)=>{
+    if(document.getElementById('gimp-'+i)?.checked){
+      const{_checked,...item}=ex;
+      gymPlan[tr].push({id:item.id,name:item.name,group:item.group||'Outro',defaultSets:item.sets||3,defaultReps:String(item.reps||''),obs:item.obs||''});
+      count++;
+    }
+  });
+  if(count) saveGymPlan();
+  _gymPlanPreview=[];
+  renderGym();
+  const st=document.getElementById('gym-import-status');
+  if(st&&count) st.innerHTML=`<span style="color:#34d399">✓ ${count} exercício(s) adicionado(s) ao plano de ${TRAININGS.find(t=>t.id===tr)?.label||tr}!</span>`;
+}
+
+async function handleGymPlanFile(input,tr){
+  const file=input.files[0];if(!file) return;
+  let apiKey=localStorage.getItem('ht:claude-key')||'';
+  const keyEl=document.getElementById('gym-claude-key');
+  if(keyEl?.value?.trim()){apiKey=keyEl.value.trim();localStorage.setItem('ht:claude-key',apiKey);}
+  const statusEl=document.getElementById('gym-import-status');
+  if(!apiKey){statusEl.innerHTML='<span style="color:#f87171">Informe a chave API Anthropic acima.</span>';return;}
+  statusEl.innerHTML='<span style="color:#fbbf24">⏳ Analisando plano com IA — aguarde...</span>';
+  try{
+    const items=await analyzeGymPlanFile(file,apiKey);
+    _gymPlanPreview=items.map((ex,i)=>({...ex,id:'ex_'+Date.now()+i,_checked:true}));
+    document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
+    statusEl.innerHTML=`<span style="color:#34d399">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
+  }catch(e){
+    statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
+  }
+}
+
+async function analyzeGymPlanFile(file,apiKey){
+  const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  const isPdf=file.type==='application/pdf';
+  const headers={'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
+  if(isPdf) headers['anthropic-beta']='pdfs-2024-09-25';
+  const block=isPdf?{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}}:{type:'image',source:{type:'base64',media_type:file.type,data:base64}};
+  const resp=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',headers,
+    body:JSON.stringify({
+      model:'claude-haiku-4-5-20251001',max_tokens:3000,
+      messages:[{role:'user',content:[block,{type:'text',text:'Extraia todos os exercícios deste plano de treino. Retorne APENAS um array JSON no formato: [{"name":"nome do exercício","group":"grupo muscular (Peito/Costas/Ombro/Bíceps/Tríceps/Perna/Core/Glúteo/Cardio/Outro)","sets":4,"reps":"12","obs":"observação ou técnica se houver, caso contrário omita"}]. Somente o JSON, sem explicações ou markdown.'}]}]
+    })
+  });
+  if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||'Erro na API Anthropic (verifique a chave)');}
+  const data=await resp.json();
+  const text=data.content?.[0]?.text||'';
+  const m=text.match(/\[[\s\S]*\]/);
+  if(!m) throw new Error('Nenhum exercício identificado no arquivo');
+  try{return JSON.parse(m[0]);}catch{throw new Error('Resposta da IA em formato inválido');}
 }
 
 // ─── BODY COMPOSITION ────────────────────────────────────────────────────────
