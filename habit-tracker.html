@@ -94,6 +94,7 @@ textarea,input{font-family:inherit;}
       <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
         <button onclick="showGoals()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">⚙️ Metas</button>
         <button onclick="showSups()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">💊 Suplementos</button>
+        <button onclick="showBodyComp()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">⚖️ Corpo</button>
         <button onclick="signOut()" style="background:none;color:#6e7681;font-size:11px;padding:3px 8px;border-radius:6px;border:1px solid #21262d">Sair</button>
       </div>
     </div>
@@ -134,6 +135,18 @@ textarea,input{font-family:inherit;}
       </div>
     </div>
     <div class="body" id="history-body"></div>
+  </div>
+
+  <!-- BODY COMP SCREEN -->
+  <div id="screen-body" class="screen">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="showScreen('home')">←</button>
+        <div style="font-size:16px;font-weight:800;color:#e6edf3">Composição Corporal</div>
+        <div style="width:44px"></div>
+      </div>
+    </div>
+    <div class="body" id="body-comp-body"></div>
   </div>
 </div>
 
@@ -418,6 +431,175 @@ async function analyzeSupFile(file,apiKey){
 }
 
 function clearClaudeKey(){localStorage.removeItem('ht:claude-key');renderSupsList();}
+
+// ─── BODY COMPOSITION ────────────────────────────────────────────────────────
+let bodyEntries=loadBodyEntries();
+let _bodyMetric='weight';
+function loadBodyEntries(){try{return JSON.parse(localStorage.getItem('ht:body')||'[]');}catch{return[];}}
+function saveBodyEntries(){
+  try{localStorage.setItem('ht:body',JSON.stringify(bodyEntries));}catch{}
+  if(!USE_API||!authToken) return;
+  fetch(`${API_URL}?date=__body__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(bodyEntries)}).catch(()=>{});
+}
+async function syncBodyEntries(){
+  if(!USE_API||!authToken) return;
+  try{
+    const r=await fetch(`${API_URL}?date=__body__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){bodyEntries=d;try{localStorage.setItem('ht:body',JSON.stringify(d));}catch{}}}
+  }catch{}
+}
+function showBodyComp(){renderBodyComp();showScreen('body');}
+function setBodyMetric(m){_bodyMetric=m;renderBodyComp();}
+
+function renderBodyChart(sorted,metric){
+  const data=sorted.map(e=>({date:e.date,v:metric==='fat'?e.fat:metric==='lean'?e.lean:e.weight})).filter(e=>e.v!=null&&!isNaN(e.v));
+  if(data.length<2) return '<div style="text-align:center;color:#6e7681;padding:24px;font-size:12px">Adicione mais registros para ver o gráfico</div>';
+  const W=320,H=150,padT=12,padB=28,padL=40,padR=10,cW=W-padL-padR,cH=H-padT-padB;
+  const vals=data.map(d=>d.v);
+  const minV=Math.min(...vals),maxV=Math.max(...vals),range=maxV-minV||0.5,padded=range*0.15;
+  const yMin=minV-padded,yMax=maxV+padded,yRange=yMax-yMin;
+  const xS=i=>padL+(data.length>1?(i/(data.length-1))*cW:cW/2);
+  const yS=v=>padT+cH-((v-yMin)/yRange)*cH;
+  const color=metric==='fat'?'#fb923c':metric==='lean'?'#34d399':'#38bdf8';
+  const unit=metric==='fat'?'%':'kg';
+  const gId='g_'+metric;
+  const pathD=data.map((d,i)=>(i===0?'M':'L')+xS(i).toFixed(1)+','+yS(d.v).toFixed(1)).join(' ');
+  const areaD=pathD+' L'+xS(data.length-1).toFixed(1)+','+(padT+cH).toFixed(1)+' L'+padL+','+(padT+cH).toFixed(1)+' Z';
+  const dots=data.map((d,i)=>`<circle cx="${xS(i).toFixed(1)}" cy="${yS(d.v).toFixed(1)}" r="${i===data.length-1?4:2.5}" fill="${color}" stroke="#161b22" stroke-width="${i===data.length-1?2:1}"/>`).join('');
+  const lastX=xS(data.length-1),lastY=yS(data[data.length-1].v);
+  const lastAnchor=data.length>1&&lastX>W*0.7?'end':'start';
+  const lastLabelX=lastAnchor==='end'?lastX-6:lastX+6;
+  const lastLabel=`<text x="${lastLabelX.toFixed(1)}" y="${(lastY-8).toFixed(1)}" text-anchor="${lastAnchor}" font-size="9" font-weight="700" fill="${color}">${data[data.length-1].v.toFixed(1)}${unit}</text>`;
+  const nY=4;
+  const yTicks=Array.from({length:nY}).map((_,i)=>{
+    const v=yMin+(yRange/(nY-1))*i,y=yS(v);
+    return`<text x="${(padL-4).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" font-size="8" fill="#4d5863" dominant-baseline="middle">${v.toFixed(1)}</text><line x1="${padL}" y1="${y.toFixed(1)}" x2="${(padL+cW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#21262d" stroke-width="0.5" stroke-dasharray="3,3"/>`;
+  }).join('');
+  const maxLbls=Math.min(5,data.length);
+  const lblIdx=data.length<=maxLbls?data.map((_,i)=>i):Array.from({length:maxLbls}).map((_,i)=>Math.round(i*(data.length-1)/(maxLbls-1)));
+  const xLabels=lblIdx.map(i=>{const p=data[i].date.split('-');return`<text x="${xS(i).toFixed(1)}" y="${(H-6).toFixed(1)}" text-anchor="middle" font-size="8" fill="#4d5863">${p[2]}/${p[1]}</text>`;}).join('');
+  return`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
+    <defs><linearGradient id="${gId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.3"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
+    ${yTicks}<path d="${areaD}" fill="url(#${gId})"/><path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+    ${dots}${lastLabel}${xLabels}
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${(padT+cH).toFixed(1)}" stroke="#30363d" stroke-width="1"/>
+    <line x1="${padL}" y1="${(padT+cH).toFixed(1)}" x2="${(padL+cW).toFixed(1)}" y2="${(padT+cH).toFixed(1)}" stroke="#30363d" stroke-width="1"/>
+  </svg>`;
+}
+
+function renderBodyComp(){
+  const sorted=[...bodyEntries].sort((a,b)=>a.date.localeCompare(b.date));
+  const latest=sorted[sorted.length-1];
+  const prev=sorted.length>=2?sorted[sorted.length-2]:null;
+  const earliest=sorted[0];
+
+  function statCard(label,value,unit,delta,color){
+    let dColor='#6e7681';
+    if(delta!=null){
+      if(unit==='%') dColor=delta>0?'#fb923c':delta<0?'#34d399':'#6e7681';
+      else dColor=delta>0?'#fb923c':delta<0?'#34d399':'#6e7681';
+    }
+    const dHtml=delta!=null?`<div style="font-size:10px;color:${dColor};margin-top:2px">${delta>0?'+':''}${delta.toFixed(1)}${unit}</div>`:'';
+    return`<div style="background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:12px 6px;text-align:center">
+      <div style="font-size:9px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:4px">${label}</div>
+      <div style="font-size:19px;font-weight:800;color:${color}">${value!=null?value.toFixed(1):'—'}<span style="font-size:10px;color:#6e7681;font-weight:400">${unit}</span></div>
+      ${dHtml}
+    </div>`;
+  }
+
+  const wDelta=latest&&prev&&prev.weight!=null?+(latest.weight-prev.weight).toFixed(2):null;
+  const fDelta=latest&&prev&&prev.fat!=null&&latest.fat!=null?+(latest.fat-prev.fat).toFixed(2):null;
+  const lDelta=latest&&prev&&prev.lean!=null&&latest.lean!=null?+(latest.lean-prev.lean).toFixed(2):null;
+
+  const statsHtml=latest?`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;margin-bottom:10px">
+    ${statCard('PESO',latest.weight,'kg',wDelta,'#38bdf8')}
+    ${statCard('GORDURA',latest.fat,'%',fDelta,'#fb923c')}
+    ${statCard('MASSA MAGRA',latest.lean,'kg',lDelta,'#34d399')}
+  </div>`:'<div style="text-align:center;color:#6e7681;padding:20px;font-size:13px">Nenhum registro ainda. Adicione o primeiro abaixo.</div>';
+
+  let totalHtml='';
+  if(sorted.length>=2&&earliest.weight!=null&&latest.weight!=null){
+    const totalW=latest.weight-earliest.weight;
+    const nDays=Math.round((new Date(latest.date)-new Date(earliest.date))/86400000);
+    totalHtml=`<div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px">
+      <span style="color:#8b949e;font-weight:600">Variação total: </span><span style="color:${totalW<0?'#34d399':'#fb923c'};font-weight:700">${totalW>0?'+':''}${totalW.toFixed(1)} kg</span>
+      <span style="color:#4d5863"> em ${nDays} dias · ${sorted.length} registros</span>
+    </div>`;
+  }
+
+  const metrics=[{id:'weight',l:'⚖️ Peso',c:'#38bdf8'},{id:'fat',l:'🔥 Gordura',c:'#fb923c'},{id:'lean',l:'💪 Massa Magra',c:'#34d399'}];
+  const tabBtns=metrics.map(m=>{const sel=_bodyMetric===m.id;return`<button onclick="setBodyMetric('${m.id}')" style="flex:1;padding:8px 4px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?m.c+'20':'transparent'};color:${sel?m.c:'#6e7681'};border:1px solid ${sel?m.c+'60':'#21262d'}">${m.l}</button>`;}).join('');
+
+  const todayStr=today();
+  const todayEntry=bodyEntries.find(e=>e.date===todayStr);
+  const hasToday=!!todayEntry;
+  const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:15px;outline:none';
+  const leanPreview=todayEntry?.lean!=null?todayEntry.lean.toFixed(1)+' kg':'—';
+
+  const histRows=[...bodyEntries].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(e=>{
+    const{day,date:d}=dispDate(e.date);
+    return`<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;background:#0d1117;border:1px solid #21262d;border-radius:10px;margin-bottom:6px">
+      <div style="flex:1;min-width:0">
+        <span style="font-size:12px;font-weight:700;color:#e6edf3">${day} ${d}</span>
+        <div style="display:flex;gap:10px;margin-top:3px">
+          ${e.weight!=null?`<span style="font-size:11px;color:#38bdf8;font-family:'DM Mono',monospace">${e.weight.toFixed(1)} kg</span>`:''}
+          ${e.fat!=null?`<span style="font-size:11px;color:#fb923c;font-family:'DM Mono',monospace">${e.fat.toFixed(1)}%</span>`:''}
+          ${e.lean!=null?`<span style="font-size:11px;color:#34d399;font-family:'DM Mono',monospace">${e.lean.toFixed(1)} kg</span>`:''}
+        </div>
+      </div>
+      <button onclick="deleteBodyEntry('${e.date}')" style="background:#21262d;color:#f87171;padding:6px 10px;border-radius:7px;font-size:12px;flex-shrink:0">🗑️</button>
+    </div>`;
+  }).join('');
+
+  document.getElementById('body-comp-body').innerHTML=`
+    ${statsHtml}
+    ${totalHtml}
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>📈</span> EVOLUÇÃO</div></div>
+      <div style="display:flex;gap:5px;margin-bottom:12px">${tabBtns}</div>
+      ${renderBodyChart(sorted,_bodyMetric)}
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>${hasToday?'✏️':'➕'}</span> ${hasToday?'ATUALIZAR HOJE':'NOVO REGISTRO'}</div><span style="font-size:11px;color:#6e7681">${todayStr}</span></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+        <div><div style="font-size:11px;color:#6e7681;margin-bottom:5px">Peso (kg) *</div><input type="number" id="bc-weight" step="0.1" placeholder="ex: 68.5" value="${todayEntry?.weight||''}" oninput="bcUpdateLean()" style="${inp}"></div>
+        <div><div style="font-size:11px;color:#6e7681;margin-bottom:5px">% Gordura</div><input type="number" id="bc-fat" step="0.1" placeholder="ex: 22.0" value="${todayEntry?.fat||''}" oninput="bcUpdateLean()" style="${inp}"></div>
+      </div>
+      <div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px">
+        <span style="color:#6e7681">Massa magra: </span><span id="bc-lean-preview" style="color:#34d399;font-weight:700">${leanPreview}</span><span style="font-size:10px;color:#4d5863;margin-left:6px">= peso × (1 − %gordura)</span>
+      </div>
+      <button onclick="saveBodyEntry()" style="width:100%;padding:13px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700">${hasToday?'Atualizar registro':'Salvar registro'}</button>
+    </div>
+    ${histRows?`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📋</span> HISTÓRICO</div><span style="font-size:11px;color:#6e7681">${bodyEntries.length} registro${bodyEntries.length!==1?'s':''}</span></div>${histRows}</div>`:''}`;
+}
+
+function bcUpdateLean(){
+  const w=parseFloat(document.getElementById('bc-weight')?.value),f=parseFloat(document.getElementById('bc-fat')?.value);
+  const el=document.getElementById('bc-lean-preview');
+  if(el) el.textContent=w>0&&f>0&&f<100?(w*(1-f/100)).toFixed(1)+' kg':'—';
+}
+
+function saveBodyEntry(){
+  const w=parseFloat(document.getElementById('bc-weight')?.value);
+  if(!w||w<=0){if(document.getElementById('bc-weight'))document.getElementById('bc-weight').style.borderColor='#f87171';return;}
+  const f=parseFloat(document.getElementById('bc-fat')?.value)||null;
+  const lean=w>0&&f!=null&&f>0?+(w*(1-f/100)).toFixed(2):null;
+  const date=today();
+  const entry={date,weight:+w.toFixed(2),fat:f!=null?+f.toFixed(2):null,lean};
+  const idx=bodyEntries.findIndex(e=>e.date===date);
+  if(idx>=0) bodyEntries[idx]=entry; else bodyEntries.push(entry);
+  saveBodyEntries();
+  goals={...goals,pesoAtual:String(w)};
+  try{localStorage.setItem('ht:goals',JSON.stringify(goals));}catch{}
+  renderBodyComp();
+}
+
+function deleteBodyEntry(date){
+  if(!confirm('Excluir registro de '+date+'?')) return;
+  bodyEntries=bodyEntries.filter(e=>e.date!==date);
+  saveBodyEntries();
+  renderBodyComp();
+}
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
 const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,cardioMin:30};
@@ -760,6 +942,7 @@ async function syncGoals(){
     const r=await fetch(`${API_URL}?date=__csups__`,{headers:{authorization:'Bearer '+authToken}});
     if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){customSups=d;try{localStorage.setItem('ht:csups',JSON.stringify(d));}catch{}}}
   }catch{}
+  await syncBodyEntries();
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
@@ -801,7 +984,7 @@ function renderUI(){
   const ring=2*Math.PI*40;
   const pct=sc.pct;
   const rc=pct>=80?'#34d399':pct>=55?'#fbbf24':pct>0?'#f87171':'#30363d';
-  const msg=pct===100?'🎉 Dia perfeito!':pct>=80?'💪 Ótimo dia!':pct>=55?'👍 Progredindo':'🔄 Vamos lá!';
+  const msg=pct===100?'🎉 Dia perfeito!':pct>=80?'💪 Ótimo dia!':pct>=55?'👍 Progredindo':pct>0?'🌿 Acontece. Amanhã é novo.':'🔄 Vamos lá!';
 
   const bars=[
     {l:'Refeições',s:sc.meals, c:'#fb923c'},
@@ -955,14 +1138,23 @@ function renderUI(){
     <textarea placeholder="Como foi o dia? O que dificultou? O que funcionou bem?" onchange="setNotes(this.value)" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 12px;color:#e6edf3;font-size:13px;resize:none;height:72px;outline:none;line-height:1.5">${dayData.notes||''}</textarea>
   </div>`;
 
-  // PENDÊNCIAS
+  // PENDÊNCIAS / DIA RUIM
   const missing=[];
   MEALS.forEach(m=>{if(!dayData.meals[m.id])missing.push(m.icon+' '+m.label);});
   if(dayData.water<goals.aguaCopos) missing.push('💧 Água — '+dayData.water+'/'+goals.aguaCopos+' copos');
   if(dayData.cardio<goals.cardioMin) missing.push('🚴 Cardio — '+(dayData.cardio||0)+'/'+goals.cardioMin+' min');
   getSups(dayData.tr,dayData.isPerna).forEach(s=>{if(!dayData.sups[s.id])missing.push(s.icon+' '+s.label);});
   if(!dayData.sleep||!SLEEPS.find(o=>o.id===dayData.sleep)?.ok) missing.push('😴 Sono — menos de 7h');
-  if(missing.length){
+  if(pct>0&&pct<55&&missing.length){
+    const SUGGEST_ORDER=['💧','😴','☀️','🥗','🥛','🌙','🍓','🚴'];
+    const top2=[...missing].sort((a,b)=>{
+      const ai=SUGGEST_ORDER.findIndex(icon=>a.startsWith(icon));
+      const bi=SUGGEST_ORDER.findIndex(icon=>b.startsWith(icon));
+      return(ai===-1?99:ai)-(bi===-1?99:bi);
+    }).slice(0,2);
+    const rows=top2.map(m=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;background:#0d1117;border-radius:10px;border:1px solid #1e3a2f;margin-bottom:6px"><div style="width:5px;height:5px;border-radius:50%;background:#34d399;margin-top:7px;flex-shrink:0"></div><span style="font-size:13px;color:#d1fae5;line-height:1.5">${m}</span></div>`).join('');
+    html+=`<div class="card" style="border-color:#1e3a2f;background:#0a1f14"><div class="sec-hdr"><div class="sec-lbl" style="color:#4ade80"><span>🌿</span> AMANHÃ, SÓ ISSO</div></div><div style="font-size:12px;color:#6e7681;margin-bottom:10px">Dia difícil acontece. Um pequeno ajuste já vale.</div>${rows}</div>`;
+  }else if(missing.length){
     const rows=missing.map(m=>`<div style="display:flex;gap:10px;align-items:flex-start"><div class="pending-dot"></div><span style="font-size:13px;color:#fca5a5;line-height:1.5">${m}</span></div>`).join('');
     html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🔍</span> PENDÊNCIAS</div></div><div style="display:flex;flex-direction:column;gap:6px">${rows}</div></div>`;
   }
