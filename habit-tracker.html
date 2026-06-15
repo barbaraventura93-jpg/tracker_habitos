@@ -302,24 +302,16 @@ function renderSupsList(){
       </div>`).join('')
     :`<div style="text-align:center;color:#6e7681;padding:28px 0;font-size:13px;line-height:1.7">Nenhum suplemento cadastrado.<br>Adicione manualmente ou importe de PDF/foto.</div>`;
 
-  const apiKey=localStorage.getItem('ht:claude-key')||'';
-  const keySection=apiKey
-    ?`<div style="font-size:11px;color:#34d399;margin-bottom:10px">✓ Chave API configurada · <button onclick="clearClaudeKey()" style="background:none;color:#6e7681;font-size:11px;text-decoration:underline;padding:0">remover</button></div>`
-    :`<div style="font-size:11px;color:#6e7681;margin-bottom:5px">Chave API Anthropic <span style="color:#4d5863">(salva só neste dispositivo)</span></div>
-      <input type="password" id="claude-key-input" placeholder="sk-ant-..." autocomplete="off" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:10px">
-      <div style="font-size:10px;color:#4d5863;margin-bottom:10px">Obtenha em console.anthropic.com · Necessária apenas para importação automática</div>`;
-
   const prevHtml=_importPreview.length?renderImportPreviewHtml():'';
 
   document.getElementById('sups-body').innerHTML=`
     <div class="card fade-in">
       <div class="sec-hdr"><div class="sec-lbl"><span>📎</span> IMPORTAR DE PDF OU FOTO</div></div>
       <div style="font-size:11px;color:#6e7681;margin-bottom:10px">Envie uma receita, prescrição ou foto da sua suplementação. A IA extrai os itens automaticamente.</div>
-      ${keySection}
-      <label style="display:block;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:18px;text-align:center;cursor:pointer;color:#6e7681;font-size:13px;transition:border-color .2s" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='#30363d'">
-        📄 Clique para selecionar PDF ou imagem
-        <input type="file" id="sup-file-input" accept=".pdf,image/*" style="display:none" onchange="handleSupFile(this)">
-      </label>
+      <input type="file" id="sup-file-input" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleSupFile(this)">
+      <button type="button" onclick="document.getElementById('sup-file-input').click()" style="display:block;width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:18px;text-align:center;color:#6e7681;font-size:13px" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='#30363d'">
+        📄 Selecionar PDF ou imagem
+      </button>
       <div id="import-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
       <div id="import-preview">${prevHtml}</div>
     </div>
@@ -405,16 +397,24 @@ function deleteSup(id){
 }
 
 // ── Importação via IA ─────────────────────────────────────────────────────────
+async function analyzeViaLambda(file,context){
+  const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  const resp=await fetch(`${API_URL}?action=analyze`,{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+authToken},
+    body:JSON.stringify({file:base64,mimeType:file.type,context})
+  });
+  const data=await resp.json();
+  if(!resp.ok) throw new Error(data.error||'Erro ao analisar arquivo');
+  return data.items;
+}
+
 async function handleSupFile(input){
   const file=input.files[0];if(!file) return;
-  let apiKey=localStorage.getItem('ht:claude-key')||'';
-  const keyEl=document.getElementById('claude-key-input');
-  if(keyEl?.value?.trim()){apiKey=keyEl.value.trim();localStorage.setItem('ht:claude-key',apiKey);}
   const statusEl=document.getElementById('import-status');
-  if(!apiKey){statusEl.innerHTML='<span style="color:#f87171">Informe a chave API Anthropic acima para importar automaticamente.</span>';return;}
   statusEl.innerHTML='<span style="color:#fbbf24">⏳ Analisando com IA — aguarde...</span>';
   try{
-    const sups=await analyzeSupFile(file,apiKey);
+    const sups=await analyzeViaLambda(file,'supplements');
     _importPreview=sups.map((s,i)=>({...{showOn:'always'},...s,id:'cs_'+Date.now()+i,_checked:true}));
     document.getElementById('import-preview').innerHTML=renderImportPreviewHtml();
     statusEl.innerHTML=`<span style="color:#34d399">✓ ${sups.length} item(s) encontrado(s) — selecione os que deseja importar</span>`;
@@ -450,35 +450,6 @@ function importSelectedSups(){
   if(count) document.getElementById('import-status').innerHTML=`<span style="color:#34d399">✓ ${count} suplemento(s) adicionado(s) à sua lista!</span>`;
 }
 
-async function analyzeSupFile(file,apiKey){
-  const base64=await new Promise((res,rej)=>{
-    const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);
-  });
-  const isPdf=file.type==='application/pdf';
-  const headers={'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
-  if(isPdf) headers['anthropic-beta']='pdfs-2024-09-25';
-  const block=isPdf
-    ?{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}}
-    :{type:'image',source:{type:'base64',media_type:file.type,data:base64}};
-  const resp=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',headers,
-    body:JSON.stringify({
-      model:'claude-haiku-4-5-20251001',max_tokens:2048,
-      messages:[{role:'user',content:[
-        block,
-        {type:'text',text:'Extraia todos os suplementos, vitaminas e medicamentos deste documento. Retorne APENAS um array JSON: [{"label":"nome e dose","sub":"horário e instrução de uso","icon":"emoji","showOn":"always"}]. Use showOn="treino" se for pré/pós-treino, "descanso" para dias de descanso, "always" para os demais. Somente o JSON, sem explicações.'}
-      ]}]
-    })
-  });
-  if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||'Erro na API Anthropic (verifique a chave)');}
-  const data=await resp.json();
-  const text=data.content?.[0]?.text||'';
-  const m=text.match(/\[[\s\S]*\]/);
-  if(!m) throw new Error('Nenhum suplemento identificado no arquivo');
-  try{return JSON.parse(m[0]);}catch{throw new Error('Resposta da IA em formato inválido');}
-}
-
-function clearClaudeKey(){localStorage.removeItem('ht:claude-key');renderSupsList();}
 
 // ─── GYM LOG ─────────────────────────────────────────────────────────────────
 let gymPlan=loadGymPlan();
@@ -701,12 +672,6 @@ function renderGymPlan(gymBody){
   const tr=_gymPlanTr||(userWorkouts[0]?.id||'descanso');
   const trObj=getWorkoutById(tr)||userWorkouts[0]||DESCANSO;
   const plan=gymPlan[tr]||[];
-  const apiKey=localStorage.getItem('ht:claude-key')||'';
-  const keySection=apiKey
-    ?`<div style="font-size:11px;color:#34d399;margin-bottom:10px">✓ Chave API configurada · <button onclick="clearClaudeKey();renderGym()" style="background:none;color:#6e7681;font-size:11px;text-decoration:underline;padding:0">remover</button></div>`
-    :`<div style="font-size:11px;color:#6e7681;margin-bottom:5px">Chave API Anthropic <span style="color:#4d5863">(salva só neste dispositivo)</span></div>
-      <input type="password" id="gym-claude-key" placeholder="sk-ant-..." autocomplete="off" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:10px">
-      <div style="font-size:10px;color:#4d5863;margin-bottom:10px">Mesma chave usada nos Suplementos · console.anthropic.com</div>`;
   const trTabs=userWorkouts.map(w=>{
     const sel=w.id===tr;
     return`<button onclick="gymPlanSetTr('${w.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?w.color+'20':'#0d1117'};color:${sel?w.color:'#6e7681'};border:1px solid ${sel?w.color+'60':'#21262d'};flex-shrink:0">${w.icon} ${w.name}</button>`;
@@ -756,7 +721,6 @@ function renderGymPlan(gymBody){
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><span>📎</span> IMPORTAR PLANO DE PDF</div></div>
       <div style="font-size:11px;color:#6e7681;margin-bottom:10px">Envie o PDF do seu treino. A IA extrai exercícios, séries e reps automaticamente.</div>
-      ${keySection}
       <input type="file" id="gym-plan-file" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleGymPlanFile(this,'${tr}')">
       <button type="button" onclick="document.getElementById('gym-plan-file').click()" style="display:block;width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:16px;text-align:center;color:#6e7681;font-size:13px;cursor:pointer" onmouseover="this.style.borderColor='#818cf8'" onmouseout="this.style.borderColor='#30363d'">
         📄 Selecionar PDF ou imagem do treino
@@ -811,41 +775,16 @@ function importGymPlanSelected(){
 
 async function handleGymPlanFile(input,tr){
   const file=input.files[0];if(!file) return;
-  let apiKey=localStorage.getItem('ht:claude-key')||'';
-  const keyEl=document.getElementById('gym-claude-key');
-  if(keyEl?.value?.trim()){apiKey=keyEl.value.trim();localStorage.setItem('ht:claude-key',apiKey);}
   const statusEl=document.getElementById('gym-import-status');
-  if(!apiKey){statusEl.innerHTML='<span style="color:#f87171">Informe a chave API Anthropic acima.</span>';return;}
   statusEl.innerHTML='<span style="color:#fbbf24">⏳ Analisando plano com IA — aguarde...</span>';
   try{
-    const items=await analyzeGymPlanFile(file,apiKey);
+    const items=await analyzeViaLambda(file,'gym_plan');
     _gymPlanPreview=items.map((ex,i)=>({...ex,id:'ex_'+Date.now()+i,_checked:true}));
     document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
     statusEl.innerHTML=`<span style="color:#34d399">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
   }catch(e){
     statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
   }
-}
-
-async function analyzeGymPlanFile(file,apiKey){
-  const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
-  const isPdf=file.type==='application/pdf';
-  const headers={'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'};
-  if(isPdf) headers['anthropic-beta']='pdfs-2024-09-25';
-  const block=isPdf?{type:'document',source:{type:'base64',media_type:'application/pdf',data:base64}}:{type:'image',source:{type:'base64',media_type:file.type,data:base64}};
-  const resp=await fetch('https://api.anthropic.com/v1/messages',{
-    method:'POST',headers,
-    body:JSON.stringify({
-      model:'claude-haiku-4-5-20251001',max_tokens:3000,
-      messages:[{role:'user',content:[block,{type:'text',text:'Extraia todos os exercícios deste plano de treino. Retorne APENAS um array JSON no formato: [{"name":"nome do exercício","group":"grupo muscular (Peito/Costas/Ombro/Bíceps/Tríceps/Perna/Core/Glúteo/Cardio/Outro)","sets":4,"reps":"12","obs":"observação ou técnica se houver, caso contrário omita"}]. Somente o JSON, sem explicações ou markdown.'}]}]
-    })
-  });
-  if(!resp.ok){const e=await resp.json();throw new Error(e.error?.message||'Erro na API Anthropic (verifique a chave)');}
-  const data=await resp.json();
-  const text=data.content?.[0]?.text||'';
-  const m=text.match(/\[[\s\S]*\]/);
-  if(!m) throw new Error('Nenhum exercício identificado no arquivo');
-  try{return JSON.parse(m[0]);}catch{throw new Error('Resposta da IA em formato inválido');}
 }
 
 // ─── BODY COMPOSITION ────────────────────────────────────────────────────────

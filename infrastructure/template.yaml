@@ -1,6 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Tracker Habitos - Backend API
 
+Parameters:
+  AnthropicApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Anthropic API key for AI-powered PDF/image analysis
+
 Resources:
 
   # ── Cognito ──────────────────────────────────────────────────────────────────
@@ -84,16 +91,18 @@ Resources:
       Runtime: python3.12
       Handler: index.handler
       Role: !GetAtt LambdaRole.Arn
-      Timeout: 10
+      Timeout: 30
       Environment:
         Variables:
           TABLE_NAME: tracker-habitos-data
+          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
       Code:
         ZipFile: |
-          import json,boto3,os,urllib.request,decimal
+          import json,boto3,os,urllib.request,decimal,re
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
           REGION=os.environ.get('AWS_REGION','sa-east-1')
+          ANT_KEY=os.environ.get('ANTHROPIC_API_KEY','')
           class Dec(json.JSONEncoder):
             def default(self,o):
               if isinstance(o,decimal.Decimal):
@@ -106,6 +115,27 @@ Resources:
                 return json.loads(r.read())['Username']
             except:
               return None
+          def call_ai(file_b64,mime,ctx):
+            if not ANT_KEY:
+              raise Exception('IA nao configurada no servidor')
+            is_pdf=mime=='application/pdf'
+            blk={'type':'document','source':{'type':'base64','media_type':'application/pdf','data':file_b64}} if is_pdf else {'type':'image','source':{'type':'base64','media_type':mime,'data':file_b64}}
+            if ctx=='supplements':
+              prompt='Extraia todos os suplementos, vitaminas e medicamentos. Retorne APENAS um array JSON: [{"label":"nome e dose","sub":"horario e instrucao","icon":"emoji","showOn":"always"}]. Use showOn=treino para pre/pos-treino, descanso para descanso, always para os demais. Somente o JSON, sem markdown.'
+            else:
+              prompt='Extraia todos os exercicios deste plano de treino. Retorne APENAS um array JSON: [{"name":"exercicio","group":"Peito|Costas|Ombro|Biceps|Triceps|Perna|Core|Gluteo|Cardio|Outro","sets":3,"reps":"12","obs":""}]. Somente o JSON, sem markdown.'
+            hdrs={'Content-Type':'application/json','x-api-key':ANT_KEY,'anthropic-version':'2023-06-01'}
+            if is_pdf:
+              hdrs['anthropic-beta']='pdfs-2024-09-25'
+            payload=json.dumps({'model':'claude-haiku-4-5-20251001','max_tokens':3000,'messages':[{'role':'user','content':[blk,{'type':'text','text':prompt}]}]}).encode()
+            req=urllib.request.Request('https://api.anthropic.com/v1/messages',data=payload,headers=hdrs,method='POST')
+            with urllib.request.urlopen(req,timeout=25) as r:
+              d=json.loads(r.read())
+            txt=d['content'][0]['text']
+            m=re.search(r'\[[\s\S]*\]',txt)
+            if not m:
+              raise Exception('Nenhum item identificado no arquivo')
+            return json.loads(m.group())
           def handler(event,context):
             method=event.get('requestContext',{}).get('http',{}).get('method','')
             auth=(event.get('headers') or {}).get('authorization','')
@@ -113,7 +143,15 @@ Resources:
             if not uid:
               return{'statusCode':401,'body':json.dumps({'error':'unauthorized'})}
             params=event.get('queryStringParameters') or {}
+            action=params.get('action','')
             date=params.get('date','')
+            if action=='analyze' and method=='POST':
+              try:
+                body=json.loads(event.get('body') or '{}')
+                items=call_ai(body['file'],body['mimeType'],body.get('context','gym_plan'))
+                return{'statusCode':200,'body':json.dumps({'items':items})}
+              except Exception as e:
+                return{'statusCode':500,'body':json.dumps({'error':str(e)})}
             if not date:
               return{'statusCode':400,'body':json.dumps({'error':'missing date'})}
             if method=='GET':
@@ -136,6 +174,7 @@ Resources:
         AllowMethods:
           - GET
           - PUT
+          - POST
         AllowHeaders:
           - content-type
           - authorization
