@@ -1,13 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Tracker Habitos - Backend API
 
-Parameters:
-  AnthropicApiKey:
-    Type: String
-    NoEcho: true
-    Default: ''
-    Description: Anthropic API key for AI-powered PDF/image analysis
-
 Resources:
 
   # ── Cognito ──────────────────────────────────────────────────────────────────
@@ -83,6 +76,14 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
                 Resource: !GetAtt TrackerTable.Arn
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource: "*"
 
   TrackerFunction:
     Type: AWS::Lambda::Function
@@ -95,14 +96,14 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: tracker-habitos-data
-          ANTHROPIC_API_KEY: !Ref AnthropicApiKey
       Code:
         ZipFile: |
-          import json,boto3,os,urllib.request,decimal,re
+          import json,boto3,os,urllib.request,decimal,re,base64
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
+          bedrock=boto3.client('bedrock-runtime',region_name='us-east-1')
           REGION=os.environ.get('AWS_REGION','sa-east-1')
-          ANT_KEY=os.environ.get('ANTHROPIC_API_KEY','')
+          MODEL='us.amazon.nova-lite-v1:0'
           class Dec(json.JSONEncoder):
             def default(self,o):
               if isinstance(o,decimal.Decimal):
@@ -116,22 +117,19 @@ Resources:
             except:
               return None
           def call_ai(file_b64,mime,ctx):
-            if not ANT_KEY:
-              raise Exception('IA nao configurada no servidor')
+            file_bytes=base64.b64decode(file_b64)
             is_pdf=mime=='application/pdf'
-            blk={'type':'document','source':{'type':'base64','media_type':'application/pdf','data':file_b64}} if is_pdf else {'type':'image','source':{'type':'base64','media_type':mime,'data':file_b64}}
             if ctx=='supplements':
               prompt='Extraia todos os suplementos, vitaminas e medicamentos. Retorne APENAS um array JSON: [{"label":"nome e dose","sub":"horario e instrucao","icon":"emoji","showOn":"always"}]. Use showOn=treino para pre/pos-treino, descanso para descanso, always para os demais. Somente o JSON, sem markdown.'
             else:
               prompt='Extraia todos os exercicios deste plano de treino. Retorne APENAS um array JSON: [{"name":"exercicio","group":"Peito|Costas|Ombro|Biceps|Triceps|Perna|Core|Gluteo|Cardio|Outro","sets":3,"reps":"12","obs":""}]. Somente o JSON, sem markdown.'
-            hdrs={'Content-Type':'application/json','x-api-key':ANT_KEY,'anthropic-version':'2023-06-01'}
             if is_pdf:
-              hdrs['anthropic-beta']='pdfs-2024-09-25'
-            payload=json.dumps({'model':'claude-haiku-4-5-20251001','max_tokens':3000,'messages':[{'role':'user','content':[blk,{'type':'text','text':prompt}]}]}).encode()
-            req=urllib.request.Request('https://api.anthropic.com/v1/messages',data=payload,headers=hdrs,method='POST')
-            with urllib.request.urlopen(req,timeout=25) as r:
-              d=json.loads(r.read())
-            txt=d['content'][0]['text']
+              content=[{'document':{'format':'pdf','name':'arquivo','source':{'bytes':file_bytes}}},{'text':prompt}]
+            else:
+              fmt=mime.split('/')[-1].replace('jpg','jpeg')
+              content=[{'image':{'format':fmt,'source':{'bytes':file_bytes}}},{'text':prompt}]
+            resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':content}],inferenceConfig={'maxTokens':3000})
+            txt=resp['output']['message']['content'][0]['text']
             m=re.search(r'\[[\s\S]*\]',txt)
             if not m:
               raise Exception('Nenhum item identificado no arquivo')
