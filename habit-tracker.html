@@ -196,22 +196,32 @@ textarea,input{font-family:inherit;}
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const DAYS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-const DOW={
-  0:{tr:'descanso',  isFds:true, carb:false,perna:false},
-  1:{tr:'musc_bike', isFds:false,carb:false,perna:false},
-  2:{tr:'musc_bike', isFds:false,carb:true, perna:false},
-  3:{tr:'bike',      isFds:false,carb:false,perna:false},
-  4:{tr:'musc_bike', isFds:false,carb:true, perna:true },
-  5:{tr:'musc_bike', isFds:false,carb:true, perna:false},
-  6:{tr:'cardio',    isFds:true, carb:false,perna:false},
-};
-const TRAININGS=[
-  {id:'musc_bike',label:'Musc + Bike',  icon:'🏋️🚴',color:'#818cf8'},
-  {id:'musculacao',label:'Só Musculação',icon:'🏋️',  color:'#818cf8'},
-  {id:'bike',      label:'Bike',         icon:'🚴',  color:'#38bdf8'},
-  {id:'cardio',    label:'Cardio Longo', icon:'🏃',  color:'#34d399'},
-  {id:'descanso',  label:'Descanso ativo',icon:'🛌', color:'#6e7681'},
-];
+const DESCANSO={id:'descanso',name:'Descanso',type:'descanso',icon:'🛌',color:'#6e7681',weekDays:[]};
+const WK_COLORS={musculacao:'#818cf8',aerobico:'#38bdf8',descanso:'#6e7681'};
+const WK_ICONS ={musculacao:'🏋️',aerobico:'🏃',descanso:'🛌'};
+function loadUserWorkouts(){
+  try{const s=JSON.parse(localStorage.getItem('ht:workouts')||'null');if(s&&Array.isArray(s)&&s.length)return s;}catch{}
+  return[
+    {id:'wk_musc',name:'Musculação',type:'musculacao',icon:'🏋️',color:'#818cf8',weekDays:[1,2,4,5]},
+    {id:'wk_aero',name:'Aeróbico',  type:'aerobico',  icon:'🏃', color:'#38bdf8',weekDays:[3,6]},
+  ];
+}
+let userWorkouts=loadUserWorkouts();
+function saveUserWorkouts(){
+  try{localStorage.setItem('ht:workouts',JSON.stringify(userWorkouts));}catch{}
+  if(!USE_API||!authToken) return;
+  fetch(`${API_URL}?date=__workouts__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(userWorkouts)}).catch(()=>{});
+}
+async function syncUserWorkouts(){
+  if(!USE_API||!authToken) return;
+  try{
+    const r=await fetch(`${API_URL}?date=__workouts__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){userWorkouts=d;try{localStorage.setItem('ht:workouts',JSON.stringify(d));}catch{}}}
+  }catch{}
+}
+function getWorkoutById(id){return id==='descanso'?DESCANSO:(userWorkouts.find(w=>w.id===id)||null);}
+function isGymType(tr){return userWorkouts.find(w=>w.id===tr)?.type==='musculacao';}
+function getAllDayOptions(){return[...userWorkouts,DESCANSO];}
 const MEALS=[
   {id:'cafe',  label:'Café da manhã',icon:'☀️',time:'08:00'},
   {id:'almoco',label:'Almoço',       icon:'🥗',time:'12:00'},
@@ -507,9 +517,9 @@ function getLastGymSession(tr,beforeDate){
 function showGym(){
   _gymAddOpen=false;_gymViewPlan=false;_gymPlanPreview=[];
   const dd=loadDay(currentDate);
-  const trObj=TRAININGS.find(t=>t.id===dd.tr);
+  const wk=getWorkoutById(dd.tr);
   const{day}=dispDate(currentDate);
-  document.getElementById('gym-hdr-info').textContent=day+' · '+(trObj?.label||dd.tr);
+  document.getElementById('gym-hdr-info').textContent=day+' · '+(wk?.name||dd.tr);
   document.getElementById('gym-hdr-title').textContent='Log de Treino';
   document.getElementById('gym-plan-btn').style.color='#8b949e';
   renderGym();
@@ -517,7 +527,8 @@ function showGym(){
 }
 function gymTogglePlan(){
   _gymViewPlan=!_gymViewPlan;
-  _gymPlanTr=_gymPlanTr||loadDay(currentDate).tr;
+  const _curTr=loadDay(currentDate).tr;
+  _gymPlanTr=_gymPlanTr||(_curTr!=='descanso'?_curTr:(userWorkouts[0]?.id||'descanso'));
   _gymPlanPreview=[];
   const titleEl=document.getElementById('gym-hdr-title');
   const planBtn=document.getElementById('gym-plan-btn');
@@ -528,12 +539,32 @@ function gymTogglePlan(){
 function gymPlanSetTr(tr){_gymPlanTr=tr;_gymPlanPreview=[];renderGym();}
 function gymPlanDelEx(tr,i){if(!gymPlan[tr]) return;gymPlan[tr].splice(i,1);saveGymPlan();renderGym();}
 function gymPlanClearAll(tr){if(!confirm('Limpar todos os exercícios do plano?')) return;gymPlan[tr]=[];saveGymPlan();renderGym();}
+function gymCreateWorkout(){
+  const name=(document.getElementById('gwk-name')?.value||'').trim();
+  if(!name){const el=document.getElementById('gwk-name');if(el)el.style.borderColor='#f87171';return;}
+  const type=document.getElementById('gwk-type')?.value||'musculacao';
+  const weekDays=[0,1,2,3,4,5,6].filter(d=>document.getElementById('gwk-d'+d)?.checked);
+  const id='wk_'+Date.now();
+  const color=WK_COLORS[type]||'#818cf8';
+  const icon=WK_ICONS[type]||'🏋️';
+  userWorkouts.push({id,name,type,icon,color,weekDays});
+  saveUserWorkouts();
+  _gymWkCreate=false;_gymPlanTr=id;
+  renderGym();
+}
+function gymDeleteWorkout(id){
+  if(!confirm('Excluir este treino? Os exercícios do plano serão mantidos no histórico.')) return;
+  userWorkouts=userWorkouts.filter(w=>w.id!==id);
+  saveUserWorkouts();
+  if(_gymPlanTr===id) _gymPlanTr=userWorkouts[0]?.id||null;
+  renderGym();
+}
 
 function renderGym(){
   const date=currentDate;
   const dd=loadDay(date);
   const tr=dd.tr;
-  const trObj=TRAININGS.find(t=>t.id===tr)||TRAININGS[0];
+  const trObj=getWorkoutById(tr)||userWorkouts[0]||DESCANSO;
   const gymBody=document.getElementById('gym-body');
   if(!gymBody) return;
 
@@ -569,7 +600,7 @@ function renderGym(){
     html+=`<div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#6e7681">📊 Comparando com: <b style="color:#8b949e">${pl.day} ${pl.date}</b></div>`;
   }
   html+=`<div style="display:flex;align-items:center;margin-bottom:12px">
-    <div style="flex:1"><div style="font-size:15px;font-weight:800;color:${trObj.color}">${trObj.icon} ${trObj.label}</div>${dd.isPerna?'<div style="font-size:11px;color:#818cf8;margin-top:2px">🦵 Treino de perna</div>':''}</div>
+    <div style="flex:1"><div style="font-size:15px;font-weight:800;color:${trObj.color}">${trObj.icon} ${trObj.name}</div></div>
     ${doneCount>0?`<div style="font-size:12px;color:#34d399;font-family:'DM Mono',monospace;font-weight:700">${doneCount}/${totalSets} séries ✓</div>`:''}
   </div>`;
 
@@ -620,7 +651,7 @@ function renderGym(){
     html=`<div class="card fade-in" style="text-align:center;padding:28px 16px">
       <div style="font-size:36px;margin-bottom:10px">🏋️</div>
       <div style="font-size:14px;font-weight:700;color:#e6edf3;margin-bottom:6px">Nenhum exercício ainda</div>
-      <div style="font-size:12px;color:#6e7681;margin-bottom:16px">Adicione os exercícios da sessão de hoje.<br>Serão salvos como modelo para <b>${trObj.label}</b>.</div>
+      <div style="font-size:12px;color:#6e7681;margin-bottom:16px">Adicione os exercícios da sessão de hoje.<br>Serão salvos como modelo para <b>${trObj.name}</b>.</div>
       <button onclick="gymOpenAdd()" style="padding:12px 24px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ Primeiro exercício</button>
     </div>`;
   } else {
@@ -669,9 +700,10 @@ function gymConfirmAdd(){
   _gymAddOpen=false;renderGym();
 }
 
+let _gymWkCreate=false;
 function renderGymPlan(gymBody){
-  const tr=_gymPlanTr||loadDay(currentDate).tr;
-  const trObj=TRAININGS.find(t=>t.id===tr)||TRAININGS[0];
+  const tr=_gymPlanTr||(userWorkouts[0]?.id||'descanso');
+  const trObj=getWorkoutById(tr)||userWorkouts[0]||DESCANSO;
   const plan=gymPlan[tr]||[];
   const apiKey=localStorage.getItem('ht:claude-key')||'';
   const keySection=apiKey
@@ -679,9 +711,9 @@ function renderGymPlan(gymBody){
     :`<div style="font-size:11px;color:#6e7681;margin-bottom:5px">Chave API Anthropic <span style="color:#4d5863">(salva só neste dispositivo)</span></div>
       <input type="password" id="gym-claude-key" placeholder="sk-ant-..." autocomplete="off" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:10px">
       <div style="font-size:10px;color:#4d5863;margin-bottom:10px">Mesma chave usada nos Suplementos · console.anthropic.com</div>`;
-  const trTabs=TRAININGS.filter(t=>t.id!=='descanso').map(t=>{
-    const sel=t.id===tr;
-    return`<button onclick="gymPlanSetTr('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#0d1117'};color:${sel?t.color:'#6e7681'};border:1px solid ${sel?t.color+'60':'#21262d'};flex-shrink:0">${t.icon} ${t.label}</button>`;
+  const trTabs=userWorkouts.map(w=>{
+    const sel=w.id===tr;
+    return`<button onclick="gymPlanSetTr('${w.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?w.color+'20':'#0d1117'};color:${sel?w.color:'#6e7681'};border:1px solid ${sel?w.color+'60':'#21262d'};flex-shrink:0">${w.icon} ${w.name}</button>`;
   }).join('');
   const previewHtml=_gymPlanPreview.length?renderGymPlanPreviewHtml():'';
   const exList=plan.length>0?plan.map((ex,i)=>`
@@ -693,23 +725,58 @@ function renderGymPlan(gymBody){
       <button onclick="gymPlanDelEx('${tr}',${i})" style="background:#21262d;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
     </div>`).join('')
     :`<div style="text-align:center;color:#6e7681;padding:20px 0;font-size:12px;line-height:1.7">Nenhum exercício no plano.<br>Importe um PDF ou adicione manualmente na sessão.</div>`;
+  // Gerenciar treinos
+  const wkList=userWorkouts.map((w,i)=>{
+    const days=w.weekDays.length?w.weekDays.map(d=>DAYS[d]).join(' · '):'Sem dia fixo';
+    return`<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#0d1117;border:1px solid #21262d;border-radius:10px;margin-bottom:6px">
+      <div style="width:8px;height:8px;border-radius:50%;background:${w.color};flex-shrink:0"></div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:#e6edf3">${w.icon} ${w.name}</div>
+        <div style="font-size:10px;color:#6e7681;margin-top:1px">${w.type==='musculacao'?'Musculação':'Aeróbico'} · ${days}</div>
+      </div>
+      <button onclick="gymDeleteWorkout('${w.id}')" style="background:#21262d;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
+    </div>`;
+  }).join('');
+  const createForm=_gymWkCreate?`
+    <div style="margin-top:10px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:10px">
+      <input type="text" id="gwk-name" placeholder="Nome do treino (ex: Treino A – Peito)" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:8px">
+      <select id="gwk-type" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:8px">
+        <option value="musculacao">🏋️ Musculação</option>
+        <option value="aerobico">🏃 Aeróbico</option>
+      </select>
+      <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:6px">DIAS DA SEMANA</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+        ${[0,1,2,3,4,5,6].map(d=>`<label style="display:flex;align-items:center;gap:4px;padding:5px 10px;background:#161b22;border:1px solid #21262d;border-radius:20px;font-size:11px;color:#c9d1d9;cursor:pointer"><input type="checkbox" id="gwk-d${d}" value="${d}" style="accent-color:#818cf8"> ${DAYS[d]}</label>`).join('')}
+      </div>
+      <div style="font-size:10px;color:#4d5863;margin-bottom:10px">Deixe sem dia fixo para registrar quando quiser (ex: uma vez na semana)</div>
+      <div style="display:flex;gap:8px">
+        <button onclick="gymCreateWorkout()" style="flex:1;padding:10px;background:#1f6feb;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Criar treino</button>
+        <button onclick="_gymWkCreate=false;renderGym()" style="padding:10px 14px;background:#21262d;border-radius:8px;color:#6e7681;font-size:13px">Cancelar</button>
+      </div>
+    </div>`
+    :`<button onclick="_gymWkCreate=true;renderGym()" style="width:100%;padding:9px;background:none;border:1.5px dashed #30363d;border-radius:9px;color:#6e7681;font-size:12px;margin-top:4px">+ Criar novo treino</button>`;
   gymBody.innerHTML=`
     <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;-webkit-overflow-scrolling:touch">${trTabs}</div>
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><span>📎</span> IMPORTAR PLANO DE PDF</div></div>
       <div style="font-size:11px;color:#6e7681;margin-bottom:10px">Envie o PDF do seu treino. A IA extrai exercícios, séries e reps automaticamente.</div>
       ${keySection}
-      <label style="display:block;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:16px;text-align:center;cursor:pointer;color:#6e7681;font-size:13px" onmouseover="this.style.borderColor='#818cf8'" onmouseout="this.style.borderColor='#30363d'">
-        📄 Clique para selecionar PDF ou imagem do treino
-        <input type="file" id="gym-plan-file" accept=".pdf,image/*" style="display:none" onchange="handleGymPlanFile(this,'${tr}')">
-      </label>
+      <input type="file" id="gym-plan-file" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleGymPlanFile(this,'${tr}')">
+      <button type="button" onclick="document.getElementById('gym-plan-file').click()" style="display:block;width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:16px;text-align:center;color:#6e7681;font-size:13px;cursor:pointer" onmouseover="this.style.borderColor='#818cf8'" onmouseout="this.style.borderColor='#30363d'">
+        📄 Selecionar PDF ou imagem do treino
+      </button>
       <div id="gym-import-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
       <div id="gym-import-preview">${previewHtml}</div>
     </div>
     <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>📋</span> PLANO: ${trObj.icon} ${trObj.label.toUpperCase()}</div><span style="font-size:11px;color:#6e7681">${plan.length} exercício${plan.length!==1?'s':''}</span></div>
+      <div class="sec-hdr"><div class="sec-lbl"><span>📋</span> PLANO: ${trObj.icon} ${trObj.name.toUpperCase()}</div><span style="font-size:11px;color:#6e7681">${plan.length} exercício${plan.length!==1?'s':''}</span></div>
       ${exList}
       ${plan.length>0?`<button onclick="gymPlanClearAll('${tr}')" style="width:100%;padding:8px;background:none;border:1px solid #21262d;border-radius:8px;color:#6e7681;font-size:12px;margin-top:6px">🗑️ Limpar plano</button>`:''}
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>⚙️</span> GERENCIAR TREINOS</div></div>
+      ${wkList}
+      ${createForm}
     </div>
     <button onclick="gymTogglePlan()" style="width:100%;padding:12px;background:#21262d;border-radius:10px;color:#e6edf3;font-size:14px;font-weight:600;margin-bottom:4px">← Voltar ao log de treino</button>`;
 }
@@ -743,7 +810,7 @@ function importGymPlanSelected(){
   _gymPlanPreview=[];
   renderGym();
   const st=document.getElementById('gym-import-status');
-  if(st&&count) st.innerHTML=`<span style="color:#34d399">✓ ${count} exercício(s) adicionado(s) ao plano de ${TRAININGS.find(t=>t.id===tr)?.label||tr}!</span>`;
+  if(st&&count) st.innerHTML=`<span style="color:#34d399">✓ ${count} exercício(s) adicionado(s) ao plano de ${getWorkoutById(tr)?.name||tr}!</span>`;
 }
 
 async function handleGymPlanFile(input,tr){
@@ -1143,8 +1210,10 @@ function addDays(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);r
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
 
 function makeEmpty(date){
-  const def=DOW[getDow(date)]||DOW[0];
-  return{tr:def.tr,isPerna:def.perna,isFds:def.isFds,almocoCarb:def.carb,jantarV:'refeicao',
+  const dow=getDow(date);
+  const isFds=dow===0||dow===6;
+  const suggested=userWorkouts.find(w=>w.weekDays.includes(dow));
+  return{tr:suggested?.id||'descanso',isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
          meals:{},sups:{},water:0,cardio:0,sleep:null,sleepOk:null,notes:''};
 }
 
@@ -1274,7 +1343,7 @@ function calcScore(d){
   const coD=d.sleepOk?1:0;
   const cD=d.cardio>=goals.cardioMin?1:0;
   const spD=sups.filter(s=>d.sups[s.id]).length;
-  const isGym=d.tr==='musc_bike'||d.tr==='musculacao';
+  const isGym=isGymType(d.tr);
   const tD=isGym?(d.sups['treino_ok']?1:0):0;
   const tT=isGym?1:0;
   const total=MEALS.length+1+2+1+sups.length+tT;
@@ -1297,6 +1366,7 @@ async function syncGoals(){
   }catch{}
   await syncBodyEntries();
   await syncGymPlan();
+  await syncUserWorkouts();
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
@@ -1419,7 +1489,7 @@ function renderResumo(body,sc){
 }
 
 function renderRefeicoes(body,sc){
-  const trBtns=TRAININGS.map(t=>{const sel=dayData.tr===t.id;return`<button class="day-type-btn" onclick="setTr('${t.id}')" style="${sel?`background:${t.color}25;color:${t.color};border-color:${t.color}60`:''}"><div style="font-size:15px;margin-bottom:2px">${t.icon}</div>${t.label}</button>`;}).join('');
+  const trBtns=getAllDayOptions().map(t=>{const sel=dayData.tr===t.id;return`<button class="day-type-btn" onclick="setTr('${t.id}')" style="${sel?`background:${t.color}25;color:${t.color};border-color:${t.color}60`:''}"><div style="font-size:15px;margin-bottom:2px">${t.icon}</div>${t.name}</button>`;}).join('');
   let html=`<div class="card fade-in">
     <div class="sec-hdr"><div class="sec-lbl"><span>📅</span> TIPO DE DIA</div></div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px">${trBtns}</div>
@@ -1428,13 +1498,14 @@ function renderRefeicoes(body,sc){
       <button class="toggle-chip ${dayData.isFds?'active fds':''}" onclick="toggle('isFds')">Final de semana 🌅</button>
     </div>
   </div>`;
-  if(dayData.tr==='musc_bike'||dayData.tr==='musculacao'){
+  if(dayData.tr!=='descanso'){
     const done=!!dayData.sups['treino_ok'];
-    const t=TRAININGS.find(t=>t.id===dayData.tr);
-    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🏋️</span> TREINO CONCLUÍDO</div><button onclick="showBnav('gym')" style="font-size:11px;background:#21262d;color:#818cf8;padding:4px 10px;border-radius:6px">📝 Log detalhado</button></div>
+    const wk=getWorkoutById(dayData.tr);
+    const gymIcon=wk?.type==='aerobico'?'🏃':'🏋️';
+    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>${gymIcon}</span> TREINO CONCLUÍDO</div><button onclick="showBnav('gym')" style="font-size:11px;background:#21262d;color:#818cf8;padding:4px 10px;border-radius:6px">📝 Log detalhado</button></div>
       <button class="check-row ${done?'done':''}" onclick="toggleSup('treino_ok')">
         <div class="check-circle ${done?'done':''}">${done?'✓':''}</div>
-        <div><div style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${t?.label} — sessão completa</div>
+        <div><div style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${wk?.name||'Treino'} — sessão completa</div>
         <div style="font-size:11px;color:#4d5863;margin-top:2px">Marque ao concluir o treino</div></div>
       </button>
     </div>`;
@@ -1536,7 +1607,7 @@ function changeDay(n){currentDate=addDays(currentDate,n);render();}
 function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+id).classList.add('active');}
 function toggleMeal(id){dayData.meals[id]=!dayData.meals[id];save();renderUI();}
 function toggleSup(id){dayData.sups[id]=!dayData.sups[id];save();renderUI();}
-function setTr(id){dayData.tr=id;if(id==='musc_bike'&&getDow(currentDate)===4)dayData.isPerna=true;save();renderUI();}
+function setTr(id){dayData.tr=id;save();renderUI();}
 function toggle(k){dayData[k]=!dayData[k];save();renderUI();}
 function setJantar(v){dayData.jantarV=v;save();renderUI();}
 function setCardio(m){dayData.cardio=dayData.cardio===m?0:m;save();renderUI();}
