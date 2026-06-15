@@ -241,24 +241,21 @@ function getMealDetail(id,d){
   }
   return{macro:'~200 kcal · ~22g prot',hint:'Iogurte grego + cacau em pó + morangos + Whey misturado',badge:'21:00'};
 }
-function getSups(tr,isPerna){
-  if(customSups.length>0){
-    return customSups.filter(s=>
-      s.showOn==='always'||
-      (s.showOn==='treino'&&tr!=='descanso')||
-      (s.showOn==='descanso'&&tr==='descanso')
-    );
-  }
-  const a=[
-    {id:'pump',  label:'PUMP — pré-treino',sub:'Cafeína + Ioimbina + Capsaicina + Astaxantina',icon:'⚡',showIf:tr!=='descanso'},
-    {id:'oxi',   label:'Oximetalona 4mg',  sub:'1 comprimido antes do treino de perna',icon:'💪',showIf:isPerna},
-    {id:'f2',    label:'Fórmula 2',         sub:'Berberina + Inositol + Cromo + Topiramato — antes do jantar',icon:'🟣'},
-    {id:'dhea',  label:'DHEA 25mg',         sub:'1 comprimido à noite',icon:'🟡'},
-    {id:'omega', label:'Ômega-3',           sub:'Dose diária',icon:'🐟'},
-    {id:'zm',    label:'Zinco + Magnésio',  sub:'Growth — dose diária',icon:'⚪'},
-    {id:'col',   label:'Colágeno',          sub:'Dose diária',icon:'🟤'},
-  ];
-  return a.filter(s=>s.showIf===undefined||s.showIf);
+const DEFAULT_SUPS=[
+  {id:'pump',  label:'PUMP — pré-treino',     sub:'Cafeína + Ioimbina + Capsaicina + Astaxantina',icon:'⚡',showOn:'treino'},
+  {id:'oxi',   label:'Oximetalona 4mg',        sub:'1 comprimido antes do treino de perna',         icon:'💪',showOn:'treino'},
+  {id:'f2',    label:'Fórmula 2',              sub:'Berberina + Inositol + Cromo + Topiramato — antes do jantar',icon:'🟣',showOn:'always'},
+  {id:'dhea',  label:'DHEA 25mg',              sub:'1 comprimido à noite',                          icon:'🟡',showOn:'always'},
+  {id:'omega', label:'Ômega-3',                sub:'Dose diária',                                   icon:'🐟',showOn:'always'},
+  {id:'zm',    label:'Zinco + Magnésio',        sub:'Growth — dose diária',                         icon:'⚪',showOn:'always'},
+  {id:'col',   label:'Colágeno',               sub:'Dose diária',                                   icon:'🟤',showOn:'always'},
+];
+function getSups(tr){
+  return customSups.filter(s=>
+    s.showOn==='always'||
+    (s.showOn==='treino'&&tr!=='descanso')||
+    (s.showOn==='descanso'&&tr==='descanso')
+  );
 }
 const SLEEPS=[{id:'s1',l:'< 6h',ok:false},{id:'s2',l:'6–7h',ok:false},{id:'s3',l:'7–8h',ok:true},{id:'s4',l:'8h+',ok:true}];
 
@@ -268,7 +265,11 @@ let _supEditId=null;
 let _importPreview=[];
 
 function loadCustomSups(){
-  try{return JSON.parse(localStorage.getItem('ht:csups')||'[]');}catch{return[];}
+  try{
+    const raw=localStorage.getItem('ht:csups');
+    if(raw!==null){const s=JSON.parse(raw);if(Array.isArray(s))return s;}
+  }catch{}
+  return DEFAULT_SUPS.map(s=>({...s}));
 }
 function saveCustomSups(){
   try{localStorage.setItem('ht:csups',JSON.stringify(customSups));}catch{}
@@ -505,6 +506,13 @@ function gymTogglePlan(){
   renderGym();
 }
 function gymPlanSetTr(tr){_gymPlanTr=tr==='none'?null:tr;_gymPlanPreview=[];renderGym();}
+function gymSetDay(id){
+  dayData.tr=id;save();
+  const wk=getWorkoutById(id);
+  const hEl=document.getElementById('gym-hdr-info');
+  if(hEl){const{day}=dispDate(currentDate);hEl.textContent=day+' · '+(wk?.name||id);}
+  renderGym();
+}
 function gymPlanDelEx(tr,i){if(!gymPlan[tr]) return;gymPlan[tr].splice(i,1);saveGymPlan();renderGym();}
 function gymPlanClearAll(tr){if(!confirm('Limpar todos os exercícios do plano?')) return;gymPlan[tr]=[];saveGymPlan();renderGym();}
 function gymCreateWorkout(){
@@ -543,7 +551,7 @@ function renderGym(){
   const selectorHtml='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;-webkit-overflow-scrolling:touch">'+
     getAllDayOptions().map(t=>{
       const sel=tr===t.id;
-      return`<button onclick="dayData.tr='${t.id}';save();renderGym()" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#0d1117'};color:${sel?t.color:'#6e7681'};border:1px solid ${sel?t.color+'60':'#21262d'};flex-shrink:0">${t.icon} ${t.name}</button>`;
+      return`<button onclick="gymSetDay('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#0d1117'};color:${sel?t.color:'#6e7681'};border:1px solid ${sel?t.color+'60':'#21262d'};flex-shrink:0">${t.icon} ${t.name}</button>`;
     }).join('')+'</div>';
 
   if(tr==='descanso'){
@@ -1307,7 +1315,7 @@ function saveDay(date,d){
 }
 
 function calcScore(d){
-  const sups=getSups(d.tr,d.isPerna);
+  const sups=getSups(d.tr);
   const mD=MEALS.filter(m=>d.meals[m.id]).length;
   const wD=d.water>=goals.aguaCopos?1:0;
   const slD=SLEEPS.find(s=>s.id===d.sleep)?.ok?1:0;
@@ -1450,7 +1458,7 @@ function renderHoje(body,sc){
   MEALS.forEach(m=>{if(!dayData.meals[m.id])missing.push(m.icon+' '+m.label);});
   if(dayData.water<goals.aguaCopos) missing.push('💧 Água — '+dayData.water+'/'+goals.aguaCopos+' copos');
   if(dayData.cardio<goals.cardioMin) missing.push('🚴 Cardio — '+(dayData.cardio||0)+'/'+goals.cardioMin+' min');
-  getSups(dayData.tr,dayData.isPerna).forEach(s=>{if(!dayData.sups[s.id])missing.push(s.icon+' '+s.label);});
+  getSups(dayData.tr).forEach(s=>{if(!dayData.sups[s.id])missing.push(s.icon+' '+s.label);});
   if(!dayData.sleep||!SLEEPS.find(o=>o.id===dayData.sleep)?.ok) missing.push('😴 Sono — menos de 7h');
   if(pct>0&&pct<55&&missing.length){
     const SO=['💧','😴','☀️','🥗','🥛','🌙','🍓','🚴'];
@@ -1465,18 +1473,6 @@ function renderHoje(body,sc){
 
 function renderNutricao(body,sc){
   let html='';
-  if(dayData.tr!=='descanso'){
-    const done=!!dayData.sups['treino_ok'];
-    const wk=getWorkoutById(dayData.tr);
-    const gymIcon=wk?.type==='aerobico'?'🏃':'🏋️';
-    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>${gymIcon}</span> TREINO CONCLUÍDO</div><button onclick="showBnav('gym')" style="font-size:11px;background:#21262d;color:#818cf8;padding:4px 10px;border-radius:6px">📝 Log detalhado</button></div>
-      <button class="check-row ${done?'done':''}" onclick="toggleSup('treino_ok')">
-        <div class="check-circle ${done?'done':''}">${done?'✓':''}</div>
-        <div><div style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${wk?.name||'Treino'} — sessão completa</div>
-        <div style="font-size:11px;color:#4d5863;margin-top:2px">Marque ao concluir o treino</div></div>
-      </button>
-    </div>`;
-  }
   const jBtns=[{id:'refeicao',l:'🍽️ Refeição'},{id:'rap10',l:'🌯 Rap10'},{id:'hamburguer',l:'🍔 Hambúrguer'}].map(v=>`<button onclick="setJantar('${v.id}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;background:${dayData.jantarV===v.id?'#1f6feb':'#0d1117'};color:${dayData.jantarV===v.id?'#fff':'#6e7681'};border:1px solid ${dayData.jantarV===v.id?'#388bfd':'#21262d'}">${v.l}</button>`).join('');
   const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#6e7681;font-family:'DM Mono',monospace">${m.time}</span></div><div style="font-size:10px;color:${done?'#3d5040':'#6e7681'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#3d5040':'#4d5863'};line-height:1.45">${det.hint}</div><div class="badge">${det.badge}</div></div></button>`;}).join('');
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.meals.d===sc.meals.t?'#fb923c':'#6e7681'}">${sc.meals.d}/${sc.meals.t}</span></div>
@@ -1487,7 +1483,7 @@ function renderNutricao(body,sc){
 }
 
 function renderSuplDay(body,sc){
-  const sups=getSups(dayData.tr,dayData.isPerna);
+  const sups=getSups(dayData.tr);
   const wk=getWorkoutById(dayData.tr);
   const contextLabel=wk?`${wk.icon} ${wk.name}`:'Descanso';
   let html='';
