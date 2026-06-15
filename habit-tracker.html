@@ -537,8 +537,14 @@ function renderGym(){
 
   if(_gymViewPlan){renderGymPlan(gymBody);return;}
 
+  const selectorHtml='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;-webkit-overflow-scrolling:touch">'+
+    getAllDayOptions().map(t=>{
+      const sel=tr===t.id;
+      return`<button onclick="dayData.tr='${t.id}';save();renderGym()" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#0d1117'};color:${sel?t.color:'#6e7681'};border:1px solid ${sel?t.color+'60':'#21262d'};flex-shrink:0">${t.icon} ${t.name}</button>`;
+    }).join('')+'</div>';
+
   if(tr==='descanso'){
-    gymBody.innerHTML=`<div class="card fade-in" style="text-align:center;padding:32px 20px"><div style="font-size:40px;margin-bottom:12px">🛌</div><div style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:6px">Dia de Descanso Ativo</div><div style="font-size:12px;color:#6e7681">Sem musculação hoje. Recuperação é parte do treino.</div></div>`;
+    gymBody.innerHTML=selectorHtml+`<div class="card fade-in" style="text-align:center;padding:32px 20px"><div style="font-size:40px;margin-bottom:12px">🛌</div><div style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:6px">Dia de Descanso Ativo</div><div style="font-size:12px;color:#6e7681">Sem musculação hoje. Recuperação é parte do treino.</div></div>`;
     return;
   }
 
@@ -561,7 +567,7 @@ function renderGym(){
   const doneCount=session.reduce((a,ex)=>a+ex.sets.filter(s=>s.done).length,0);
   const totalSets=session.reduce((a,ex)=>a+ex.sets.length,0);
 
-  let html='';
+  let html=selectorHtml;
   if(prev){
     const pl=dispDate(prev.date);
     html+=`<div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#6e7681">📊 Comparando com: <b style="color:#8b949e">${pl.day} ${pl.date}</b></div>`;
@@ -1427,15 +1433,7 @@ function renderHoje(body,sc){
 }
 
 function renderNutricao(body,sc){
-  const trBtns=getAllDayOptions().map(t=>{const sel=dayData.tr===t.id;return`<button class="day-type-btn" onclick="setTr('${t.id}')" style="${sel?`background:${t.color}25;color:${t.color};border-color:${t.color}60`:''}"><div style="font-size:15px;margin-bottom:2px">${t.icon}</div>${t.name}</button>`;}).join('');
-  let html=`<div class="card fade-in">
-    <div class="sec-hdr"><div class="sec-lbl"><span>📅</span> TIPO DE DIA</div></div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-bottom:8px">${trBtns}</div>
-    <div style="display:flex;gap:7px">
-      <button class="toggle-chip ${dayData.isPerna?'active':''}" onclick="toggle('isPerna')">Treino de perna 🦵</button>
-      <button class="toggle-chip ${dayData.isFds?'active fds':''}" onclick="toggle('isFds')">Final de semana 🌅</button>
-    </div>
-  </div>`;
+  let html='';
   if(dayData.tr!=='descanso'){
     const done=!!dayData.sups['treino_ok'];
     const wk=getWorkoutById(dayData.tr);
