@@ -195,6 +195,7 @@ const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov',
 const DESCANSO={id:'descanso',name:'Descanso',type:'descanso',icon:'🛌',color:'#6e7681',weekDays:[]};
 const WK_COLORS={musculacao:'#818cf8',aerobico:'#38bdf8',descanso:'#6e7681'};
 const WK_ICONS ={musculacao:'🏋️',aerobico:'🏃',descanso:'🛌'};
+const GYM_GROUPS=['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo','Cardio','Outro'];
 function loadUserWorkouts(){
   try{const s=JSON.parse(localStorage.getItem('ht:workouts')||'null');if(s&&Array.isArray(s)&&s.length)return s;}catch{}
   return[
@@ -608,7 +609,7 @@ function renderGym(){
   });
 
   if(_gymAddOpen){
-    const GYM_GROUPS=['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo','Cardio','Outro'];
+    // GYM_GROUPS defined at module level
     const inp2='background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 8px;color:#e6edf3;font-size:14px;font-weight:700;outline:none;text-align:center;width:100%';
     html+=`<div class="card fade-in"><div class="sec-hdr"><div class="sec-lbl"><span>➕</span> ADICIONAR EXERCÍCIO</div></div>
       <input type="text" id="gym-new-name" placeholder="Nome do exercício" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none;margin-bottom:8px">
@@ -681,6 +682,20 @@ function gymCreateFilePick(inp){
   const el=document.getElementById('gwk-file-label');
   if(el) el.textContent=_gymCreateFile?'📎 '+_gymCreateFile.name:'📄 Importar plano (PDF ou imagem) — opcional';
 }
+let _gymPlanAddOpen=null;
+function gymPlanManualAdd(wId){_gymPlanAddOpen=wId;renderGym();setTimeout(()=>document.getElementById('gpa-name')?.focus(),50);}
+function gymPlanManualCancel(){_gymPlanAddOpen=null;renderGym();}
+function gymPlanManualConfirm(wId){
+  const name=(document.getElementById('gpa-name')?.value||'').trim();
+  if(!name){const el=document.getElementById('gpa-name');if(el)el.style.borderColor='#f87171';return;}
+  const group=document.getElementById('gpa-group')?.value||'Outro';
+  const nSets=parseInt(document.getElementById('gpa-sets')?.value)||3;
+  const reps=(document.getElementById('gpa-reps')?.value||'').trim();
+  const obs=(document.getElementById('gpa-obs')?.value||'').trim();
+  if(!gymPlan[wId]) gymPlan[wId]=[];
+  gymPlan[wId].push({id:'ex_'+Date.now(),name,group,defaultSets:nSets,defaultReps:reps,obs});
+  saveGymPlan();_gymPlanAddOpen=null;renderGym();
+}
 let _gymWkCreate=false;
 function renderGymPlan(gymBody){
   const inp2='background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none';
@@ -707,6 +722,21 @@ function renderGymPlan(gymBody){
           <div id="gym-import-status" style="font-size:12px;min-height:14px;margin-bottom:4px"></div>
           <div id="gym-import-preview">${previewHtml}</div>
           ${exList}
+          ${_gymPlanAddOpen===w.id?`
+          <div style="background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:12px;margin-top:8px" class="fade-in">
+            <input type="text" id="gpa-name" placeholder="Nome do exercício" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:8px">
+            <select id="gpa-group" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+              <div><div style="font-size:10px;color:#6e7681;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gpa-sets" value="3" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:8px 4px;color:#e6edf3;font-size:15px;font-weight:700;text-align:center;outline:none"></div>
+              <div><div style="font-size:10px;color:#6e7681;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gpa-reps" placeholder="12" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:8px 4px;color:#e6edf3;font-size:15px;font-weight:700;text-align:center;outline:none"></div>
+            </div>
+            <input type="text" id="gpa-obs" placeholder="Observação (opcional)" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:10px">
+            <div style="display:flex;gap:8px">
+              <button onclick="gymPlanManualConfirm('${w.id}')" style="flex:1;padding:10px;background:#1f6feb;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Adicionar</button>
+              <button onclick="gymPlanManualCancel()" style="padding:10px 14px;background:#21262d;border-radius:8px;color:#6e7681;font-size:13px">Cancelar</button>
+            </div>
+          </div>`
+          :`<button onclick="gymPlanManualAdd('${w.id}')" style="width:100%;padding:9px;background:none;border:1.5px dashed #30363d;border-radius:9px;color:#6e7681;font-size:12px;margin-top:8px">+ Adicionar exercício manualmente</button>`}
           ${plan.length>0?`<button onclick="gymPlanClearAll('${w.id}')" style="width:100%;padding:8px;background:none;border:1px solid #21262d;border-radius:8px;color:#6e7681;font-size:12px;margin-top:6px">🗑️ Limpar plano</button>`:''}
         </div>`;
     }
