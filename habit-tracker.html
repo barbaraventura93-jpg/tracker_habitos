@@ -503,7 +503,7 @@ function gymTogglePlan(){
   if(planBtn) planBtn.style.color=_gymViewPlan?'#818cf8':'#8b949e';
   renderGym();
 }
-function gymPlanSetTr(tr){_gymPlanTr=tr;_gymPlanPreview=[];renderGym();}
+function gymPlanSetTr(tr){_gymPlanTr=tr==='none'?null:tr;_gymPlanPreview=[];renderGym();}
 function gymPlanDelEx(tr,i){if(!gymPlan[tr]) return;gymPlan[tr].splice(i,1);saveGymPlan();renderGym();}
 function gymPlanClearAll(tr){if(!confirm('Limpar todos os exercícios do plano?')) return;gymPlan[tr]=[];saveGymPlan();renderGym();}
 function gymCreateWorkout(){
@@ -517,7 +517,9 @@ function gymCreateWorkout(){
   userWorkouts.push({id,name,type,icon,color,weekDays});
   saveUserWorkouts();
   _gymWkCreate=false;_gymPlanTr=id;
+  const file=_gymCreateFile;_gymCreateFile=null;
   renderGym();
+  if(file) setTimeout(()=>handleGymPlanFile({files:[file]},id),80);
 }
 function gymDeleteWorkout(id){
   if(!confirm('Excluir este treino? Os exercícios do plano serão mantidos no histórico.')) return;
@@ -673,78 +675,77 @@ function gymConfirmAdd(){
   _gymAddOpen=false;renderGym();
 }
 
+let _gymCreateFile=null;
+function gymCreateFilePick(inp){
+  _gymCreateFile=inp.files?.[0]||null;
+  const el=document.getElementById('gwk-file-label');
+  if(el) el.textContent=_gymCreateFile?'📎 '+_gymCreateFile.name:'📄 Importar plano (PDF ou imagem) — opcional';
+}
 let _gymWkCreate=false;
 function renderGymPlan(gymBody){
-  const tr=_gymPlanTr||(userWorkouts[0]?.id||'descanso');
-  const trObj=getWorkoutById(tr)||userWorkouts[0]||DESCANSO;
-  const plan=gymPlan[tr]||[];
-  const trTabs=userWorkouts.map(w=>{
-    const sel=w.id===tr;
-    return`<button onclick="gymPlanSetTr('${w.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?w.color+'20':'#0d1117'};color:${sel?w.color:'#6e7681'};border:1px solid ${sel?w.color+'60':'#21262d'};flex-shrink:0">${w.icon} ${w.name}</button>`;
-  }).join('');
-  const previewHtml=_gymPlanPreview.length?renderGymPlanPreviewHtml():'';
-  const exList=plan.length>0?plan.map((ex,i)=>`
-    <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#0d1117;border:1px solid #21262d;border-radius:10px;margin-bottom:6px">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:700;color:#e6edf3">${ex.name}</div>
-        <div style="font-size:11px;color:#6e7681;margin-top:1px">${ex.group||''}${ex.defaultSets?' · '+ex.defaultSets+'×'+(ex.defaultReps||'?'):''}${ex.obs?' · '+ex.obs:''}</div>
-      </div>
-      <button onclick="gymPlanDelEx('${tr}',${i})" style="background:#21262d;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
-    </div>`).join('')
-    :`<div style="text-align:center;color:#6e7681;padding:20px 0;font-size:12px;line-height:1.7">Nenhum exercício no plano.<br>Importe um PDF ou adicione manualmente na sessão.</div>`;
-  // Gerenciar treinos
-  const wkList=userWorkouts.map((w,i)=>{
+  const inp2='background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none';
+  const workoutCards=userWorkouts.map(w=>{
+    const isExp=_gymPlanTr===w.id;
+    const plan=gymPlan[w.id]||[];
     const days=w.weekDays.length?w.weekDays.map(d=>DAYS[d]).join(' · '):'Sem dia fixo';
-    return`<div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#0d1117;border:1px solid #21262d;border-radius:10px;margin-bottom:6px">
-      <div style="width:8px;height:8px;border-radius:50%;background:${w.color};flex-shrink:0"></div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:13px;font-weight:700;color:#e6edf3">${w.icon} ${w.name}</div>
-        <div style="font-size:10px;color:#6e7681;margin-top:1px">${w.type==='musculacao'?'Musculação':'Aeróbico'} · ${days}</div>
+    let expContent='';
+    if(isExp){
+      const previewHtml=_gymPlanPreview.length?renderGymPlanPreviewHtml():'';
+      const exList=plan.length>0?plan.map((ex,i)=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#0d1117;border:1px solid #21262d;border-radius:10px;margin-bottom:6px">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;color:#e6edf3">${ex.name}</div>
+            <div style="font-size:11px;color:#6e7681;margin-top:1px">${ex.group||''}${ex.defaultSets?' · '+ex.defaultSets+'×'+(ex.defaultReps||'?'):''}${ex.obs?' · '+ex.obs:''}</div>
+          </div>
+          <button onclick="gymPlanDelEx('${w.id}',${i})" style="background:#21262d;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
+        </div>`).join('')
+        :'<div style="text-align:center;color:#6e7681;padding:16px 0;font-size:12px;line-height:1.6">Nenhum exercício. Importe um PDF ou realize o treino para preencher.</div>';
+      expContent=`
+        <div style="border-top:1px solid #21262d;margin-top:10px;padding-top:12px">
+          <input type="file" id="gym-plan-file-${w.id}" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleGymPlanFile(this,'${w.id}')">
+          <button type="button" onclick="document.getElementById('gym-plan-file-${w.id}').click()" style="width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:12px;text-align:center;color:#6e7681;font-size:12px;cursor:pointer;margin-bottom:8px">📄 Importar plano de PDF ou imagem</button>
+          <div id="gym-import-status" style="font-size:12px;min-height:14px;margin-bottom:4px"></div>
+          <div id="gym-import-preview">${previewHtml}</div>
+          ${exList}
+          ${plan.length>0?`<button onclick="gymPlanClearAll('${w.id}')" style="width:100%;padding:8px;background:none;border:1px solid #21262d;border-radius:8px;color:#6e7681;font-size:12px;margin-top:6px">🗑️ Limpar plano</button>`:''}
+        </div>`;
+    }
+    return`<div class="card" style="margin-bottom:8px${isExp?';border-color:'+w.color+'50':''}">
+      <div style="display:flex;align-items:center;gap:10px">
+        <div style="width:36px;height:36px;border-radius:10px;background:${w.color}20;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${w.icon}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;color:#e6edf3">${w.name}</div>
+          <div style="font-size:10px;color:#6e7681;margin-top:2px">${w.type==='musculacao'?'Musculação':'Aeróbico'} · ${days} · <b style="color:${w.color}">${plan.length} ex.</b></div>
+        </div>
+        <button onclick="gymPlanSetTr('${isExp?'none':w.id}')" style="padding:6px 10px;border-radius:8px;background:${isExp?w.color+'20':'#21262d'};color:${isExp?w.color:'#8b949e'};font-size:12px;flex-shrink:0">${isExp?'▲':'▼'}</button>
+        <button onclick="gymDeleteWorkout('${w.id}')" style="background:#21262d;color:#f87171;padding:6px 9px;border-radius:8px;font-size:11px;flex-shrink:0">✕</button>
       </div>
-      <button onclick="gymDeleteWorkout('${w.id}')" style="background:#21262d;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
+      ${expContent}
     </div>`;
   }).join('');
   const createForm=_gymWkCreate?`
-    <div style="margin-top:10px;padding:12px;background:#0d1117;border:1px solid #30363d;border-radius:10px">
-      <input type="text" id="gwk-name" placeholder="Nome do treino (ex: Treino A – Peito)" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:8px">
-      <select id="gwk-type" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:8px">
+    <div class="card fade-in">
+      <div class="sec-hdr"><div class="sec-lbl"><span>➕</span> NOVO TREINO</div></div>
+      <input type="text" id="gwk-name" placeholder="Nome (ex: Treino A – Peito/Tríceps)" style="width:100%;${inp2};margin-bottom:8px">
+      <select id="gwk-type" style="width:100%;${inp2};margin-bottom:8px">
         <option value="musculacao">🏋️ Musculação</option>
         <option value="aerobico">🏃 Aeróbico</option>
       </select>
-      <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:6px">DIAS DA SEMANA</div>
-      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:12px">
+      <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:6px">DIAS SUGERIDOS</div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
         ${[0,1,2,3,4,5,6].map(d=>`<label style="display:flex;align-items:center;gap:4px;padding:5px 10px;background:#161b22;border:1px solid #21262d;border-radius:20px;font-size:11px;color:#c9d1d9;cursor:pointer"><input type="checkbox" id="gwk-d${d}" value="${d}" style="accent-color:#818cf8"> ${DAYS[d]}</label>`).join('')}
       </div>
-      <div style="font-size:10px;color:#4d5863;margin-bottom:10px">Deixe sem dia fixo para registrar quando quiser (ex: uma vez na semana)</div>
+      <div style="font-size:10px;color:#4d5863;margin-bottom:12px">Deixe sem dia fixo para registrar quando quiser</div>
+      <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:6px">PLANO DE EXERCÍCIOS (opcional)</div>
+      <input type="file" id="gwk-plan-file" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="gymCreateFilePick(this)">
+      <button type="button" id="gwk-file-label" onclick="document.getElementById('gwk-plan-file').click()" style="width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:12px;text-align:center;color:#6e7681;font-size:12px;cursor:pointer;margin-bottom:12px">📄 Importar plano (PDF ou imagem) — opcional</button>
       <div style="display:flex;gap:8px">
         <button onclick="gymCreateWorkout()" style="flex:1;padding:10px;background:#1f6feb;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Criar treino</button>
-        <button onclick="_gymWkCreate=false;renderGym()" style="padding:10px 14px;background:#21262d;border-radius:8px;color:#6e7681;font-size:13px">Cancelar</button>
+        <button onclick="_gymWkCreate=false;_gymCreateFile=null;renderGym()" style="padding:10px 14px;background:#21262d;border-radius:8px;color:#6e7681;font-size:13px">Cancelar</button>
       </div>
     </div>`
-    :`<button onclick="_gymWkCreate=true;renderGym()" style="width:100%;padding:9px;background:none;border:1.5px dashed #30363d;border-radius:9px;color:#6e7681;font-size:12px;margin-top:4px">+ Criar novo treino</button>`;
-  gymBody.innerHTML=`
-    <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:12px;-webkit-overflow-scrolling:touch">${trTabs}</div>
-    <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>📎</span> IMPORTAR PLANO DE PDF</div></div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:10px">Envie o PDF do seu treino. A IA extrai exercícios, séries e reps automaticamente.</div>
-      <input type="file" id="gym-plan-file" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleGymPlanFile(this,'${tr}')">
-      <button type="button" onclick="document.getElementById('gym-plan-file').click()" style="display:block;width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:16px;text-align:center;color:#6e7681;font-size:13px;cursor:pointer" onmouseover="this.style.borderColor='#818cf8'" onmouseout="this.style.borderColor='#30363d'">
-        📄 Selecionar PDF ou imagem do treino
-      </button>
-      <div id="gym-import-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
-      <div id="gym-import-preview">${previewHtml}</div>
-    </div>
-    <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>📋</span> PLANO: ${trObj.icon} ${trObj.name.toUpperCase()}</div><span style="font-size:11px;color:#6e7681">${plan.length} exercício${plan.length!==1?'s':''}</span></div>
-      ${exList}
-      ${plan.length>0?`<button onclick="gymPlanClearAll('${tr}')" style="width:100%;padding:8px;background:none;border:1px solid #21262d;border-radius:8px;color:#6e7681;font-size:12px;margin-top:6px">🗑️ Limpar plano</button>`:''}
-    </div>
-    <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>⚙️</span> GERENCIAR TREINOS</div></div>
-      ${wkList}
-      ${createForm}
-    </div>
-    <button onclick="gymTogglePlan()" style="width:100%;padding:12px;background:#21262d;border-radius:10px;color:#e6edf3;font-size:14px;font-weight:600;margin-bottom:4px">← Voltar ao log de treino</button>`;
+    :`<button onclick="_gymWkCreate=true;renderGym()" style="width:100%;padding:10px;background:none;border:1.5px dashed #30363d;border-radius:10px;color:#6e7681;font-size:12px;margin-bottom:8px">+ Criar novo treino</button>`;
+  gymBody.innerHTML=workoutCards+createForm+`<button onclick="gymTogglePlan()" style="width:100%;padding:12px;background:#21262d;border-radius:10px;color:#e6edf3;font-size:14px;font-weight:600;margin-bottom:4px">← Voltar ao log de treino</button>`;
 }
 
 function renderGymPlanPreviewHtml(){
