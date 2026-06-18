@@ -1,6 +1,6 @@
-# 📋 Habit Tracker
+# 📋 Rotina Diária
 
-App de acompanhamento de rotina diária — refeições, cardio, água, suplementos e sono — com histórico de 60 dias e sincronização entre dispositivos.
+App de acompanhamento de rotina diária — refeições, água, suplementos, sono, treino e metas personalizadas — com sincronização entre dispositivos e histórico de 60 dias.
 
 🌐 **[Acessar o app](https://d1o1gejacy6m9o.cloudfront.net)**
 
@@ -10,23 +10,39 @@ App de acompanhamento de rotina diária — refeições, cardio, água, suplemen
 
 - Cadastro e login com e-mail/senha via AWS Cognito
 - Dados sincronizados na nuvem — acessíveis em qualquer dispositivo
+- Layout responsivo: sidebar lateral no desktop, barra inferior no mobile
+
+### Hoje
 - Marcação de refeições do dia com detalhes de macros
 - Controle de água com indicador de copos, ml e litros consumidos/meta
-- Cardio, suplementos e treino com checklist detalhado
-- Registro de sono e horário consistente
-- Score diário com anel de progresso e % no cabeçalho
-- Histórico visual dos últimos 60 dias com calendário alinhado por dia da semana
+- Suplementos com checklist configurável por tipo de dia (treino/descanso)
+- Registro de sono (horas + horário consistente)
+- Metas personalizadas com progresso em tempo real
+- Score diário com anel de progresso, barras por categoria e pendências
 
-### Metas pessoais inteligentes
+### Treino
+- Log de exercícios com séries, reps e kg
+- Comparação automática com a última sessão do mesmo treino
+- Campo de duração (⏱️ min) que alimenta as metas automaticamente
+- Plano de treino por tipo (A/B/C) — separado por sessão, sem misturar dados
+- Upload de plano via PDF ou imagem (interpretado via IA)
+- % de sucesso do dia sobe automaticamente ao concluir séries
 
-Tela de configuração de metas com cálculo automático baseado em evidências científicas:
+### Nutrição
+- Controle de macros por refeição
+- Metas de calorias calculadas automaticamente
+
+### Suplementos
+- Cadastro livre de suplementos com nome, dose, ícone e visibilidade (sempre / dia de treino / descanso)
+
+### Metas Pessoais
+
+Tela de configuração com cálculo automático baseado em evidências científicas:
 
 | Meta | Fórmula | Referência |
 |---|---|---|
-| **Água** | Peso atual × 35 ml/kg → converte em copos (250 ml) e exibe ml e L | EFSA & Institute of Medicine |
-| **Calorias** | BMR (Mifflin-St Jeor) × fator de atividade ± ajuste de meta de peso | ISSN / ACSM (2005) |
-
-**Perfil configurável:** sexo, idade, altura, peso atual, peso meta, dias de treino/semana e cardio mínimo.
+| **Água** | Peso atual × 35 ml/kg → copos de 250 ml | EFSA & Institute of Medicine |
+| **Calorias** | BMR (Mifflin-St Jeor) × fator de atividade ± ajuste de peso | ISSN / ACSM (2005) |
 
 **Fator de atividade (TDEE):**
 - 0–1 dias/semana → ×1,2 (sedentário)
@@ -34,10 +50,21 @@ Tela de configuração de metas com cálculo automático baseado em evidências 
 - 4–5 dias → ×1,55 (moderado)
 - 6–7 dias → ×1,725 (intenso)
 
-**Ajuste de meta de peso:**
-- Perda de peso (meta < atual): −400 kcal/dia
-- Ganho de massa (meta > atual): +300 kcal/dia
-- Manutenção: sem ajuste
+**Ajuste de meta de peso:** −400 kcal (perda) / +300 kcal (ganho) / sem ajuste (manutenção).
+
+#### Metas Personalizadas
+
+Crie metas livres com frequência e acompanhamento automático:
+
+- **Nome + ícone** configuráveis (ex: 🚴 Bike)
+- **Unidade** livre (min, km, h, sessões…)
+- **Frequência:** Diária / Semanal / Mensal
+- **Vínculo com treino:** ao vincular a um tipo de treino, o progresso é lido automaticamente da duração registrada na sessão — sem entrada manual
+- Barra de progresso e % de completude exibidos na tela Hoje
+
+### Histórico
+- Calendário dos últimos 60 dias com % diário
+- Streak de dias acima de 80%, média geral e dias excelentes
 
 ---
 
@@ -63,9 +90,7 @@ Tela de configuração de metas com cálculo automático baseado em evidências 
 | Lambda | API de leitura/escrita dos dados | Free Tier |
 | GitHub Actions | CI/CD automático no push | Gratuito |
 
-**Bucket:** `tracker-habitos`
-**Região:** `sa-east-1` (São Paulo)
-**URL:** `https://d1o1gejacy6m9o.cloudfront.net`
+**Bucket:** `tracker-habitos` · **Região:** `sa-east-1` (São Paulo) · **URL:** `https://d1o1gejacy6m9o.cloudfront.net`
 
 ---
 
@@ -78,16 +103,6 @@ Qualquer `push` na branch `main` dispara o workflow que:
 3. Sincroniza os arquivos com o S3
 4. Invalida o cache do CloudFront
 
-### Permissões necessárias no IAM (`github-actions-tracker`)
-
-- `AmazonS3FullAccess`
-- `CloudFrontFullAccess`
-- `AWSCloudFormationFullAccess`
-- `AWSLambda_FullAccess`
-- `AmazonDynamoDBFullAccess`
-- `AmazonCognitoPowerUser`
-- `IAMFullAccess`
-
 ### Secrets no GitHub
 
 | Secret | Descrição |
@@ -99,14 +114,19 @@ Qualquer `push` na branch `main` dispara o workflow que:
 
 ## Rodando localmente
 
-Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet ou fora do deploy, o app funciona offline usando `localStorage`.
+Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o app funciona offline usando `localStorage`.
 
 ---
 
-## Próximos passos
+## Changelog recente
 
-- [x] CloudFront + HTTPS
+- [x] Layout responsivo com sidebar no desktop
+- [x] Metas personalizadas (frequência diária/semanal/mensal)
+- [x] Vínculo entre meta e tipo de treino — duração lida automaticamente
+- [x] Duração do treino contabilizada no % de sucesso do dia
+- [x] Sessão de treino separada por tipo (A/B/C) — troca sem perder dados
+- [x] Plano de treino por tipo com upload de PDF/imagem via IA
+- [x] Suplementos personalizados
 - [x] Persistência em nuvem com DynamoDB + Lambda
 - [x] Autenticação com AWS Cognito
-- [x] Metas pessoais com cálculo científico de água e calorias
 - [ ] Domínio customizado via Route 53
