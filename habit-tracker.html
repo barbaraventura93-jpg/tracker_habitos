@@ -467,6 +467,7 @@ let gymPlan=loadGymPlan();
 let _gymAddOpen=false;
 let _gymViewPlan=false;
 let _gymPlanTr=null;
+let _cgFormOpen=false;
 let _gymPlanPreview=[];
 function loadGymPlan(){try{return JSON.parse(localStorage.getItem('ht:gymplan')||'{}');}catch{return{};}}
 function saveGymPlan(){
@@ -1016,7 +1017,7 @@ function deleteBodyEntry(date){
 }
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
-const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,cardioMin:30};
+const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,cardioMin:30,customGoals:[]};
 let goals=loadGoals();
 function loadGoals(){
   try{const s=localStorage.getItem('ht:goals');return s?{...DEFAULT_GOALS,...JSON.parse(s)}:{...DEFAULT_GOALS};}
@@ -1089,6 +1090,7 @@ function showGoals(){
       <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Meta diária (min)</div>
       <input type="number" id="g-cardio" value="${g.cardioMin}" placeholder="ex: 30" style="${inp}">
     </div>
+    ${renderCustomGoalsSection()}
     <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#1f6feb;border-radius:12px;color:#fff;font-size:15px;font-weight:700;margin-bottom:10px">Salvar metas</button>`;
   showScreen('goals');setBnavActive('mais');
   goalsCalcUpdate();
@@ -1179,6 +1181,7 @@ function goalsCalcUpdate(){
 }
 function saveGoalsForm(){
   const g={
+    ...goals,
     pesoAtual:document.getElementById('g-peso-atual').value,
     pesoMeta:document.getElementById('g-peso-meta').value,
     altura:document.getElementById('g-altura').value,
@@ -1201,13 +1204,27 @@ function today(){return new Date().toISOString().split('T')[0];}
 function getDow(s){const[y,m,d]=s.split('-');return new Date(+y,+m-1,+d).getDay();}
 function addDays(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().split('T')[0];}
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
+function getCustomGoalProgress(goal){
+  const id=goal.id,freq=goal.frequency,target=goal.target;
+  let logged=0;
+  if(freq==='diaria'){
+    logged=(dayData.customLogs||{})[id]||0;
+  }else if(freq==='semanal'){
+    const dow=getDow(currentDate);const mon=addDays(currentDate,-(dow===0?6:dow-1));
+    for(let i=0;i<7;i++){const d=addDays(mon,i);const dd=d===currentDate?dayData:loadDay(d);logged+=(dd.customLogs||{})[id]||0;}
+  }else if(freq==='mensal'){
+    const[y,m]=currentDate.split('-');const dim=new Date(+y,+m,0).getDate();
+    for(let i=1;i<=dim;i++){const d=`${y}-${m}-${String(i).padStart(2,'0')}`;const dd=d===currentDate?dayData:loadDay(d);logged+=(dd.customLogs||{})[id]||0;}
+  }
+  return{logged,pct:target>0?Math.min(100,Math.round(logged/target*100)):0};
+}
 
 function makeEmpty(date){
   const dow=getDow(date);
   const isFds=dow===0||dow===6;
   const suggested=userWorkouts.find(w=>w.weekDays.includes(dow));
   return{tr:suggested?.id||'descanso',isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
-         meals:{},sups:{},water:0,cardio:0,sleep:null,sleepOk:null,notes:''};
+         meals:{},sups:{},water:0,cardio:0,sleep:null,sleepOk:null,notes:'',customLogs:{}};
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -1441,6 +1458,34 @@ function renderHoje(body,sc){
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${cBtns}</div>
     ${dayData.cardio>=goals.cardioMin?'<div style="font-size:11px;color:#34d399;text-align:center;font-weight:600">✓ Meta diária atingida!</div>':''}
   </div>`;
+  // METAS PERSONALIZADAS
+  const cgs=goals.customGoals||[];
+  if(cgs.length){
+    const freqLbl={diaria:'Hoje',semanal:'Semana',mensal:'Mês'};
+    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🎯</span> METAS PERSONALIZADAS</div></div>`;
+    cgs.forEach((g,gi)=>{
+      const{logged,pct}=getCustomGoalProgress(g);
+      const todayVal=(dayData.customLogs||{})[g.id]||0;
+      const isLast=gi===cgs.length-1;
+      const col=pct>=100?'#34d399':pct>=60?'#fbbf24':'#6e7681';
+      const deltas=g.unit==='min'?[15,30]:g.unit==='km'?[1,5]:g.unit==='h'?[1,2]:[1,5];
+      html+=`<div style="margin-bottom:${isLast?0:14}px;${isLast?'':'padding-bottom:14px;border-bottom:1px solid #21262d'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
+          <div style="font-size:13px;font-weight:700;color:#e6edf3">${g.icon||'🎯'} ${g.name}</div>
+          <div style="font-size:11px;font-family:'DM Mono',monospace;color:${col}">${logged}/${g.target} ${g.unit} · ${pct}%</div>
+        </div>
+        <div class="score-bar-bg" style="margin-bottom:8px"><div class="score-bar-fill" style="width:${pct}%;background:${col}"></div></div>
+        <div style="font-size:10px;color:#6e7681;margin-bottom:8px">${freqLbl[g.frequency]||'Período'}: <b style="color:#8b949e">${logged}</b> de <b style="color:#8b949e">${g.target} ${g.unit}</b>${pct>=100?' <span style="color:#34d399">✓ Meta atingida!</span>':''}</div>
+        <div style="display:flex;gap:5px;align-items:center">
+          <button onclick="addCustomLog('${g.id}',-${deltas[0]})" style="padding:7px 10px;border-radius:8px;background:#0d1117;border:1px solid #21262d;color:#6e7681;font-size:12px;font-weight:700">−${deltas[0]}</button>
+          ${deltas.map(d=>`<button onclick="addCustomLog('${g.id}',${d})" style="flex:1;padding:7px 6px;border-radius:8px;background:rgba(31,111,235,.12);border:1px solid rgba(31,111,235,.3);color:#388bfd;font-size:12px;font-weight:700">+${d}</button>`).join('')}
+          <input type="number" inputmode="decimal" value="${todayVal||''}" placeholder="0" onchange="setCustomLog('${g.id}',+this.value)" style="width:58px;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:7px 4px;color:#e6edf3;font-size:13px;font-weight:700;text-align:center;outline:none">
+          <span style="font-size:11px;color:#4d5863">${g.unit}</span>
+        </div>
+      </div>`;
+    });
+    html+=`</div>`;
+  }
   // ÁGUA
   const wBars=Array.from({length:goals.aguaCopos}).map((_,i)=>`<button class="water-bar ${i<dayData.water?'active':''}" onclick="setWater(${i})"></button>`).join('');
   const wMlCur=dayData.water*250,wMlMeta=goals.aguaCopos*250;
@@ -1639,6 +1684,69 @@ function showHistory(){
     <div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📋</span> DETALHES</div></div><div style="max-height:360px;overflow-y:auto">${listRows}</div></div>`;
 
   showScreen('history');setBnavActive('mais');
+}
+
+// ─── CUSTOM GOALS ────────────────────────────────────────────────────────────
+function renderCustomGoalsSection(){
+  const cgs=goals.customGoals||[];
+  const freqOpts=['diaria','semanal','mensal'].map(f=>`<option value="${f}">${{diaria:'Diária',semanal:'Semanal',mensal:'Mensal'}[f]}</option>`).join('');
+  const inp='background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 10px;color:#e6edf3;font-size:13px;outline:none';
+  const listRows=cgs.map((g,i)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;${i<cgs.length-1?'border-bottom:1px solid #21262d':''}">
+      <div style="font-size:22px">${g.icon||'🎯'}</div>
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:700;color:#e6edf3">${g.name}</div>
+        <div style="font-size:11px;color:#6e7681">${{diaria:'Diária',semanal:'Semanal',mensal:'Mensal'}[g.frequency]} · Meta: ${g.target} ${g.unit}</div>
+      </div>
+      <button onclick="goalsDeleteCustom(${i})" style="padding:5px 9px;border-radius:7px;background:#7f1d1d20;border:1px solid #7f1d1d60;color:#f87171;font-size:12px">🗑️</button>
+    </div>`).join('');
+  const form=_cgFormOpen?`
+    <div style="background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:14px;margin-top:10px">
+      <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Nome da meta</div><input id="cg-name" placeholder="ex: Bike, Corrida" style="width:100%;${inp}"></div>
+        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Ícone</div><input id="cg-icon" value="🎯" style="width:100%;${inp};text-align:center;font-size:18px"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Unidade</div><input id="cg-unit" placeholder="min / km / h" style="width:100%;${inp}"></div>
+        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Frequência</div><select id="cg-freq" style="width:100%;${inp}">${freqOpts}</select></div>
+        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Meta</div><input id="cg-target" type="number" placeholder="150" style="width:100%;${inp}"></div>
+      </div>
+      <div style="display:flex;gap:7px">
+        <button onclick="goalsCancelCustom()" style="flex:1;padding:9px;border-radius:9px;background:#21262d;color:#6e7681;font-size:13px;font-weight:700">Cancelar</button>
+        <button onclick="goalsSaveCustom()" style="flex:2;padding:9px;border-radius:9px;background:#16a34a;color:#fff;font-size:13px;font-weight:700">Salvar meta</button>
+      </div>
+    </div>`:'';
+  return`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🎯</span> METAS PERSONALIZADAS</div><button onclick="goalsAddCustomForm()" style="background:#21262d;color:#8b949e;padding:5px 11px;border-radius:7px;font-size:12px;font-weight:700">+ Nova</button></div>
+    ${cgs.length?listRows:'<div style="font-size:12px;color:#4d5863;text-align:center;padding:10px 0">Nenhuma meta cadastrada</div>'}
+    ${form}
+  </div>`;
+}
+function goalsAddCustomForm(){_cgFormOpen=true;showGoals();setTimeout(()=>document.getElementById('cg-name')?.focus(),50);}
+function goalsCancelCustom(){_cgFormOpen=false;showGoals();}
+function goalsSaveCustom(){
+  const name=(document.getElementById('cg-name')?.value||'').trim();
+  const target=parseFloat(document.getElementById('cg-target')?.value)||0;
+  if(!name||!target) return;
+  const icon=document.getElementById('cg-icon')?.value||'🎯';
+  const unit=(document.getElementById('cg-unit')?.value||'min').trim();
+  const frequency=document.getElementById('cg-freq')?.value||'semanal';
+  const cgs=[...(goals.customGoals||[])];
+  cgs.push({id:'cg_'+Date.now(),name,icon,unit,frequency,target});
+  saveGoals({...goals,customGoals:cgs});
+  _cgFormOpen=false;showGoals();
+}
+function goalsDeleteCustom(i){
+  if(!confirm('Excluir esta meta?')) return;
+  const cgs=[...(goals.customGoals||[])];cgs.splice(i,1);
+  saveGoals({...goals,customGoals:cgs});showGoals();
+}
+function setCustomLog(id,val){
+  if(!dayData.customLogs) dayData.customLogs={};
+  dayData.customLogs[id]=Math.max(0,+val||0);save();renderUI();
+}
+function addCustomLog(id,delta){
+  if(!dayData.customLogs) dayData.customLogs={};
+  setCustomLog(id,Math.max(0,(dayData.customLogs[id]||0)+delta));
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
