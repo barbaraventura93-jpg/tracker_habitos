@@ -19,6 +19,7 @@ textarea,input{font-family:inherit;}
 ::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px;}
 .fade-in{animation:fadeIn .22s ease;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@keyframes confetti-fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
 #app{max-width:460px;margin:0 auto;}
 .header{background:#161b22;border-bottom:1px solid #21262d;padding:12px 16px;position:sticky;top:0;z-index:50;}
 .header-inner{display:flex;align-items:center;justify-content:space-between;}
@@ -184,7 +185,21 @@ textarea,input{font-family:inherit;}
     </div>
     <div class="body" id="mais-body"></div>
   </div>
+
+  <!-- GOALS MGMT SCREEN -->
+  <div id="screen-goalsmgmt" class="screen">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="showMais()">←</button>
+        <div style="font-size:16px;font-weight:800;color:#e6edf3">Metas e Objetivos</div>
+        <button onclick="showGoalForm(null)" style="background:#1f6feb;color:#fff;padding:7px 13px;border-radius:8px;font-size:14px;font-weight:700">+ Nova</button>
+      </div>
+    </div>
+    <div class="body" id="goalsmgmt-body"></div>
+  </div>
 </div>
+
+<div id="confetti-wrap" style="position:fixed;top:0;left:0;right:0;height:100vh;pointer-events:none;z-index:9999;display:none;overflow:hidden"></div>
 
 <!-- BOTTOM NAV -->
 <nav class="bnav">
@@ -267,6 +282,22 @@ function getSups(tr){
   );
 }
 const SLEEPS=[{id:'s1',l:'< 6h',ok:false},{id:'s2',l:'6–7h',ok:false},{id:'s3',l:'7–8h',ok:true},{id:'s4',l:'8h+',ok:true}];
+
+const GOAL_CATS=[
+  {id:'reading',  icon:'📚',label:'Leitura',      units:['livros','páginas','min','horas'],    deltas:[1,10,30]},
+  {id:'learning', icon:'🎓',label:'Aprendizado',  units:['min','horas','módulos','cursos'],     deltas:[15,30,60]},
+  {id:'exercise', icon:'💪',label:'Exercício',    units:['min','horas','sessões','km'],         deltas:[15,30,60]},
+  {id:'nutrition',icon:'🥗',label:'Alimentação',  units:['refeições','calorias','g'],           deltas:[1,100,500]},
+  {id:'hydration',icon:'💧',label:'Hidratação',   units:['ml','L','copos'],                    deltas:[250,500,750]},
+  {id:'finance',  icon:'💰',label:'Finanças',     units:['R$','%'],                            deltas:[]},
+  {id:'wellness', icon:'🧘',label:'Bem-estar',    units:['min','sessões'],                     deltas:[10,20,30]},
+  {id:'sleep',    icon:'😴',label:'Sono',         units:['horas'],                             deltas:[0.5,1]},
+  {id:'personal', icon:'🌱',label:'Hábito pessoal',units:['vezes','dias'],                    deltas:[1,2,5]},
+  {id:'creative', icon:'✍️', label:'Criativo',     units:['palavras','páginas','horas'],        deltas:[1,5,10]},
+  {id:'social',   icon:'🤝',label:'Social',       units:['encontros','ligações'],              deltas:[1,2]},
+  {id:'custom',   icon:'➕',label:'Personalizado', units:[],                                   deltas:[1,5,10]},
+];
+function getCat(id){return GOAL_CATS.find(c=>c.id===id)||GOAL_CATS[GOAL_CATS.length-1];}
 
 // ─── CUSTOM SUPPLEMENTS ──────────────────────────────────────────────────────
 let customSups=loadCustomSups();
@@ -467,7 +498,6 @@ let gymPlan=loadGymPlan();
 let _gymAddOpen=false;
 let _gymViewPlan=false;
 let _gymPlanTr=null;
-let _cgFormOpen=false;
 let _gymPlanPreview=[];
 function loadGymPlan(){try{return JSON.parse(localStorage.getItem('ht:gymplan')||'{}');}catch{return{};}}
 function saveGymPlan(){
@@ -1024,8 +1054,12 @@ function deleteBodyEntry(date){
 }
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
-const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,customGoals:[]};
+const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5};
 let goals=loadGoals();
+let goalsDefs=(()=>{try{const s=JSON.parse(localStorage.getItem('ht:goalsdefs')||'null');if(Array.isArray(s))return s;}catch{}return[];})();
+let goalLogs=(()=>{try{const s=JSON.parse(localStorage.getItem('ht:goallogs')||'null');if(Array.isArray(s))return s;}catch{}return[];})();
+function saveGoalsDefs(){try{localStorage.setItem('ht:goalsdefs',JSON.stringify(goalsDefs));}catch{}if(!USE_API||!authToken)return;fetch(`${API_URL}?date=__goalsdefs__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(goalsDefs)}).catch(()=>{});}
+function saveGoalLogs(){try{localStorage.setItem('ht:goallogs',JSON.stringify(goalLogs));}catch{}if(!USE_API||!authToken)return;fetch(`${API_URL}?date=__goallogs__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(goalLogs)}).catch(()=>{});}
 function loadGoals(){
   try{const s=localStorage.getItem('ht:goals');return s?{...DEFAULT_GOALS,...JSON.parse(s)}:{...DEFAULT_GOALS};}
   catch{return{...DEFAULT_GOALS};}
@@ -1092,7 +1126,6 @@ function showGoals(){
       <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Copos por dia — aceite o sugerido ou ajuste:</div>
       <div id="g-agua-btns" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>
     </div>
-    ${renderCustomGoalsSection()}
     <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#1f6feb;border-radius:12px;color:#fff;font-size:15px;font-weight:700;margin-bottom:10px">Salvar metas</button>`;
   showScreen('goals');setBnavActive('mais');
   goalsCalcUpdate();
@@ -1205,24 +1238,66 @@ function today(){return new Date().toISOString().split('T')[0];}
 function getDow(s){const[y,m,d]=s.split('-');return new Date(+y,+m-1,+d).getDay();}
 function addDays(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().split('T')[0];}
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
-function getCustomGoalProgress(goal){
-  const id=goal.id,freq=goal.frequency,target=goal.target,linked=goal.linkedWorkout||'';
-  function dayVal(d){
-    const dd=d===currentDate?dayData:loadDay(d);
-    if(linked) return dd.tr===linked?(dd.gymDurMin||0):0;
-    return(dd.customLogs||{})[id]||0;
+function getGoalPeriod(goal){
+  const now=currentDate;
+  if(goal.frequency==='daily')return{start:now,end:now};
+  if(goal.frequency==='weekly'){const dow=getDow(now);const mon=addDays(now,-(dow===0?6:dow-1));return{start:mon,end:addDays(mon,6)};}
+  if(goal.frequency==='monthly'){const[y,m]=now.split('-');const dim=new Date(+y,+m,0).getDate();return{start:`${y}-${m}-01`,end:`${y}-${m}-${String(dim).padStart(2,'0')}`};}
+  if(goal.frequency==='yearly'){const y=now.split('-')[0];return{start:`${y}-01-01`,end:`${y}-12-31`};}
+  if(goal.frequency==='once')return{start:'2000-01-01',end:goal.deadline||now};
+  return{start:now,end:now};
+}
+function getGoalProgress(goal){
+  const period=getGoalPeriod(goal);
+  let total=goalLogs.filter(l=>l.goalId===goal.id&&l.date>=period.start&&l.date<=period.end).reduce((s,l)=>s+(l.value||0),0);
+  if(goal.linkedWorkout){
+    let d=period.start;while(d<=period.end&&d<=currentDate){const dd=d===currentDate?dayData:loadDay(d);if(dd.tr===goal.linkedWorkout)total+=(dd.gymDurMin||0);d=addDays(d,1);}
   }
-  let logged=0;
-  if(freq==='diaria'){
-    logged=dayVal(currentDate);
-  }else if(freq==='semanal'){
-    const dow=getDow(currentDate);const mon=addDays(currentDate,-(dow===0?6:dow-1));
-    for(let i=0;i<7;i++) logged+=dayVal(addDays(mon,i));
-  }else if(freq==='mensal'){
-    const[y,m]=currentDate.split('-');const dim=new Date(+y,+m,0).getDate();
-    for(let i=1;i<=dim;i++) logged+=dayVal(`${y}-${m}-${String(i).padStart(2,'0')}`);
-  }
-  return{logged,pct:target>0?Math.min(100,Math.round(logged/target*100)):0};
+  const pct=goal.targetValue>0?Math.min(100,Math.round(total/goal.targetValue*100)):0;
+  const remaining=Math.max(0,goal.targetValue-total);
+  const endMs=new Date(period.end+'T12:00:00').getTime();
+  const startMs=new Date(period.start+'T12:00:00').getTime();
+  const nowMs=new Date(currentDate+'T12:00:00').getTime();
+  const totalMs=endMs-startMs||1;
+  const daysLeft=Math.max(0,Math.round((endMs-nowMs)/86400000));
+  const pctTimeLeft=Math.round((endMs-nowMs)/totalMs*100);
+  const isAtRisk=pct<70&&pctTimeLeft<20;
+  return{total,pct,remaining,isAtRisk,daysLeft,pctTimeLeft,period};
+}
+function addGoalLog(goalId,value,note=''){
+  if(!(+value>0)) return;
+  const goal=goalsDefs.find(g=>g.id===goalId);if(!goal) return;
+  goalLogs.push({id:'log_'+Date.now(),goalId,value:+value,note,date:currentDate,loggedAt:new Date().toISOString()});
+  saveGoalLogs();
+  const{pct}=getGoalProgress(goal);
+  if(pct>=100) triggerConfetti();
+  renderUI();
+}
+function quickLog(goalId,delta){addGoalLog(goalId,delta);}
+function triggerConfetti(){
+  const wrap=document.getElementById('confetti-wrap');if(!wrap) return;
+  const colors=['#34d399','#fbbf24','#818cf8','#f87171','#38bdf8','#fb923c'];
+  wrap.innerHTML=Array.from({length:50},(_,i)=>{
+    const col=colors[i%colors.length];const x=Math.random()*100;
+    const delay=Math.random()*0.8;const dur=1.5+Math.random()*1;const size=6+Math.random()*8;
+    return`<div style="position:absolute;left:${x}%;top:-10px;width:${size}px;height:${size}px;background:${col};border-radius:${Math.random()>0.5?'50%':'2px'};animation:confetti-fall ${dur}s ${delay}s ease-in forwards"></div>`;
+  }).join('');
+  wrap.style.display='block';
+  setTimeout(()=>{wrap.style.display='none';wrap.innerHTML='';},3500);
+}
+function suggestCat(t){
+  t=t.toLowerCase();
+  if(/livr|pág|ler |leitura|capítulo/.test(t)) return 'reading';
+  if(/curso|aula|aprender|estudar|módulo|certificad/.test(t)) return 'learning';
+  if(/exerc|treino|bike|corrida|academia|pedal|km|muscula|nadar/.test(t)) return 'exercise';
+  if(/comer|refeic|caloria|aliment|dieta/.test(t)) return 'nutrition';
+  if(/água|agua|hidrat|copo|litro/.test(t)) return 'hydration';
+  if(/economiz|poupar|investir|financ|dinheiro|reais/.test(t)) return 'finance';
+  if(/meditar|yoga|mindful|relaxar|bem-estar/.test(t)) return 'wellness';
+  if(/dorm|sono/.test(t)) return 'sleep';
+  if(/escrever|criar|desenhar|cantar|tocar/.test(t)) return 'creative';
+  if(/amig|famíl|social|ligar|encontr/.test(t)) return 'social';
+  return 'custom';
 }
 
 function makeEmpty(date){
@@ -1230,7 +1305,7 @@ function makeEmpty(date){
   const isFds=dow===0||dow===6;
   const suggested=userWorkouts.find(w=>w.weekDays.includes(dow));
   return{tr:suggested?.id||'descanso',isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
-         meals:{},sups:{},water:0,sleep:null,sleepOk:null,notes:'',customLogs:{},gymDurMin:0};
+         meals:{},sups:{},water:0,sleep:null,sleepOk:null,notes:'',gymDurMin:0};
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -1383,6 +1458,18 @@ async function syncGoals(){
   await syncBodyEntries();
   await syncGymPlan();
   await syncUserWorkouts();
+  await syncGoalsDefs();
+  await syncGoalLogs();
+}
+async function syncGoalsDefs(){
+  if(!USE_API||!authToken) return;
+  try{const r=await fetch(`${API_URL}?date=__goalsdefs__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){goalsDefs=d;try{localStorage.setItem('ht:goalsdefs',JSON.stringify(d));}catch{}}}}catch{}
+}
+async function syncGoalLogs(){
+  if(!USE_API||!authToken) return;
+  try{const r=await fetch(`${API_URL}?date=__goallogs__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){goalLogs=d;try{localStorage.setItem('ht:goallogs',JSON.stringify(d));}catch{}}}}catch{}
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
@@ -1456,38 +1543,7 @@ function renderHoje(body,sc){
     </div>
     ${barsHtml}
   </div>`;
-  // METAS PERSONALIZADAS
-  const cgs=goals.customGoals||[];
-  if(cgs.length){
-    const freqLbl={diaria:'Hoje',semanal:'Semana',mensal:'Mês'};
-    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🎯</span> METAS PERSONALIZADAS</div></div>`;
-    cgs.forEach((g,gi)=>{
-      const{logged,pct}=getCustomGoalProgress(g);
-      const todayVal=(dayData.customLogs||{})[g.id]||0;
-      const isLast=gi===cgs.length-1;
-      const col=pct>=100?'#34d399':pct>=60?'#fbbf24':'#6e7681';
-      const isLinked=!!(g.linkedWorkout);
-      const deltas=g.unit==='min'?[15,30]:g.unit==='km'?[1,5]:g.unit==='h'?[1,2]:[1,5];
-      const inputRow=isLinked
-        ?`<div style="display:flex;align-items:center;gap:7px;background:#0d1117;border:1px solid #21262d;border-radius:9px;padding:8px 11px"><span style="font-size:12px">⏱️</span><span style="font-size:12px;color:#6e7681;flex:1">Hoje: <b style="color:#e6edf3">${todayVal||0} ${g.unit}</b></span><span style="font-size:10px;color:#4d5863">lido do treino →</span></div>`
-        :`<div style="display:flex;gap:5px;align-items:center">
-            <button onclick="addCustomLog('${g.id}',-${deltas[0]})" style="padding:7px 10px;border-radius:8px;background:#0d1117;border:1px solid #21262d;color:#6e7681;font-size:12px;font-weight:700">−${deltas[0]}</button>
-            ${deltas.map(d=>`<button onclick="addCustomLog('${g.id}',${d})" style="flex:1;padding:7px 6px;border-radius:8px;background:rgba(31,111,235,.12);border:1px solid rgba(31,111,235,.3);color:#388bfd;font-size:12px;font-weight:700">+${d}</button>`).join('')}
-            <input type="number" inputmode="decimal" value="${todayVal||''}" placeholder="0" onchange="setCustomLog('${g.id}',+this.value)" style="width:58px;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:7px 4px;color:#e6edf3;font-size:13px;font-weight:700;text-align:center;outline:none">
-            <span style="font-size:11px;color:#4d5863">${g.unit}</span>
-          </div>`;
-      html+=`<div style="margin-bottom:${isLast?0:14}px;${isLast?'':'padding-bottom:14px;border-bottom:1px solid #21262d'}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
-          <div style="font-size:13px;font-weight:700;color:#e6edf3">${g.icon||'🎯'} ${g.name}</div>
-          <div style="font-size:11px;font-family:'DM Mono',monospace;color:${col}">${logged}/${g.target} ${g.unit} · ${pct}%</div>
-        </div>
-        <div class="score-bar-bg" style="margin-bottom:8px"><div class="score-bar-fill" style="width:${pct}%;background:${col}"></div></div>
-        <div style="font-size:10px;color:#6e7681;margin-bottom:8px">${freqLbl[g.frequency]||'Período'}: <b style="color:#8b949e">${logged}</b> de <b style="color:#8b949e">${g.target} ${g.unit}</b>${pct>=100?' <span style="color:#34d399">✓ Meta atingida!</span>':''}</div>
-        ${inputRow}
-      </div>`;
-    });
-    html+=`</div>`;
-  }
+  html+=renderGoalsToday();
   // ÁGUA
   const wBars=Array.from({length:goals.aguaCopos}).map((_,i)=>`<button class="water-bar ${i<dayData.water?'active':''}" onclick="setWater(${i})"></button>`).join('');
   const wMlCur=dayData.water*250,wMlMeta=goals.aguaCopos*250;
@@ -1609,7 +1665,8 @@ function renderMais(){
   const items=[
     {icon:'📈',label:'Composição Corporal',sub:'Peso · % gordura · massa magra',fn:"showBodyComp()",c:'#38bdf8'},
     {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
-    {icon:'🎯',label:'Metas Pessoais',sub:'Água, exercícios, calorias e mais',fn:"showGoals()",c:'#34d399'},
+    {icon:'🎯',label:'Metas e Objetivos',sub:'Acompanhe todas as suas metas',fn:"showGoalsMgmt()",c:'#34d399'},
+    {icon:'⚙️',label:'Configurações de Saúde',sub:'Água, calorias, perfil e peso',fn:"showGoals()",c:'#38bdf8'},
     {icon:'💊',label:'Gerenciar Suplementos',sub:'Cadastrar e editar seus suplementos',fn:"showSups()",c:'#fbbf24'},
   ];
   const cards=items.map(it=>`
@@ -1688,68 +1745,252 @@ function showHistory(){
 }
 
 // ─── CUSTOM GOALS ────────────────────────────────────────────────────────────
-function renderCustomGoalsSection(){
-  const cgs=goals.customGoals||[];
-  const freqOpts=['diaria','semanal','mensal'].map(f=>`<option value="${f}">${{diaria:'Diária',semanal:'Semanal',mensal:'Mensal'}[f]}</option>`).join('');
-  const inp='background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 10px;color:#e6edf3;font-size:13px;outline:none';
-  const listRows=cgs.map((g,i)=>`
-    <div style="display:flex;align-items:center;gap:10px;padding:10px 0;${i<cgs.length-1?'border-bottom:1px solid #21262d':''}">
-      <div style="font-size:22px">${g.icon||'🎯'}</div>
-      <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;color:#e6edf3">${g.name}</div>
-        <div style="font-size:11px;color:#6e7681">${{diaria:'Diária',semanal:'Semanal',mensal:'Mensal'}[g.frequency]} · Meta: ${g.target} ${g.unit}</div>
+let _goalFormMode=null;
+let _goalEditId=null;
+let _goalDraft={};
+
+function renderGoalCard(goal,mini=false){
+  const prog=getGoalProgress(goal);
+  const cat=getCat(goal.category);
+  const barCol=prog.pct>=100?'#34d399':prog.isAtRisk?'#fb923c':prog.pct>=60?'#fbbf24':'#4d5863';
+  const freqLbl={daily:'Hoje',weekly:'Semana',monthly:'Mês',yearly:'Ano',once:'Total'}[goal.frequency]||'Período';
+  let html=`<div style="margin-bottom:12px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+      <div style="font-size:13px;font-weight:700;color:#e6edf3">${goal.icon||cat.icon} ${goal.title}</div>
+      <div style="font-size:11px;font-family:'DM Mono',monospace;color:${barCol}">${prog.pct}%</div>
+    </div>
+    <div class="score-bar-bg" style="margin-bottom:${mini?0:7}px"><div class="score-bar-fill" style="width:${prog.pct}%;background:${barCol}"></div></div>`;
+  if(!mini){
+    html+=`<div style="font-size:10px;color:#6e7681;margin-bottom:8px">${freqLbl}: <b style="color:#8b949e">${prog.total}/${goal.targetValue} ${goal.unit}</b>`;
+    if(prog.pct>=100) html+=` <span style="color:#34d399">✓ Meta batida! 🎉</span>`;
+    else if(prog.isAtRisk) html+=` <span style="color:#fb923c">⚠️ Prazo próximo</span>`;
+    html+=`</div>`;
+    if(goal.linkedWorkout){
+      const wk=getWorkoutById(goal.linkedWorkout);
+      const todayMin=dayData.tr===goal.linkedWorkout?(dayData.gymDurMin||0):0;
+      html+=`<div style="display:flex;align-items:center;gap:7px;background:#0d1117;border:1px solid #21262d;border-radius:9px;padding:8px 11px"><span style="font-size:12px">⏱️</span><span style="font-size:12px;color:#6e7681;flex:1">Hoje: <b style="color:#e6edf3">${todayMin} min</b>${wk?` — ${wk.icon} ${wk.name}`:''}</span><span style="font-size:10px;color:#4d5863">lido do treino →</span></div>`;
+    } else if(prog.pct<100){
+      const deltas=cat.deltas.length?cat.deltas:[1,5,10];
+      html+=`<div style="display:flex;gap:5px;align-items:center">
+        ${deltas.map(d=>`<button onclick="quickLog('${goal.id}',${d})" style="flex:1;padding:7px 4px;border-radius:8px;background:rgba(31,111,235,.12);border:1px solid rgba(31,111,235,.3);color:#388bfd;font-size:12px;font-weight:700">+${d}</button>`).join('')}
+        <input type="number" inputmode="decimal" placeholder="0" onchange="addGoalLog('${goal.id}',+this.value);this.value=''" style="width:58px;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:7px 4px;color:#e6edf3;font-size:13px;font-weight:700;text-align:center;outline:none">
+        <span style="font-size:11px;color:#4d5863">${goal.unit}</span>
+      </div>`;
+    } else {
+      html+=`<div style="font-size:12px;color:#34d399;font-weight:700;text-align:center;padding:4px 0">✓ Meta batida! 🎉</div>`;
+    }
+  } else {
+    html+=`<div style="font-size:10px;color:#6e7681;margin-top:5px">${freqLbl}: <b style="color:#8b949e">${prog.total}/${goal.targetValue} ${goal.unit}</b></div>`;
+  }
+  html+=`</div>`;
+  return html;
+}
+
+function renderGoalsToday(){
+  const active=goalsDefs.filter(g=>g.active&&!g.archived);
+  if(!active.length) return '';
+  const daily=active.filter(g=>g.frequency==='daily');
+  const atRiskLong=active.filter(g=>g.frequency!=='daily'&&g.frequency!=='weekly'&&getGoalProgress(g).isAtRisk);
+  const weekly=active.filter(g=>g.frequency==='weekly');
+  const longTerm=active.filter(g=>['monthly','yearly','once'].includes(g.frequency)&&!getGoalProgress(g).isAtRisk);
+  let html='';
+  const focusGoals=[...daily,...atRiskLong];
+  if(focusGoals.length){
+    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🎯</span> FOCO DO DIA</div></div>`;
+    focusGoals.forEach(g=>{html+=renderGoalCard(g,false);});
+    html+=`</div>`;
+  }
+  if(weekly.length){
+    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📅</span> ESTA SEMANA</div></div>`;
+    weekly.forEach(g=>{html+=renderGoalCard(g,false);});
+    html+=`</div>`;
+  }
+  if(longTerm.length){
+    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🏔️</span> LONGO PRAZO</div></div>`;
+    longTerm.forEach(g=>{html+=renderGoalCard(g,true);});
+    html+=`</div>`;
+  }
+  return html;
+}
+
+function showGoalsMgmt(){renderGoalsMgmt();showScreen('goalsmgmt');setBnavActive('mais');}
+function renderGoalsMgmt(){
+  const body=document.getElementById('goalsmgmt-body');if(!body)return;
+  if(_goalFormMode){body.innerHTML=renderGoalFormHtml();return;}
+  const active=goalsDefs.filter(g=>!g.archived);
+  const archived=goalsDefs.filter(g=>g.archived);
+  const inp2='background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 10px;color:#e6edf3;font-size:13px;outline:none';
+  let html='';
+  if(!active.length){
+    html+=`<div class="card fade-in" style="text-align:center;padding:32px 20px">
+      <div style="font-size:40px;margin-bottom:12px">🎯</div>
+      <div style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:6px">Nenhuma meta ainda</div>
+      <div style="font-size:12px;color:#6e7681;margin-bottom:16px">Crie sua primeira meta e comece a acompanhar seu progresso.</div>
+      <button onclick="showGoalForm(null)" style="padding:12px 24px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ Criar primeira meta</button>
+    </div>`;
+  } else {
+    active.forEach(g=>{
+      const prog=getGoalProgress(g);
+      const cat=getCat(g.category);
+      const barCol=prog.pct>=100?'#34d399':prog.isAtRisk?'#fb923c':prog.pct>=60?'#fbbf24':'#4d5863';
+      const freqLbl={daily:'Diária',weekly:'Semanal',monthly:'Mensal',yearly:'Anual',once:'Uma vez'}[g.frequency]||g.frequency;
+      html+=`<div class="card" style="margin-bottom:8px${prog.isAtRisk?';border-color:#fb923c60':''}">
+        <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
+          <div style="width:40px;height:40px;border-radius:10px;background:${cat.icon?'#21262d':'#21262d'};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${g.icon||cat.icon}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:700;color:#e6edf3">${g.title}</div>
+            <div style="font-size:10px;color:#6e7681;margin-top:2px">${freqLbl} · Meta: ${g.targetValue} ${g.unit} · ${prog.pct}%</div>
+            ${prog.isAtRisk?`<div style="font-size:10px;color:#fb923c;margin-top:2px">⚠️ Apenas ${prog.daysLeft} dia(s) restante(s)</div>`:''}
+          </div>
+          <div style="display:flex;gap:5px;flex-shrink:0">
+            <button onclick="showGoalForm('${g.id}')" style="background:#21262d;color:#8b949e;padding:6px 9px;border-radius:7px;font-size:12px">✏️</button>
+            <button onclick="archiveGoal('${g.id}')" style="background:#21262d;color:#8b949e;padding:6px 9px;border-radius:7px;font-size:12px">🗃️</button>
+          </div>
+        </div>
+        <div class="score-bar-bg"><div class="score-bar-fill" style="width:${prog.pct}%;background:${barCol}"></div></div>
+      </div>`;
+    });
+  }
+  if(archived.length){
+    html+=`<details style="margin-top:8px"><summary style="font-size:11px;color:#6e7681;font-weight:700;letter-spacing:.07em;padding:10px 0;cursor:pointer">🗃️ ARQUIVADAS (${archived.length})</summary>`;
+    archived.forEach(g=>{
+      html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#161b22;border:1px solid #21262d;border-radius:10px;margin-top:6px">
+        <div style="font-size:20px;flex-shrink:0">${g.icon||getCat(g.category).icon}</div>
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#6e7681">${g.title}</div><div style="font-size:10px;color:#4d5863">${g.targetValue} ${g.unit}</div></div>
+        <button onclick="unarchiveGoal('${g.id}')" style="background:#21262d;color:#34d399;padding:6px 10px;border-radius:7px;font-size:11px;font-weight:600">Restaurar</button>
+        <button onclick="deleteGoalCompletely('${g.id}')" style="background:#21262d;color:#f87171;padding:6px 9px;border-radius:7px;font-size:11px">🗑️</button>
+      </div>`;
+    });
+    html+=`</details>`;
+  }
+  body.innerHTML=`<div class="fade-in">${html}</div>`;
+}
+
+function renderGoalFormHtml(){
+  const isEdit=_goalFormMode==='edit';
+  const g=_goalDraft;
+  const cat=getCat(g.category||'custom');
+  const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none';
+  const inp2='background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none';
+  const catOpts=GOAL_CATS.map(c=>`<option value="${c.id}" ${g.category===c.id?'selected':''}>${c.icon} ${c.label}</option>`).join('');
+  const freqOpts=[{v:'daily',l:'Diária (todo dia)'},{v:'weekly',l:'Semanal'},{v:'monthly',l:'Mensal'},{v:'yearly',l:'Anual'},{v:'once',l:'Uma vez (com prazo)'}].map(f=>`<option value="${f.v}" ${g.frequency===f.v?'selected':''}>${f.l}</option>`).join('');
+  const unitSugg=cat.units.map(u=>`<option value="${u}">`).join('');
+  const wkOpts=userWorkouts.map(w=>`<option value="${w.id}" ${g.linkedWorkout===w.id?'selected':''}>${w.icon} ${w.name}</option>`).join('');
+  const placeholders=['Ler 12 livros este ano','Malhar 150 min por semana','Beber 2L de água todo dia','Economizar R$500 este mês','Meditar 10 min por dia'];
+  const ph=placeholders[Math.floor(Math.random()*placeholders.length)];
+  return`<div class="card fade-in">
+    <div class="sec-hdr"><div class="sec-lbl"><span>${isEdit?'✏️':'➕'}</span> ${isEdit?'EDITAR META':'NOVA META'}</div></div>
+    <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Título da meta</div>
+    <input type="text" id="gf-title" value="${g.title||''}" placeholder="${ph}" oninput="goalFormTitleChange(this.value)" style="${inp};margin-bottom:12px">
+    <div style="display:grid;grid-template-columns:1fr 70px;gap:8px;margin-bottom:12px">
+      <div>
+        <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Categoria</div>
+        <select id="gf-cat" onchange="goalFormCatChange(this.value)" style="width:100%;${inp2}">${catOpts}</select>
       </div>
-      <button onclick="goalsDeleteCustom(${i})" style="padding:5px 9px;border-radius:7px;background:#7f1d1d20;border:1px solid #7f1d1d60;color:#f87171;font-size:12px">🗑️</button>
-    </div>`).join('');
-  const form=_cgFormOpen?`
-    <div style="background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:14px;margin-top:10px">
-      <div style="display:grid;grid-template-columns:1fr 80px;gap:8px;margin-bottom:8px">
-        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Nome da meta</div><input id="cg-name" placeholder="ex: Bike, Corrida" style="width:100%;${inp}"></div>
-        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Ícone</div><input id="cg-icon" value="🎯" style="width:100%;${inp};text-align:center;font-size:18px"></div>
+      <div>
+        <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Ícone</div>
+        <input type="text" id="gf-icon" value="${g.icon||cat.icon}" maxlength="4" style="width:100%;${inp2};text-align:center;font-size:20px">
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
-        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Unidade</div><input id="cg-unit" placeholder="min / km / h" style="width:100%;${inp}"></div>
-        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Frequência</div><select id="cg-freq" style="width:100%;${inp}">${freqOpts}</select></div>
-        <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Meta</div><input id="cg-target" type="number" placeholder="150" style="width:100%;${inp}"></div>
+    </div>
+    <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Quero atingir</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
+      <div>
+        <div style="font-size:10px;color:#4d5863;margin-bottom:4px">Quantidade</div>
+        <input type="number" id="gf-target" value="${g.targetValue||''}" placeholder="ex: 12" style="width:100%;${inp2}">
       </div>
-      <div style="margin-bottom:10px"><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Vincular a treino <span style="color:#4d5863">(lê duração automaticamente)</span></div><select id="cg-linked" style="width:100%;${inp}"><option value="">— nenhum (entrada manual) —</option>${userWorkouts.map(w=>`<option value="${w.id}">${w.icon} ${w.name}</option>`).join('')}</select></div>
-      <div style="display:flex;gap:7px">
-        <button onclick="goalsCancelCustom()" style="flex:1;padding:9px;border-radius:9px;background:#21262d;color:#6e7681;font-size:13px;font-weight:700">Cancelar</button>
-        <button onclick="goalsSaveCustom()" style="flex:2;padding:9px;border-radius:9px;background:#16a34a;color:#fff;font-size:13px;font-weight:700">Salvar meta</button>
+      <div>
+        <div style="font-size:10px;color:#4d5863;margin-bottom:4px">Unidade</div>
+        <input type="text" id="gf-unit" value="${g.unit||cat.units[0]||''}" placeholder="ex: livros" list="gf-unit-list" style="width:100%;${inp2}">
+        <datalist id="gf-unit-list">${unitSugg}</datalist>
       </div>
-    </div>`:'';
-  return`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🎯</span> METAS PERSONALIZADAS</div><button onclick="goalsAddCustomForm()" style="background:#21262d;color:#8b949e;padding:5px 11px;border-radius:7px;font-size:12px;font-weight:700">+ Nova</button></div>
-    ${cgs.length?listRows:'<div style="font-size:12px;color:#4d5863;text-align:center;padding:10px 0">Nenhuma meta cadastrada</div>'}
-    ${form}
+      <div>
+        <div style="font-size:10px;color:#4d5863;margin-bottom:4px">Por</div>
+        <select id="gf-freq" style="width:100%;${inp2}">${freqOpts}</select>
+      </div>
+    </div>
+    <details style="margin-bottom:14px">
+      <summary style="font-size:11px;color:#6e7681;font-weight:700;letter-spacing:.07em;cursor:pointer;padding:4px 0">⚙️ OPÇÕES AVANÇADAS</summary>
+      <div style="padding-top:10px;display:flex;flex-direction:column;gap:10px">
+        <div>
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Prazo (só para frequência "Uma vez")</div>
+          <input type="date" id="gf-deadline" value="${g.deadline||''}" style="width:100%;${inp2}">
+        </div>
+        <div>
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Vincular a treino <span style="color:#4d5863">(lê duração automaticamente)</span></div>
+          <select id="gf-linked" style="width:100%;${inp2}"><option value="" ${!g.linkedWorkout?'selected':''}>— nenhum (entrada manual) —</option>${wkOpts}</select>
+        </div>
+        <div>
+          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Notas</div>
+          <input type="text" id="gf-notes" value="${g.notes||''}" placeholder="Contexto, motivação..." style="${inp}">
+        </div>
+      </div>
+    </details>
+    <button onclick="saveGoalForm()" style="width:100%;padding:13px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-bottom:8px">Salvar meta</button>
+    <button onclick="cancelGoalForm()" style="width:100%;padding:11px;background:none;border:1px solid #21262d;border-radius:10px;color:#6e7681;font-size:13px">Cancelar</button>
+    ${isEdit?`<button onclick="deleteGoalCompletely('${g.id}')" style="width:100%;padding:11px;background:none;border:1px solid #f8717140;border-radius:10px;color:#f87171;font-size:12px;margin-top:8px">🗑️ Excluir meta e histórico</button>`:''}
   </div>`;
 }
-function goalsAddCustomForm(){_cgFormOpen=true;showGoals();setTimeout(()=>document.getElementById('cg-name')?.focus(),50);}
-function goalsCancelCustom(){_cgFormOpen=false;showGoals();}
-function goalsSaveCustom(){
-  const name=(document.getElementById('cg-name')?.value||'').trim();
-  const target=parseFloat(document.getElementById('cg-target')?.value)||0;
-  if(!name||!target) return;
-  const icon=document.getElementById('cg-icon')?.value||'🎯';
-  const unit=(document.getElementById('cg-unit')?.value||'min').trim();
-  const frequency=document.getElementById('cg-freq')?.value||'semanal';
-  const linkedWorkout=document.getElementById('cg-linked')?.value||'';
-  const cgs=[...(goals.customGoals||[])];
-  cgs.push({id:'cg_'+Date.now(),name,icon,unit,frequency,target,linkedWorkout});
-  saveGoals({...goals,customGoals:cgs});
-  _cgFormOpen=false;showGoals();
+
+function showGoalForm(id){
+  if(id){
+    const g=goalsDefs.find(x=>x.id===id);if(!g)return;
+    _goalFormMode='edit';_goalEditId=id;_goalDraft={...g};
+  } else {
+    _goalFormMode='create';_goalEditId=null;_goalDraft={category:'custom',frequency:'weekly',active:true,archived:false,createdAt:currentDate};
+  }
+  renderGoalsMgmt();
 }
-function goalsDeleteCustom(i){
-  if(!confirm('Excluir esta meta?')) return;
-  const cgs=[...(goals.customGoals||[])];cgs.splice(i,1);
-  saveGoals({...goals,customGoals:cgs});showGoals();
+function cancelGoalForm(){_goalFormMode=null;_goalEditId=null;_goalDraft={};renderGoalsMgmt();}
+function saveGoalForm(){
+  const title=(document.getElementById('gf-title')?.value||'').trim();
+  const targetValue=parseFloat(document.getElementById('gf-target')?.value)||0;
+  if(!title||!targetValue){if(!title&&document.getElementById('gf-title'))document.getElementById('gf-title').style.borderColor='#f87171';return;}
+  const cat=document.getElementById('gf-cat')?.value||'custom';
+  const icon=(document.getElementById('gf-icon')?.value||getCat(cat).icon).trim();
+  const unit=(document.getElementById('gf-unit')?.value||'').trim()||getCat(cat).units[0]||'vezes';
+  const frequency=document.getElementById('gf-freq')?.value||'weekly';
+  const deadline=document.getElementById('gf-deadline')?.value||null;
+  const linkedWorkout=document.getElementById('gf-linked')?.value||'';
+  const notes=(document.getElementById('gf-notes')?.value||'').trim();
+  if(_goalFormMode==='edit'&&_goalEditId){
+    const idx=goalsDefs.findIndex(g=>g.id===_goalEditId);
+    if(idx>=0) goalsDefs[idx]={...goalsDefs[idx],title,category:cat,icon,targetValue,unit,frequency,deadline:deadline||null,linkedWorkout,notes};
+  } else {
+    goalsDefs.push({id:'goal_'+Date.now(),title,category:cat,icon,targetValue,unit,frequency,deadline:deadline||null,linkedWorkout,notes,active:true,archived:false,createdAt:currentDate});
+  }
+  saveGoalsDefs();
+  _goalFormMode=null;_goalEditId=null;_goalDraft={};
+  renderGoalsMgmt();renderUI();
 }
-function setCustomLog(id,val){
-  if(!dayData.customLogs) dayData.customLogs={};
-  dayData.customLogs[id]=Math.max(0,+val||0);save();renderUI();
+function goalFormTitleChange(val){
+  const cat=suggestCat(val);
+  const catEl=document.getElementById('gf-cat');
+  if(catEl&&catEl.value==='custom'){catEl.value=cat;goalFormCatChange(cat);}
 }
-function addCustomLog(id,delta){
-  if(!dayData.customLogs) dayData.customLogs={};
-  setCustomLog(id,Math.max(0,(dayData.customLogs[id]||0)+delta));
+function goalFormCatChange(catId){
+  const cat=getCat(catId);
+  const iconEl=document.getElementById('gf-icon');if(iconEl)iconEl.value=cat.icon;
+  const unitEl=document.getElementById('gf-unit');if(unitEl&&!unitEl.value)unitEl.value=cat.units[0]||'';
+  const dl=document.getElementById('gf-unit-list');
+  if(dl) dl.innerHTML=cat.units.map(u=>`<option value="${u}">`).join('');
+}
+function archiveGoal(id){
+  const idx=goalsDefs.findIndex(g=>g.id===id);if(idx<0)return;
+  goalsDefs[idx].archived=true;goalsDefs[idx].active=false;
+  saveGoalsDefs();renderGoalsMgmt();renderUI();
+}
+function unarchiveGoal(id){
+  const idx=goalsDefs.findIndex(g=>g.id===id);if(idx<0)return;
+  goalsDefs[idx].archived=false;goalsDefs[idx].active=true;
+  saveGoalsDefs();renderGoalsMgmt();renderUI();
+}
+function deleteGoalCompletely(id){
+  if(!confirm('Excluir esta meta e todo o histórico de registros?')) return;
+  goalsDefs=goalsDefs.filter(g=>g.id!==id);
+  goalLogs=goalLogs.filter(l=>l.goalId!==id);
+  saveGoalsDefs();saveGoalLogs();
+  _goalFormMode=null;_goalEditId=null;_goalDraft={};
+  renderGoalsMgmt();renderUI();
 }
 
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
