@@ -1017,7 +1017,7 @@ function deleteBodyEntry(date){
 }
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
-const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,cardioMin:30,customGoals:[]};
+const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,customGoals:[]};
 let goals=loadGoals();
 function loadGoals(){
   try{const s=localStorage.getItem('ht:goals');return s?{...DEFAULT_GOALS,...JSON.parse(s)}:{...DEFAULT_GOALS};}
@@ -1084,11 +1084,6 @@ function showGoals(){
       <div id="g-agua-formula" style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#6e7681;line-height:1.6">Preencha o peso atual para calcular automaticamente</div>
       <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Copos por dia — aceite o sugerido ou ajuste:</div>
       <div id="g-agua-btns" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>
-    </div>
-    <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>🚴</span> CARDIO</div></div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Meta diária (min)</div>
-      <input type="number" id="g-cardio" value="${g.cardioMin}" placeholder="ex: 30" style="${inp}">
     </div>
     ${renderCustomGoalsSection()}
     <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#1f6feb;border-radius:12px;color:#fff;font-size:15px;font-weight:700;margin-bottom:10px">Salvar metas</button>`;
@@ -1190,7 +1185,6 @@ function saveGoalsForm(){
     calorias:parseInt(document.getElementById('g-calorias').value)||1800,
     aguaCopos:goals.aguaCopos,
     treinosSemana:goals.treinosSemana,
-    cardioMin:parseInt(document.getElementById('g-cardio').value)||30,
   };
   saveGoals(g);
   showMais();
@@ -1351,15 +1345,14 @@ function calcScore(d){
   const wD=d.water>=goals.aguaCopos?1:0;
   const slD=SLEEPS.find(s=>s.id===d.sleep)?.ok?1:0;
   const coD=d.sleepOk?1:0;
-  const cD=d.cardio>=goals.cardioMin?1:0;
   const spD=sups.filter(s=>d.sups[s.id]).length;
   const isGym=isGymType(d.tr);
   const tD=isGym?(d.sups['treino_ok']?1:0):0;
   const tT=isGym?1:0;
-  const total=MEALS.length+1+2+1+sups.length+tT;
-  const done=mD+wD+slD+coD+cD+spD+tD;
+  const total=MEALS.length+1+2+sups.length+tT;
+  const done=mD+wD+slD+coD+spD+tD;
   return{meals:{d:mD,t:MEALS.length},water:{d:wD,t:1},sleep:{d:slD+coD,t:2},
-         cardio:{d:cD,t:1},sups:{d:spD,t:sups.length},treino:{d:tD,t:tT},
+         sups:{d:spD,t:sups.length},treino:{d:tD,t:tT},
          pct:total>0?Math.round(done/total*100):0,done,total};
 }
 
@@ -1429,7 +1422,7 @@ function renderHoje(body,sc){
   const ring=2*Math.PI*40;
   const bars=[
     {l:'Refeições',s:sc.meals,c:'#fb923c'},{l:'Água',s:sc.water,c:'#38bdf8'},
-    {l:'Cardio',s:sc.cardio,c:'#34d399'},{l:'Sono',s:sc.sleep,c:'#a78bfa'},
+    {l:'Sono',s:sc.sleep,c:'#a78bfa'},
     {l:'Suplementos',s:sc.sups,c:'#fbbf24'},
     ...(sc.treino.t>0?[{l:'Treino',s:sc.treino,c:'#818cf8'}]:[]),
   ];
@@ -1449,14 +1442,6 @@ function renderHoje(body,sc){
       </div>
     </div>
     ${barsHtml}
-  </div>`;
-  // CARDIO
-  const cmins=[15,20,30,40,45,60];
-  const cBtns=cmins.map(m=>`<button onclick="setCardio(${m})" style="flex:1 1 60px;padding:9px 4px;border-radius:9px;font-size:12px;font-weight:700;background:${dayData.cardio>=m?'#166534':'#0d1117'};color:${dayData.cardio>=m?'#86efac':'#6e7681'};border:1px solid ${dayData.cardio>=m?'#16a34a':'#21262d'}">${m}min</button>`).join('');
-  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🚴</span> CARDIO DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.cardio>=goals.cardioMin?'#34d399':'#6e7681'}">${dayData.cardio} min</span></div>
-    <div style="font-size:11px;color:#6e7681;margin-bottom:8px">Meta: ${goals.cardioMin} min diários</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">${cBtns}</div>
-    ${dayData.cardio>=goals.cardioMin?'<div style="font-size:11px;color:#34d399;text-align:center;font-weight:600">✓ Meta diária atingida!</div>':''}
   </div>`;
   // METAS PERSONALIZADAS
   const cgs=goals.customGoals||[];
@@ -1516,7 +1501,6 @@ function renderHoje(body,sc){
   const missing=[];
   MEALS.forEach(m=>{if(!dayData.meals[m.id])missing.push(m.icon+' '+m.label);});
   if(dayData.water<goals.aguaCopos) missing.push('💧 Água — '+dayData.water+'/'+goals.aguaCopos+' copos');
-  if(dayData.cardio<goals.cardioMin) missing.push('🚴 Cardio — '+(dayData.cardio||0)+'/'+goals.cardioMin+' min');
   getSups(dayData.tr).forEach(s=>{if(!dayData.sups[s.id])missing.push(s.icon+' '+s.label);});
   if(!dayData.sleep||!SLEEPS.find(o=>o.id===dayData.sleep)?.ok) missing.push('😴 Sono — menos de 7h');
   if(pct>0&&pct<55&&missing.length){
@@ -1608,7 +1592,7 @@ function renderMais(){
   const items=[
     {icon:'📈',label:'Composição Corporal',sub:'Peso · % gordura · massa magra',fn:"showBodyComp()",c:'#38bdf8'},
     {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
-    {icon:'🎯',label:'Metas Pessoais',sub:'Água, cardio, calorias e mais',fn:"showGoals()",c:'#34d399'},
+    {icon:'🎯',label:'Metas Pessoais',sub:'Água, exercícios, calorias e mais',fn:"showGoals()",c:'#34d399'},
     {icon:'💊',label:'Gerenciar Suplementos',sub:'Cadastrar e editar seus suplementos',fn:"showSups()",c:'#fbbf24'},
   ];
   const cards=items.map(it=>`
@@ -1758,7 +1742,6 @@ function toggleSup(id){dayData.sups[id]=!dayData.sups[id];save();renderUI();}
 function setTr(id){dayData.tr=id;save();renderUI();}
 function toggle(k){dayData[k]=!dayData[k];save();renderUI();}
 function setJantar(v){dayData.jantarV=v;save();renderUI();}
-function setCardio(m){dayData.cardio=dayData.cardio===m?0:m;save();renderUI();}
 function setWater(i){dayData.water=i<dayData.water?i:i+1;save();renderUI();}
 function addWater(n){dayData.water=Math.max(0,Math.min(12,dayData.water+n));save();renderUI();}
 function setSleep(id){dayData.sleep=id;save();renderUI();}
