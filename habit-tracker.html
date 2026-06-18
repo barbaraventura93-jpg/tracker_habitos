@@ -593,9 +593,15 @@ function renderGym(){
     const pl=dispDate(prev.date);
     html+=`<div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#6e7681">📊 Comparando com: <b style="color:#8b949e">${pl.day} ${pl.date}</b></div>`;
   }
-  html+=`<div style="display:flex;align-items:center;margin-bottom:12px">
+  html+=`<div style="display:flex;align-items:center;margin-bottom:10px">
     <div style="flex:1"><div style="font-size:15px;font-weight:800;color:${trObj.color}">${trObj.icon} ${trObj.name}</div></div>
     ${doneCount>0?`<div style="font-size:12px;color:#34d399;font-family:'DM Mono',monospace;font-weight:700">${doneCount}/${totalSets} séries ✓</div>`:''}
+  </div>
+  <div style="display:flex;align-items:center;gap:10px;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:9px 12px;margin-bottom:12px">
+    <span style="font-size:14px">⏱️</span>
+    <span style="font-size:12px;color:#6e7681;flex:1">Duração do treino</span>
+    <input type="number" inputmode="decimal" value="${dayData.gymDurMin||''}" placeholder="0" onchange="setGymDur(+this.value)" style="width:56px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:6px 4px;color:#e6edf3;font-size:14px;font-weight:700;text-align:center;outline:none">
+    <span style="font-size:11px;color:#4d5863">min</span>
   </div>`;
 
   session.forEach((ex,ei)=>{
@@ -682,6 +688,7 @@ function gymDelEx(ei){
   const s=loadGymSession(currentDate,tr)||[];
   s.splice(ei,1);saveGymSession(currentDate,tr,s);renderGym();
 }
+function setGymDur(v){dayData.gymDurMin=Math.max(0,+v||0);save();renderUI();}
 function gymOpenAdd(){_gymAddOpen=true;renderGym();setTimeout(()=>document.getElementById('gym-new-name')?.focus(),50);}
 function gymCancelAdd(){_gymAddOpen=false;renderGym();}
 function gymConfirmAdd(){
@@ -1199,16 +1206,21 @@ function getDow(s){const[y,m,d]=s.split('-');return new Date(+y,+m-1,+d).getDay(
 function addDays(s,n){const d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().split('T')[0];}
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
 function getCustomGoalProgress(goal){
-  const id=goal.id,freq=goal.frequency,target=goal.target;
+  const id=goal.id,freq=goal.frequency,target=goal.target,linked=goal.linkedWorkout||'';
+  function dayVal(d){
+    const dd=d===currentDate?dayData:loadDay(d);
+    if(linked) return dd.tr===linked?(dd.gymDurMin||0):0;
+    return(dd.customLogs||{})[id]||0;
+  }
   let logged=0;
   if(freq==='diaria'){
-    logged=(dayData.customLogs||{})[id]||0;
+    logged=dayVal(currentDate);
   }else if(freq==='semanal'){
     const dow=getDow(currentDate);const mon=addDays(currentDate,-(dow===0?6:dow-1));
-    for(let i=0;i<7;i++){const d=addDays(mon,i);const dd=d===currentDate?dayData:loadDay(d);logged+=(dd.customLogs||{})[id]||0;}
+    for(let i=0;i<7;i++) logged+=dayVal(addDays(mon,i));
   }else if(freq==='mensal'){
     const[y,m]=currentDate.split('-');const dim=new Date(+y,+m,0).getDate();
-    for(let i=1;i<=dim;i++){const d=`${y}-${m}-${String(i).padStart(2,'0')}`;const dd=d===currentDate?dayData:loadDay(d);logged+=(dd.customLogs||{})[id]||0;}
+    for(let i=1;i<=dim;i++) logged+=dayVal(`${y}-${m}-${String(i).padStart(2,'0')}`);
   }
   return{logged,pct:target>0?Math.min(100,Math.round(logged/target*100)):0};
 }
@@ -1218,7 +1230,7 @@ function makeEmpty(date){
   const isFds=dow===0||dow===6;
   const suggested=userWorkouts.find(w=>w.weekDays.includes(dow));
   return{tr:suggested?.id||'descanso',isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
-         meals:{},sups:{},water:0,cardio:0,sleep:null,sleepOk:null,notes:'',customLogs:{}};
+         meals:{},sups:{},water:0,sleep:null,sleepOk:null,notes:'',customLogs:{},gymDurMin:0};
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -1339,7 +1351,7 @@ function saveDay(date,d){
   fetch(`${API_URL}?date=${date}`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(d)}).catch(()=>{});
 }
 
-function calcScore(d){
+function calcScore(d, date){
   const sups=getSups(d.tr);
   const mD=MEALS.filter(m=>d.meals[m.id]).length;
   const wD=d.water>=goals.aguaCopos?1:0;
@@ -1347,7 +1359,8 @@ function calcScore(d){
   const coD=d.sleepOk?1:0;
   const spD=sups.filter(s=>d.sups[s.id]).length;
   const isGym=isGymType(d.tr);
-  const tD=isGym?(d.sups['treino_ok']?1:0):0;
+  let tD=0;
+  if(isGym&&date){const sess=loadGymSession(date,d.tr);tD=sess&&sess.some(ex=>ex.sets.some(s=>s.done))?1:0;}
   const tT=isGym?1:0;
   const total=MEALS.length+1+2+sups.length+tT;
   const done=mD+wD+slD+coD+spD+tD;
@@ -1394,7 +1407,7 @@ async function render(syncG=false){
   }
 }
 function renderUI(){
-  const sc=calcScore(dayData);
+  const sc=calcScore(dayData,currentDate);
   const{day,date}=dispDate(currentDate);
   const isT=currentDate===today();
   document.getElementById('hdr-day').textContent=day;
@@ -1453,7 +1466,16 @@ function renderHoje(body,sc){
       const todayVal=(dayData.customLogs||{})[g.id]||0;
       const isLast=gi===cgs.length-1;
       const col=pct>=100?'#34d399':pct>=60?'#fbbf24':'#6e7681';
+      const isLinked=!!(g.linkedWorkout);
       const deltas=g.unit==='min'?[15,30]:g.unit==='km'?[1,5]:g.unit==='h'?[1,2]:[1,5];
+      const inputRow=isLinked
+        ?`<div style="display:flex;align-items:center;gap:7px;background:#0d1117;border:1px solid #21262d;border-radius:9px;padding:8px 11px"><span style="font-size:12px">⏱️</span><span style="font-size:12px;color:#6e7681;flex:1">Hoje: <b style="color:#e6edf3">${todayVal||0} ${g.unit}</b></span><span style="font-size:10px;color:#4d5863">lido do treino →</span></div>`
+        :`<div style="display:flex;gap:5px;align-items:center">
+            <button onclick="addCustomLog('${g.id}',-${deltas[0]})" style="padding:7px 10px;border-radius:8px;background:#0d1117;border:1px solid #21262d;color:#6e7681;font-size:12px;font-weight:700">−${deltas[0]}</button>
+            ${deltas.map(d=>`<button onclick="addCustomLog('${g.id}',${d})" style="flex:1;padding:7px 6px;border-radius:8px;background:rgba(31,111,235,.12);border:1px solid rgba(31,111,235,.3);color:#388bfd;font-size:12px;font-weight:700">+${d}</button>`).join('')}
+            <input type="number" inputmode="decimal" value="${todayVal||''}" placeholder="0" onchange="setCustomLog('${g.id}',+this.value)" style="width:58px;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:7px 4px;color:#e6edf3;font-size:13px;font-weight:700;text-align:center;outline:none">
+            <span style="font-size:11px;color:#4d5863">${g.unit}</span>
+          </div>`;
       html+=`<div style="margin-bottom:${isLast?0:14}px;${isLast?'':'padding-bottom:14px;border-bottom:1px solid #21262d'}">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px">
           <div style="font-size:13px;font-weight:700;color:#e6edf3">${g.icon||'🎯'} ${g.name}</div>
@@ -1461,12 +1483,7 @@ function renderHoje(body,sc){
         </div>
         <div class="score-bar-bg" style="margin-bottom:8px"><div class="score-bar-fill" style="width:${pct}%;background:${col}"></div></div>
         <div style="font-size:10px;color:#6e7681;margin-bottom:8px">${freqLbl[g.frequency]||'Período'}: <b style="color:#8b949e">${logged}</b> de <b style="color:#8b949e">${g.target} ${g.unit}</b>${pct>=100?' <span style="color:#34d399">✓ Meta atingida!</span>':''}</div>
-        <div style="display:flex;gap:5px;align-items:center">
-          <button onclick="addCustomLog('${g.id}',-${deltas[0]})" style="padding:7px 10px;border-radius:8px;background:#0d1117;border:1px solid #21262d;color:#6e7681;font-size:12px;font-weight:700">−${deltas[0]}</button>
-          ${deltas.map(d=>`<button onclick="addCustomLog('${g.id}',${d})" style="flex:1;padding:7px 6px;border-radius:8px;background:rgba(31,111,235,.12);border:1px solid rgba(31,111,235,.3);color:#388bfd;font-size:12px;font-weight:700">+${d}</button>`).join('')}
-          <input type="number" inputmode="decimal" value="${todayVal||''}" placeholder="0" onchange="setCustomLog('${g.id}',+this.value)" style="width:58px;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:7px 4px;color:#e6edf3;font-size:13px;font-weight:700;text-align:center;outline:none">
-          <span style="font-size:11px;color:#4d5863">${g.unit}</span>
-        </div>
+        ${inputRow}
       </div>`;
     });
     html+=`</div>`;
@@ -1622,7 +1639,7 @@ function showHistory(){
   for(let i=0;i<days;i++){
     const d=addDays(today(),-i);
     const dd=loadDay(d);
-    hist.push({date:d,pct:calcScore(dd).pct});
+    hist.push({date:d,pct:calcScore(dd,d).pct});
   }
   const avg=Math.round(hist.reduce((a,d)=>a+d.pct,0)/hist.length);
   const great=hist.filter(d=>d.pct>=80).length;
@@ -1690,11 +1707,12 @@ function renderCustomGoalsSection(){
         <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Nome da meta</div><input id="cg-name" placeholder="ex: Bike, Corrida" style="width:100%;${inp}"></div>
         <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Ícone</div><input id="cg-icon" value="🎯" style="width:100%;${inp};text-align:center;font-size:18px"></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:8px">
         <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Unidade</div><input id="cg-unit" placeholder="min / km / h" style="width:100%;${inp}"></div>
         <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Frequência</div><select id="cg-freq" style="width:100%;${inp}">${freqOpts}</select></div>
         <div><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Meta</div><input id="cg-target" type="number" placeholder="150" style="width:100%;${inp}"></div>
       </div>
+      <div style="margin-bottom:10px"><div style="font-size:11px;color:#6e7681;margin-bottom:4px">Vincular a treino <span style="color:#4d5863">(lê duração automaticamente)</span></div><select id="cg-linked" style="width:100%;${inp}"><option value="">— nenhum (entrada manual) —</option>${userWorkouts.map(w=>`<option value="${w.id}">${w.icon} ${w.name}</option>`).join('')}</select></div>
       <div style="display:flex;gap:7px">
         <button onclick="goalsCancelCustom()" style="flex:1;padding:9px;border-radius:9px;background:#21262d;color:#6e7681;font-size:13px;font-weight:700">Cancelar</button>
         <button onclick="goalsSaveCustom()" style="flex:2;padding:9px;border-radius:9px;background:#16a34a;color:#fff;font-size:13px;font-weight:700">Salvar meta</button>
@@ -1714,8 +1732,9 @@ function goalsSaveCustom(){
   const icon=document.getElementById('cg-icon')?.value||'🎯';
   const unit=(document.getElementById('cg-unit')?.value||'min').trim();
   const frequency=document.getElementById('cg-freq')?.value||'semanal';
+  const linkedWorkout=document.getElementById('cg-linked')?.value||'';
   const cgs=[...(goals.customGoals||[])];
-  cgs.push({id:'cg_'+Date.now(),name,icon,unit,frequency,target});
+  cgs.push({id:'cg_'+Date.now(),name,icon,unit,frequency,target,linkedWorkout});
   saveGoals({...goals,customGoals:cgs});
   _cgFormOpen=false;showGoals();
 }
