@@ -481,13 +481,13 @@ async function syncGymPlan(){
     if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){gymPlan=d;try{localStorage.setItem('ht:gymplan',JSON.stringify(d));}catch{}}}
   }catch{}
 }
-function loadGymSession(date){try{return JSON.parse(localStorage.getItem('ht:gym:'+date)||'null');}catch{return null;}}
-function saveGymSession(date,data){try{localStorage.setItem('ht:gym:'+date,JSON.stringify(data));}catch{}}
+function loadGymSession(date,tr){try{return JSON.parse(localStorage.getItem('ht:gym:'+date+':'+(tr||''))||'null');}catch{return null;}}
+function saveGymSession(date,tr,data){try{localStorage.setItem('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}}
 function getLastGymSession(tr,beforeDate){
   for(let i=1;i<=90;i++){
     const d=addDays(beforeDate,-i);
     const dd=loadDay(d);
-    if(dd.tr===tr){const s=loadGymSession(d);if(s&&s.length>0) return{date:d,session:s};}
+    if(dd.tr===tr){const s=loadGymSession(d,tr);if(s&&s.length>0) return{date:d,session:s};}
   }
   return null;
 }
@@ -568,7 +568,7 @@ function renderGym(){
     return;
   }
 
-  let session=loadGymSession(date);
+  let session=loadGymSession(date,tr);
   if(!session){
     const plan=gymPlan[tr]||[];
     session=plan.map(ex=>{
@@ -577,7 +577,7 @@ function renderGym(){
       return{id:ex.id,name:ex.name,group:ex.group,obs:ex.obs||'',
              sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))};
     });
-    if(session.length>0) saveGymSession(date,session);
+    if(session.length>0) saveGymSession(date,tr,session);
   }
 
   const prev=getLastGymSession(tr,date);
@@ -654,27 +654,32 @@ function renderGym(){
 }
 
 function gymSetVal(ei,si,field,val){
-  const s=loadGymSession(currentDate);if(!s?.[ei]?.sets?.[si]) return;
-  s[ei].sets[si][field]=val;saveGymSession(currentDate,s);
+  const tr=loadDay(currentDate).tr;
+  const s=loadGymSession(currentDate,tr);if(!s?.[ei]?.sets?.[si]) return;
+  s[ei].sets[si][field]=val;saveGymSession(currentDate,tr,s);
 }
 function gymDone(ei,si){
-  const s=loadGymSession(currentDate)||[];if(!s?.[ei]?.sets?.[si]) return;
-  s[ei].sets[si].done=!s[ei].sets[si].done;saveGymSession(currentDate,s);renderGym();
+  const tr=loadDay(currentDate).tr;
+  const s=loadGymSession(currentDate,tr)||[];if(!s?.[ei]?.sets?.[si]) return;
+  s[ei].sets[si].done=!s[ei].sets[si].done;saveGymSession(currentDate,tr,s);renderGym();
 }
 function gymAddSet(ei){
-  const s=loadGymSession(currentDate)||[];if(!s[ei]) return;
+  const tr=loadDay(currentDate).tr;
+  const s=loadGymSession(currentDate,tr)||[];if(!s[ei]) return;
   const last=s[ei].sets[s[ei].sets.length-1];
   s[ei].sets.push({reps:last?.reps||'',kg:last?.kg||'',done:false});
-  saveGymSession(currentDate,s);renderGym();
+  saveGymSession(currentDate,tr,s);renderGym();
 }
 function gymDelSet(ei,si){
-  const s=loadGymSession(currentDate)||[];
+  const tr=loadDay(currentDate).tr;
+  const s=loadGymSession(currentDate,tr)||[];
   if(!s[ei]||s[ei].sets.length<=1) return;
-  s[ei].sets.splice(si,1);saveGymSession(currentDate,s);renderGym();
+  s[ei].sets.splice(si,1);saveGymSession(currentDate,tr,s);renderGym();
 }
 function gymDelEx(ei){
-  const s=loadGymSession(currentDate)||[];
-  s.splice(ei,1);saveGymSession(currentDate,s);renderGym();
+  const tr=loadDay(currentDate).tr;
+  const s=loadGymSession(currentDate,tr)||[];
+  s.splice(ei,1);saveGymSession(currentDate,tr,s);renderGym();
 }
 function gymOpenAdd(){_gymAddOpen=true;renderGym();setTimeout(()=>document.getElementById('gym-new-name')?.focus(),50);}
 function gymCancelAdd(){_gymAddOpen=false;renderGym();}
@@ -686,8 +691,8 @@ function gymConfirmAdd(){
   const repsVal=(document.getElementById('gym-new-reps')?.value||'').trim();
   const id='ex_'+Date.now();
   const newEx={id,name,group,sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))};
-  const s=loadGymSession(currentDate)||[];s.push(newEx);saveGymSession(currentDate,s);
   const tr=loadDay(currentDate).tr;
+  const s=loadGymSession(currentDate,tr)||[];s.push(newEx);saveGymSession(currentDate,tr,s);
   if(!gymPlan[tr]) gymPlan[tr]=[];
   gymPlan[tr].push({id,name,group,defaultSets:nSets,defaultReps:repsVal,obs:''});saveGymPlan();
   _gymAddOpen=false;renderGym();
