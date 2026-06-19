@@ -348,7 +348,7 @@ textarea,input,select{font-family:inherit;}
 const DAYS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 const DESCANSO={id:'descanso',name:'Descanso',type:'descanso',icon:'🛌',color:'#78716C',weekDays:[]};
-const WK_COLORS={musculacao:'#818cf8',aerobico:'#38bdf8',descanso:'#6e7681'};
+const WK_COLORS={musculacao:'#818cf8',aerobico:'#38bdf8',descanso:'#78716C'};
 const WK_ICONS ={musculacao:'🏋️',aerobico:'🏃',descanso:'🛌'};
 const GYM_GROUPS=['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo','Cardio','Outro'];
 function loadUserWorkouts(){
@@ -482,7 +482,7 @@ function renderSupsList(){
       <div class="sec-hdr"><div class="sec-lbl"><span>📎</span> IMPORTAR DE PDF OU FOTO</div></div>
       <div style="font-size:11px;color:#78716C;margin-bottom:10px">Envie uma receita, prescrição ou foto da sua suplementação. A IA extrai os itens automaticamente.</div>
       <input type="file" id="sup-file-input" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleSupFile(this)">
-      <button type="button" onclick="document.getElementById('sup-file-input').click()" style="display:block;width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:18px;text-align:center;color:#78716C;font-size:13px" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='#30363d'">
+      <button type="button" onclick="document.getElementById('sup-file-input').click()" style="display:block;width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:18px;text-align:center;color:#78716C;font-size:13px" onmouseover="this.style.borderColor='#6C63FF'" onmouseout="this.style.borderColor='#D4D0CE'">
         📄 Selecionar PDF ou imagem
       </button>
       <div id="import-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
@@ -500,13 +500,13 @@ function editSup(id){
   const showOn=s?.showOn||'always';
   const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:15px;outline:none';
   const whenDefs=[
-    {v:'always', l:'💊 Sempre',   c:'#1f6feb'},
+    {v:'always', l:'💊 Sempre',   c:'#6C63FF'},
     {v:'treino',  l:'⚡ Treino',  c:'#16a34a'},
     {v:'descanso',l:'😴 Descanso',c:'#7c3aed'},
   ];
   const whenBtns=whenDefs.map(w=>{
     const sel=showOn===w.v;
-    return`<button onclick="supSelectWhen('${w.v}')" id="sw-${w.v}" style="flex:1;padding:9px 4px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?w.c:'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?w.c:'#21262d'}">${w.l}</button>`;
+    return`<button onclick="supSelectWhen('${w.v}')" id="sw-${w.v}" style="flex:1;padding:9px 4px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?w.c:'#FAFAF9'};color:${sel?'#fff':'#78716C'};border:1px solid ${sel?w.c:'#E7E5E4'}">${w.l}</button>`;
   }).join('');
   document.getElementById('sups-body').innerHTML=`
     <div class="card fade-in">
@@ -534,11 +534,11 @@ function editSup(id){
 
 function supSelectWhen(v){
   const el=document.getElementById('se-when');if(el) el.value=v;
-  const cols={always:'#1f6feb',treino:'#16a34a',descanso:'#7c3aed'};
+  const cols={always:'#6C63FF',treino:'#16a34a',descanso:'#7c3aed'};
   ['always','treino','descanso'].forEach(w=>{
     const b=document.getElementById('sw-'+w);if(!b)return;
     const sel=w===v;
-    b.style.background=sel?cols[w]:'#0d1117';b.style.color=sel?'#fff':'#6e7681';b.style.borderColor=sel?cols[w]:'#21262d';
+    b.style.background=sel?cols[w]:'#FAFAF9';b.style.color=sel?'#fff':'#78716C';b.style.borderColor=sel?cols[w]:'#E7E5E4';
   });
 }
 
@@ -600,7 +600,7 @@ function renderImportPreviewHtml(){
   if(!_importPreview.length) return '';
   const rows=_importPreview.map((s,i)=>`
     <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:9px;margin-bottom:6px;cursor:pointer">
-      <input type="checkbox" id="imp-${i}" ${s._checked?'checked':''} style="margin-top:3px;width:15px;height:15px;accent-color:#1f6feb;flex-shrink:0">
+      <input type="checkbox" id="imp-${i}" ${s._checked?'checked':''} style="margin-top:3px;width:15px;height:15px;accent-color:#6C63FF;flex-shrink:0">
       <div style="flex:1">
         <div style="font-size:13px;font-weight:700;color:#1C1917">${s.icon||'💊'} ${s.label}</div>
         ${s.sub?`<div style="font-size:11px;color:#78716C;margin-top:2px">${s.sub}</div>`:''}
@@ -655,26 +655,46 @@ function getLastGymSession(tr,beforeDate){
   return null;
 }
 
+function gymUpdateTabs(){
+  const hoje=document.getElementById('gym-tab-hoje');
+  const sem=document.getElementById('gym-tab-semana');
+  if(!hoje||!sem) return;
+  const BASE='flex:1;padding:9px;font-size:12px;font-weight:500;background:none;border-radius:0;border-bottom:2px solid ';
+  hoje.style.cssText=BASE+(_gymView==='hoje'?'#6C63FF;color:#6C63FF':'transparent;color:#78716C');
+  sem.style.cssText=BASE+(_gymView==='semana'?'#6C63FF;color:#6C63FF':'transparent;color:#78716C');
+}
+function gymSetView(v){
+  _gymView=v;_gymViewPlan=false;_gymAddOpen=false;
+  const titleEl=document.getElementById('gym-hdr-title');
+  const planBtn=document.getElementById('gym-plan-btn');
+  if(titleEl) titleEl.textContent='Log de Treino';
+  if(planBtn) planBtn.style.color='#78716C';
+  gymUpdateTabs();
+  if(v==='semana') renderWeekView();
+  else renderGym();
+}
 function showGym(){
-  _gymAddOpen=false;_gymViewPlan=false;_gymPlanPreview=[];
+  _gymAddOpen=false;_gymViewPlan=false;_gymPlanPreview=[];_gymView='hoje';
   const dd=loadDay(currentDate);
   const wk=getWorkoutById(dd.tr);
   const{day}=dispDate(currentDate);
   document.getElementById('gym-hdr-info').textContent=day+' · '+(wk?.name||dd.tr);
   document.getElementById('gym-hdr-title').textContent='Log de Treino';
   document.getElementById('gym-plan-btn').style.color='#8b949e';
+  gymUpdateTabs();
   renderGym();
   showScreen('gym');
 }
 function gymTogglePlan(){
-  _gymViewPlan=!_gymViewPlan;
+  _gymViewPlan=!_gymViewPlan;_gymView='hoje';
   const _curTr=loadDay(currentDate).tr;
   _gymPlanTr=_gymPlanTr||(_curTr!=='descanso'?_curTr:(userWorkouts[0]?.id||'descanso'));
   _gymPlanPreview=[];
   const titleEl=document.getElementById('gym-hdr-title');
   const planBtn=document.getElementById('gym-plan-btn');
   if(titleEl) titleEl.textContent=_gymViewPlan?'Plano de Treino':'Log de Treino';
-  if(planBtn) planBtn.style.color=_gymViewPlan?'#818cf8':'#8b949e';
+  if(planBtn) planBtn.style.color=_gymViewPlan?'#6C63FF':'#78716C';
+  gymUpdateTabs();
   renderGym();
 }
 function gymPlanSetTr(tr){_gymPlanTr=tr==='none'?null:tr;_gymPlanPreview=[];renderGym();}
@@ -723,7 +743,7 @@ function renderGym(){
   const selectorHtml='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;-webkit-overflow-scrolling:touch">'+
     getAllDayOptions().map(t=>{
       const sel=tr===t.id;
-      return`<button onclick="gymSetDay('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#0d1117'};color:${sel?t.color:'#78716C'};border:1px solid ${sel?t.color+'60':'#21262d'};flex-shrink:0">${t.icon} ${t.name}</button>`;
+      return`<button onclick="gymSetDay('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#FAFAF9'};color:${sel?t.color:'#78716C'};border:1px solid ${sel?t.color+'60':'#E7E5E4'};flex-shrink:0">${t.icon} ${t.name}</button>`;
     }).join('')+'</div>';
 
   if(tr==='descanso'){
@@ -775,11 +795,11 @@ function renderGym(){
       const prevSet=prevEx?.sets?.[si];
       return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
         <div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;width:22px;text-align:center;flex-shrink:0">${si+1}</div>
-        <input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;background:#FAFAF9;border:1.5px solid ${set.done?'#16a34a':'#21262d'};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none">
+        <input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;background:#FAFAF9;border:1.5px solid ${set.done?'#16a34a':'#E7E5E4'};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none">
         <span style="color:#A8A29E;font-size:13px;font-weight:700">×</span>
-        <input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'kg'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;background:#FAFAF9;border:1.5px solid ${set.done?'#16a34a':'#21262d'};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none">
+        <input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'kg'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;background:#FAFAF9;border:1.5px solid ${set.done?'#16a34a':'#E7E5E4'};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none">
         <span style="color:#A8A29E;font-size:11px">kg</span>
-        <button onclick="gymDone(${ei},${si})" style="margin-left:auto;min-width:32px;height:32px;border-radius:50%;background:${set.done?'#16a34a':'#21262d'};color:${set.done?'#fff':'#6e7681'};font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${set.done?'✓':''}</button>
+        <button onclick="gymDone(${ei},${si})" style="margin-left:auto;min-width:32px;height:32px;border-radius:50%;background:${set.done?'#16a34a':'#E7E5E4'};color:${set.done?'#fff':'#78716C'};font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${set.done?'✓':''}</button>
         ${ex.sets.length>1?`<button onclick="gymDelSet(${ei},${si})" style="min-width:22px;height:22px;border-radius:50%;background:#fff;color:#78716C;font-size:10px;flex-shrink:0">✕</button>`:''}
       </div>`;
     }).join('');
@@ -790,7 +810,7 @@ function renderGym(){
       </div>
       ${prevSummary?`<div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;margin-bottom:8px;padding:5px 8px;background:#fff;border-radius:6px">Ant: ${prevSummary}</div>`:''}
       ${setRows}
-      <button onclick="gymAddSet(${ei})" style="width:100%;padding:6px;background:#fff;border:1px dashed #30363d;border-radius:8px;color:#78716C;font-size:11px;margin-top:2px">+ série</button>
+      <button onclick="gymAddSet(${ei})" style="width:100%;padding:6px;background:#fff;border:1px dashed #D4D0CE;border-radius:8px;color:#78716C;font-size:11px;margin-top:2px">+ série</button>
     </div>`;
   });
 
@@ -939,7 +959,7 @@ function renderGymPlan(gymBody){
           <div style="font-size:14px;font-weight:700;color:#1C1917">${w.name}</div>
           <div style="font-size:10px;color:#78716C;margin-top:2px">${w.type==='musculacao'?'Musculação':'Aeróbico'} · ${days} · <b style="color:${w.color}">${plan.length} ex.</b></div>
         </div>
-        <button onclick="gymPlanSetTr('${isExp?'none':w.id}')" style="padding:6px 10px;border-radius:8px;background:${isExp?w.color+'20':'#21262d'};color:${isExp?w.color:'#78716C'};font-size:12px;flex-shrink:0">${isExp?'▲':'▼'}</button>
+        <button onclick="gymPlanSetTr('${isExp?'none':w.id}')" style="padding:6px 10px;border-radius:8px;background:${isExp?w.color+'20':'#E7E5E4'};color:${isExp?w.color:'#78716C'};font-size:12px;flex-shrink:0">${isExp?'▲':'▼'}</button>
         <button onclick="gymDeleteWorkout('${w.id}')" style="background:#F0EFED;color:#f87171;padding:6px 9px;border-radius:8px;font-size:11px;flex-shrink:0">✕</button>
       </div>
       ${expContent}
@@ -1049,7 +1069,7 @@ function renderBodyChart(sorted,metric){
   const gId='g_'+metric;
   const pathD=data.map((d,i)=>(i===0?'M':'L')+xS(i).toFixed(1)+','+yS(d.v).toFixed(1)).join(' ');
   const areaD=pathD+' L'+xS(data.length-1).toFixed(1)+','+(padT+cH).toFixed(1)+' L'+padL+','+(padT+cH).toFixed(1)+' Z';
-  const dots=data.map((d,i)=>`<circle cx="${xS(i).toFixed(1)}" cy="${yS(d.v).toFixed(1)}" r="${i===data.length-1?4:2.5}" fill="${color}" stroke="#161b22" stroke-width="${i===data.length-1?2:1}"/>`).join('');
+  const dots=data.map((d,i)=>`<circle cx="${xS(i).toFixed(1)}" cy="${yS(d.v).toFixed(1)}" r="${i===data.length-1?4:2.5}" fill="${color}" stroke="#fff" stroke-width="${i===data.length-1?2:1}"/>`).join('');
   const lastX=xS(data.length-1),lastY=yS(data[data.length-1].v);
   const lastAnchor=data.length>1&&lastX>W*0.7?'end':'start';
   const lastLabelX=lastAnchor==='end'?lastX-6:lastX+6;
@@ -1057,17 +1077,17 @@ function renderBodyChart(sorted,metric){
   const nY=4;
   const yTicks=Array.from({length:nY}).map((_,i)=>{
     const v=yMin+(yRange/(nY-1))*i,y=yS(v);
-    return`<text x="${(padL-4).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" font-size="8" fill="#4d5863" dominant-baseline="middle">${v.toFixed(1)}</text><line x1="${padL}" y1="${y.toFixed(1)}" x2="${(padL+cW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#21262d" stroke-width="0.5" stroke-dasharray="3,3"/>`;
+    return`<text x="${(padL-4).toFixed(1)}" y="${y.toFixed(1)}" text-anchor="end" font-size="8" fill="#A8A29E" dominant-baseline="middle">${v.toFixed(1)}</text><line x1="${padL}" y1="${y.toFixed(1)}" x2="${(padL+cW).toFixed(1)}" y2="${y.toFixed(1)}" stroke="#E7E5E4" stroke-width="0.5" stroke-dasharray="3,3"/>`;
   }).join('');
   const maxLbls=Math.min(5,data.length);
   const lblIdx=data.length<=maxLbls?data.map((_,i)=>i):Array.from({length:maxLbls}).map((_,i)=>Math.round(i*(data.length-1)/(maxLbls-1)));
-  const xLabels=lblIdx.map(i=>{const p=data[i].date.split('-');return`<text x="${xS(i).toFixed(1)}" y="${(H-6).toFixed(1)}" text-anchor="middle" font-size="8" fill="#4d5863">${p[2]}/${p[1]}</text>`;}).join('');
+  const xLabels=lblIdx.map(i=>{const p=data[i].date.split('-');return`<text x="${xS(i).toFixed(1)}" y="${(H-6).toFixed(1)}" text-anchor="middle" font-size="8" fill="#A8A29E">${p[2]}/${p[1]}</text>`;}).join('');
   return`<svg viewBox="0 0 ${W} ${H}" style="width:100%;height:auto;display:block">
     <defs><linearGradient id="${gId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${color}" stop-opacity="0.3"/><stop offset="100%" stop-color="${color}" stop-opacity="0"/></linearGradient></defs>
     ${yTicks}<path d="${areaD}" fill="url(#${gId})"/><path d="${pathD}" fill="none" stroke="${color}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
     ${dots}${lastLabel}${xLabels}
-    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${(padT+cH).toFixed(1)}" stroke="#30363d" stroke-width="1"/>
-    <line x1="${padL}" y1="${(padT+cH).toFixed(1)}" x2="${(padL+cW).toFixed(1)}" y2="${(padT+cH).toFixed(1)}" stroke="#30363d" stroke-width="1"/>
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${(padT+cH).toFixed(1)}" stroke="#E7E5E4" stroke-width="1"/>
+    <line x1="${padL}" y1="${(padT+cH).toFixed(1)}" x2="${(padL+cW).toFixed(1)}" y2="${(padT+cH).toFixed(1)}" stroke="#E7E5E4" stroke-width="1"/>
   </svg>`;
 }
 
@@ -1078,10 +1098,10 @@ function renderBodyComp(){
   const earliest=sorted[0];
 
   function statCard(label,value,unit,delta,color){
-    let dColor='#6e7681';
+    let dColor='#78716C';
     if(delta!=null){
-      if(unit==='%') dColor=delta>0?'#fb923c':delta<0?'#34d399':'#6e7681';
-      else dColor=delta>0?'#fb923c':delta<0?'#34d399':'#6e7681';
+      if(unit==='%') dColor=delta>0?'#fb923c':delta<0?'#34d399':'#78716C';
+      else dColor=delta>0?'#fb923c':delta<0?'#34d399':'#78716C';
     }
     const dHtml=delta!=null?`<div style="font-size:10px;color:${dColor};margin-top:2px">${delta>0?'+':''}${delta.toFixed(1)}${unit}</div>`:'';
     return`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:12px;padding:12px 6px;text-align:center">
@@ -1112,7 +1132,7 @@ function renderBodyComp(){
   }
 
   const metrics=[{id:'weight',l:'⚖️ Peso',c:'#38bdf8'},{id:'fat',l:'🔥 Gordura',c:'#fb923c'},{id:'lean',l:'💪 Massa Magra',c:'#34d399'}];
-  const tabBtns=metrics.map(m=>{const sel=_bodyMetric===m.id;return`<button onclick="setBodyMetric('${m.id}')" style="flex:1;padding:8px 4px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?m.c+'20':'transparent'};color:${sel?m.c:'#6e7681'};border:1px solid ${sel?m.c+'60':'#21262d'}">${m.l}</button>`;}).join('');
+  const tabBtns=metrics.map(m=>{const sel=_bodyMetric===m.id;return`<button onclick="setBodyMetric('${m.id}')" style="flex:1;padding:8px 4px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?m.c+'20':'transparent'};color:${sel?m.c:'#78716C'};border:1px solid ${sel?m.c+'60':'#E7E5E4'}">${m.l}</button>`;}).join('');
 
   const todayStr=today();
   const todayEntry=bodyEntries.find(e=>e.date===todayStr);
@@ -1206,15 +1226,15 @@ function showGoals(){
   const g=goals;
   const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:15px;outline:none';
   const dias=[1,2,3,4,5,6,7];
-  const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#16a34a':'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?'#16a34a':'#21262d'}">${n}d</button>`;}).join('');
+  const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#16a34a':'#FAFAF9'};color:${sel?'#fff':'#78716C'};border:1px solid ${sel?'#16a34a':'#E7E5E4'}">${n}d</button>`;}).join('');
   const isMasc=g.sexo==='m';
   document.getElementById('goals-body').innerHTML=`
     <div class="card fade-in">
       <div class="sec-hdr"><div class="sec-lbl"><span>👤</span> MEU PERFIL</div></div>
       <div style="font-size:11px;color:#78716C;margin-bottom:6px">Sexo</div>
       <div style="display:flex;gap:6px;margin-bottom:12px">
-        <button id="gs-f" onclick="goalsSelectSexo('f')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${!isMasc?'#1f6feb':'#0d1117'};color:${!isMasc?'#fff':'#6e7681'};border:1px solid ${!isMasc?'#388bfd':'#21262d'}">♀ Feminino</button>
-        <button id="gs-m" onclick="goalsSelectSexo('m')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${isMasc?'#1f6feb':'#0d1117'};color:${isMasc?'#fff':'#6e7681'};border:1px solid ${isMasc?'#388bfd':'#21262d'}">♂ Masculino</button>
+        <button id="gs-f" onclick="goalsSelectSexo('f')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${!isMasc?'#6C63FF':'#FAFAF9'};color:${!isMasc?'#fff':'#78716C'};border:1px solid ${!isMasc?'#6C63FF':'#E7E5E4'}">♀ Feminino</button>
+        <button id="gs-m" onclick="goalsSelectSexo('m')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${isMasc?'#6C63FF':'#FAFAF9'};color:${isMasc?'#fff':'#78716C'};border:1px solid ${isMasc?'#6C63FF':'#E7E5E4'}">♂ Masculino</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div>
@@ -1266,8 +1286,8 @@ function goalsSelectSexo(s){
   goals={...goals,sexo:s};
   const isMasc=s==='m';
   const f=document.getElementById('gs-f'),m=document.getElementById('gs-m');
-  if(f){f.style.background=!isMasc?'#1f6feb':'#0d1117';f.style.color=!isMasc?'#fff':'#6e7681';f.style.borderColor=!isMasc?'#388bfd':'#21262d';}
-  if(m){m.style.background=isMasc?'#1f6feb':'#0d1117';m.style.color=isMasc?'#fff':'#6e7681';m.style.borderColor=isMasc?'#388bfd':'#21262d';}
+  if(f){f.style.background=!isMasc?'#6C63FF':'#FAFAF9';f.style.color=!isMasc?'#fff':'#78716C';f.style.borderColor=!isMasc?'#6C63FF':'#E7E5E4';}
+  if(m){m.style.background=isMasc?'#6C63FF':'#FAFAF9';m.style.color=isMasc?'#fff':'#78716C';m.style.borderColor=isMasc?'#6C63FF':'#E7E5E4';}
   goalsCalcUpdate();
 }
 function goalsSelectAgua(n){
@@ -1276,7 +1296,7 @@ function goalsSelectAgua(n){
 }
 function goalsSelectTreinos(n){
   goals={...goals,treinosSemana:n};
-  document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#16a34a':'#0d1117';b.style.color=sel?'#fff':'#6e7681';b.style.borderColor=sel?'#16a34a':'#21262d';});
+  document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#16a34a':'#FAFAF9';b.style.color=sel?'#fff':'#78716C';b.style.borderColor=sel?'#16a34a':'#E7E5E4';});
   goalsCalcUpdate();
 }
 function goalsCalcUpdate(){
@@ -1317,7 +1337,7 @@ function goalsCalcUpdate(){
     const cur=goals.aguaCopos;
     aguaBtnsEl.innerHTML=coposList.map(n=>{
       const sel=cur===n;const isSug=n===aguaSug&&peso>0;
-      return`<button onclick="goalsSelectAgua(${n})" id="ga-${n}" style="padding:8px 2px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?'#1d4ed8':'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?'#3b82f6':isSug?'#38bdf860':'#21262d'}">${n}${isSug?'<sup style="color:#38bdf8;font-size:8px">✦</sup>':''}</button>`;
+      return`<button onclick="goalsSelectAgua(${n})" id="ga-${n}" style="padding:8px 2px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?'#5A52E8':'#FAFAF9'};color:${sel?'#fff':'#78716C'};border:1px solid ${sel?'#6C63FF':isSug?'#38bdf860':'#E7E5E4'}">${n}${isSug?'<sup style="color:#38bdf8;font-size:8px">✦</sup>':''}</button>`;
     }).join('');
   }
 
@@ -1455,8 +1475,8 @@ function cognito(target,body){
 function authTab(mode){
   authMode=mode;
   const isLogin=mode==='login';
-  document.getElementById('tab-login').style.cssText=`flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${isLogin?'#21262d':'transparent'};color:${isLogin?'#e6edf3':'#6e7681'}`;
-  document.getElementById('tab-register').style.cssText=`flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${isLogin?'transparent':'#21262d'};color:${isLogin?'#6e7681':'#e6edf3'}`;
+  document.getElementById('tab-login').style.cssText=`flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:500;background:${isLogin?'#fff':'transparent'};color:${isLogin?'#1C1917':'#78716C'};border:none`;
+  document.getElementById('tab-register').style.cssText=`flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:500;background:${isLogin?'transparent':'#fff'};color:${isLogin?'#78716C':'#1C1917'};border:none`;
   document.getElementById('auth-btn').textContent=isLogin?'Entrar':'Criar conta';
   document.getElementById('auth-error').textContent='';
 }
@@ -1682,8 +1702,8 @@ function renderHoje(body,sc){
   const wMlCur=dayData.water*250,wMlMeta=goals.aguaCopos*250;
   const wLCur=wMlCur>=1000?(wMlCur/1000).toFixed(1).replace('.',',')+'L':wMlCur+'ml';
   const wLMeta=wMlMeta>=1000?(wMlMeta/1000).toFixed(1).replace('.',',')+'L':wMlMeta+'ml';
-  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=goals.aguaCopos?'#34d399':'#6e7681'}">${dayData.water}/${goals.aguaCopos} copos</span></div>
-    <div style="font-size:11px;color:#78716C;margin-bottom:8px">Consumido: <b style="color:${dayData.water>=goals.aguaCopos?'#34d399':'#e6edf3'}">${wLCur}</b> · Meta: <b>${wLMeta}/dia</b></div>
+  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=goals.aguaCopos?'#34d399':'#78716C'}">${dayData.water}/${goals.aguaCopos} copos</span></div>
+    <div style="font-size:11px;color:#78716C;margin-bottom:8px">Consumido: <b style="color:${dayData.water>=goals.aguaCopos?'#34d399':'#1C1917'}">${wLCur}</b> · Meta: <b>${wLMeta}/dia</b></div>
     <div style="display:flex;gap:5px;margin-bottom:8px">${wBars}</div>
     <div style="display:flex;gap:8px">
       <button onclick="addWater(-1)" style="flex:1;padding:8px;background:#FAFAF9;border:1px solid #E7E5E4;color:#78716C;border-radius:8px;font-size:12px;font-weight:600">− 1</button>
@@ -1691,9 +1711,9 @@ function renderHoje(body,sc){
     </div>
   </div>`;
   // SONO
-  const sOpts=SLEEPS.map(o=>{const sel=dayData.sleep===o.id;return`<button onclick="setSleep('${o.id}')" style="padding:9px 4px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?(o.ok?'#166534':'#7f1d1d'):'#0d1117'};color:${sel?(o.ok?'#86efac':'#fca5a5'):'#6e7681'};border:1px solid ${sel?(o.ok?'#16a34a':'#dc2626'):'#21262d'}">${o.l}</button>`;}).join('');
-  const sOk=[{v:'true',l:'✓ Sim'},{v:'false',l:'✗ Não'}].map(o=>{const sel=String(dayData.sleepOk)===o.v;return`<button onclick="setSleepOk(${o.v})" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?(o.v==='true'?'#166534':'#7f1d1d'):'#0d1117'};color:${sel?(o.v==='true'?'#86efac':'#fca5a5'):'#6e7681'};border:1px solid ${sel?(o.v==='true'?'#16a34a':'#dc2626'):'#21262d'}">${o.l}</button>`;}).join('');
-  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>😴</span> SONO</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.sleep.d===sc.sleep.t?'#a78bfa':'#6e7681'}">${sc.sleep.d}/${sc.sleep.t}</span></div>
+  const sOpts=SLEEPS.map(o=>{const sel=dayData.sleep===o.id;return`<button onclick="setSleep('${o.id}')" style="padding:9px 4px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?(o.ok?'#166534':'#7f1d1d'):'#FAFAF9'};color:${sel?(o.ok?'#86efac':'#fca5a5'):'#78716C'};border:1px solid ${sel?(o.ok?'#16a34a':'#dc2626'):'#E7E5E4'}">${o.l}</button>`;}).join('');
+  const sOk=[{v:'true',l:'✓ Sim'},{v:'false',l:'✗ Não'}].map(o=>{const sel=String(dayData.sleepOk)===o.v;return`<button onclick="setSleepOk(${o.v})" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?(o.v==='true'?'#166534':'#7f1d1d'):'#FAFAF9'};color:${sel?(o.v==='true'?'#86efac':'#fca5a5'):'#78716C'};border:1px solid ${sel?(o.v==='true'?'#16a34a':'#dc2626'):'#E7E5E4'}">${o.l}</button>`;}).join('');
+  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>😴</span> SONO</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.sleep.d===sc.sleep.t?'#a78bfa':'#78716C'}">${sc.sleep.d}/${sc.sleep.t}</span></div>
     <div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORAS DORMIDAS</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">${sOpts}</div>
     <div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORÁRIO CONSISTENTE?</div>
@@ -1716,15 +1736,18 @@ function renderHoje(body,sc){
   }else if(missing.length){
     html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🔍</span> PENDÊNCIAS</div></div><div style="display:flex;flex-direction:column;gap:6px">${missing.map(m=>`<div style="display:flex;gap:10px;align-items:flex-start"><div class="pending-dot"></div><span style="font-size:13px;color:#DC2626;line-height:1.5">${m}</span></div>`).join('')}</div></div>`;
   }
-  if(pct===100) html+=`<div style="background:#F0FDF4;border:1px solid #16a34a;border-radius:14px;padding:22px;text-align:center;margin-bottom:10px"><div style="font-size:28px;margin-bottom:6px">🎉</div><div style="font-size:16px;font-weight:800;color:#16A34A">100% — dia perfeito!</div><div style="font-size:12px;color:#16A34A;margin-top:4px">Continue assim — consistência é tudo.</div></div>`;
+  if(pct===100){
+    html+=`<div style="background:var(--accent-light,#EDE9FF);border:1px solid var(--accent,#6C63FF);border-radius:14px;padding:22px;text-align:center;margin-bottom:10px"><div style="font-size:28px;margin-bottom:6px">🎉</div><div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--accent,#6C63FF)">100% — dia perfeito!</div><div style="font-size:12px;color:#78716C;margin-top:4px">Continue assim — consistência é tudo.</div></div>`;
+    showToast('🎉 100% do dia — incrível!');
+  }
   body.innerHTML=html;
 }
 
 function renderNutricao(body,sc){
   let html='';
-  const jBtns=[{id:'refeicao',l:'🍽️ Refeição'},{id:'rap10',l:'🌯 Rap10'},{id:'hamburguer',l:'🍔 Hambúrguer'}].map(v=>`<button onclick="setJantar('${v.id}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;background:${dayData.jantarV===v.id?'#1f6feb':'#0d1117'};color:${dayData.jantarV===v.id?'#fff':'#6e7681'};border:1px solid ${dayData.jantarV===v.id?'#388bfd':'#21262d'}">${v.l}</button>`).join('');
-  const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#78716C;font-family:'DM Mono',monospace">${m.time}</span></div><div style="font-size:10px;color:${done?'#3d5040':'#6e7681'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#3d5040':'#4d5863'};line-height:1.45">${det.hint}</div><div class="badge">${det.badge}</div></div></button>`;}).join('');
-  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.meals.d===sc.meals.t?'#fb923c':'#6e7681'}">${sc.meals.d}/${sc.meals.t}</span></div>
+  const jBtns=[{id:'refeicao',l:'🍽️ Refeição'},{id:'rap10',l:'🌯 Rap10'},{id:'hamburguer',l:'🍔 Hambúrguer'}].map(v=>`<button onclick="setJantar('${v.id}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;background:${dayData.jantarV===v.id?'#6C63FF':'#FAFAF9'};color:${dayData.jantarV===v.id?'#fff':'#78716C'};border:1px solid ${dayData.jantarV===v.id?'#6C63FF':'#E7E5E4'}">${v.l}</button>`).join('');
+  const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#78716C':'#1C1917'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#78716C;font-family:'DM Mono',monospace">${m.time}</span></div><div style="font-size:10px;color:${done?'#3d5040':'#78716C'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#3d5040':'#A8A29E'};line-height:1.45">${det.hint}</div><div class="badge">${det.badge}</div></div></button>`;}).join('');
+  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.meals.d===sc.meals.t?'#fb923c':'#78716C'}">${sc.meals.d}/${sc.meals.t}</span></div>
     <div style="margin-bottom:10px"><div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.08em;margin-bottom:6px">VARIANTE DO JANTAR</div><div style="display:flex;gap:6px">${jBtns}</div></div>
     ${mealCards}
   </div>`;
@@ -1749,8 +1772,8 @@ function renderSuplDay(body,sc){
       return`<button class="check-row ${done?'done':''}" onclick="toggleSup('${s.id}')">
         <div class="check-circle ${done?'done':''}" style="${done?'':'border-color:#D4D0CE'}">${done?'✓':''}</div>
         <div style="flex:1">
-          <div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">${s.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#c9d1d9'};text-decoration:${done?'line-through':'none'}">${s.label}</span></div>
-          <div style="font-size:11px;color:${done?'#3d5040':'#4d5863'};margin-top:3px;line-height:1.4">${s.sub}</div>
+          <div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">${s.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#78716C':'#1C1917'};text-decoration:${done?'line-through':'none'}">${s.label}</span></div>
+          <div style="font-size:11px;color:${done?'#3d5040':'#A8A29E'};margin-top:3px;line-height:1.4">${s.sub}</div>
         </div>
       </button>`;
     }).join('');
@@ -1759,7 +1782,7 @@ function renderSuplDay(body,sc){
     html=`<div class="card fade-in">
       <div class="sec-hdr">
         <div class="sec-lbl"><span>💊</span> SUPLEMENTOS DO DIA</div>
-        <span style="font-size:11px;font-family:'DM Mono',monospace;color:${allDone?'#fbbf24':'#6e7681'}">${doneCnt}/${sups.length}</span>
+        <span style="font-size:11px;font-family:'DM Mono',monospace;color:${allDone?'#fbbf24':'#78716C'}">${doneCnt}/${sups.length}</span>
       </div>
       <div style="font-size:11px;color:#78716C;margin-bottom:12px">Protocolo: <b style="color:#78716C">${contextLabel}</b></div>
       ${supRows}
@@ -1835,13 +1858,13 @@ function renderMais(){
     {icon:'💊',label:'Gerenciar Suplementos',sub:'Cadastrar e editar seus suplementos',fn:"showSups()",c:'#fbbf24'},
   ];
   const cards=items.map(it=>`
-    <button onclick="${it.fn}" style="width:100%;display:flex;align-items:center;gap:14px;padding:16px 14px;background:#fff;border:1px solid #E7E5E4;border-radius:14px;margin-bottom:8px;text-align:left">
-      <div style="width:44px;height:44px;border-radius:12px;background:${it.c}18;border:1px solid ${it.c}40;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${it.icon}</div>
+    <button onclick="${it.fn}" style="width:100%;display:flex;align-items:center;gap:14px;padding:15px 14px;background:#fff;border:1px solid #E7E5E4;border-radius:var(--r-md,12px);margin-bottom:8px;text-align:left;transition:box-shadow .15s;">
+      <div style="width:42px;height:42px;border-radius:10px;background:${it.c}18;border:1px solid ${it.c}40;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${it.icon}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:700;color:#1C1917">${it.label}</div>
-        <div style="font-size:11px;color:#78716C;margin-top:2px">${it.sub}</div>
+        <div style="font-size:14px;font-weight:500;color:#1C1917">${it.label}</div>
+        <div style="font-size:12px;color:#78716C;margin-top:2px">${it.sub}</div>
       </div>
-      <span style="color:#A8A29E;font-size:16px">›</span>
+      <span style="color:#D4D0CE;font-size:18px">›</span>
     </button>`).join('');
   body.innerHTML=`
     <div class="fade-in">
@@ -1867,22 +1890,22 @@ function showHistory(){
   const great=hist.filter(d=>d.pct>=80).length;
   let streak=0; for(const d of hist){if(d.pct>=80)streak++;else break;}
 
-  const stats=[{l:'Média 60d',v:avg+'%',c:'#818cf8'},{l:'Dias ótimos',v:great,c:'#34d399'},{l:'Sequência',v:streak+'d',c:'#fbbf24'}];
+  const stats=[{l:'Média 60d',v:avg+'%',c:'#6C63FF'},{l:'Dias ótimos',v:great,c:'#16A34A'},{l:'Sequência',v:streak+'d',c:'#D97706'}];
   const statsHtml=stats.map(s=>`<div class="card" style="padding:14px 10px;text-align:center;margin-bottom:0"><div style="font-size:22px;font-weight:800;color:${s.c}">${s.v}</div><div style="font-size:10px;color:#78716C;font-weight:600;margin-top:3px">${s.l}</div></div>`).join('');
 
   const hist60=[...hist].reverse();
   const firstDow=getDow(hist60[0].date);
   const offsetCells=Array(firstDow).fill('<div></div>').join('');
   const calCells=hist60.map(({date,pct})=>{
-    const bg=pct===0?'#1c2128':pct>=80?'#166534':pct>=55?'#78350f':'#7f1d1d';
-    const c=pct===0?'#30363d':pct>=80?'#86efac':pct>=55?'#fcd34d':'#fca5a5';
+    const bg=pct===0?'#F0EFED':pct>=80?'#DCFCE7':pct>=55?'#FEF9C3':'#FEE2E2';
+    const c=pct===0?'#A8A29E':pct>=80?'#16A34A':pct>=55?'#92400E':'#DC2626';
     const {date:d}=dispDate(date);
-    return`<div title="${d} — ${pct}%" style="aspect-ratio:1;border-radius:6px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:${c}">${pct>0?pct:''}</div>`;
+    return`<div title="${d} — ${pct}%" style="aspect-ratio:1;border-radius:6px;background:${bg};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;font-family:'DM Mono',monospace;color:${c}">${pct>0?pct:''}</div>`;
   }).join('');
 
   const listRows=hist.map(({date,pct})=>{
     const{day,date:d}=dispDate(date);
-    const c=pct>=80?'#34d399':pct>=55?'#fbbf24':pct>0?'#f87171':'#30363d';
+    const c=pct>=80?'#34d399':pct>=55?'#fbbf24':pct>0?'#f87171':'#D4D0CE';
     return`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;background:#FAFAF9;border-radius:10px;border:1px solid #E7E5E4;margin-bottom:6px">
       <div><span style="font-size:12px;font-weight:700;color:#1C1917">${day} </span><span style="font-size:12px;color:#78716C">${d}</span></div>
       <div style="display:flex;align-items:center;gap:8px">
@@ -1901,7 +1924,7 @@ function showHistory(){
         ${offsetCells}${calCells}
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap">
-        ${[{c:'#166534',tc:'#86efac',l:'≥80%'},{c:'#78350f',tc:'#fcd34d',l:'55–79%'},{c:'#7f1d1d',tc:'#fca5a5',l:'<55%'},{c:'#1c2128',tc:'#30363d',l:'Sem dado'}].map(x=>`<div style="display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;border-radius:3px;background:${x.c}"></div><span style="font-size:10px;color:${x.tc}">${x.l}</span></div>`).join('')}
+        ${[{c:'#DCFCE7',tc:'#16A34A',l:'≥80%'},{c:'#FEF9C3',tc:'#92400E',l:'55–79%'},{c:'#FEE2E2',tc:'#DC2626',l:'<55%'},{c:'#F0EFED',tc:'#A8A29E',l:'Sem dado'}].map(x=>`<div style="display:flex;align-items:center;gap:4px"><div style="width:10px;height:10px;border-radius:3px;background:${x.c};border:1px solid ${x.tc}40"></div><span style="font-size:10px;font-weight:500;color:${x.tc}">${x.l}</span></div>`).join('')}
       </div>
     </div>
     <div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📋</span> DETALHES</div></div><div style="max-height:360px;overflow-y:auto">${listRows}</div></div>`;
@@ -1917,7 +1940,7 @@ let _goalDraft={};
 function renderGoalCard(goal,mini=false){
   const prog=getGoalProgress(goal);
   const cat=getCat(goal.category);
-  const barCol=prog.pct>=100?'#34d399':prog.isAtRisk?'#fb923c':prog.pct>=60?'#fbbf24':'#4d5863';
+  const barCol=prog.pct>=100?'#34d399':prog.isAtRisk?'#fb923c':prog.pct>=60?'#fbbf24':'#A8A29E';
   const freqLbl={daily:'Hoje',weekly:'Semana',monthly:'Mês',yearly:'Ano',once:'Total'}[goal.frequency]||'Período';
   let html=`<div style="margin-bottom:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
@@ -2000,11 +2023,11 @@ function renderGoalsMgmt(){
     active.forEach(g=>{
       const prog=getGoalProgress(g);
       const cat=getCat(g.category);
-      const barCol=prog.pct>=100?'#34d399':prog.isAtRisk?'#fb923c':prog.pct>=60?'#fbbf24':'#4d5863';
+      const barCol=prog.pct>=100?'#34d399':prog.isAtRisk?'#fb923c':prog.pct>=60?'#fbbf24':'#A8A29E';
       const freqLbl={daily:'Diária',weekly:'Semanal',monthly:'Mensal',yearly:'Anual',once:'Uma vez'}[g.frequency]||g.frequency;
       html+=`<div class="card" style="margin-bottom:8px${prog.isAtRisk?';border-color:#fb923c60':''}">
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
-          <div style="width:40px;height:40px;border-radius:10px;background:${cat.icon?'#21262d':'#21262d'};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${g.icon||cat.icon}</div>
+          <div style="width:40px;height:40px;border-radius:10px;background:${cat.icon?'#E7E5E4':'#E7E5E4'};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${g.icon||cat.icon}</div>
           <div style="flex:1;min-width:0">
             <div style="font-size:13px;font-weight:700;color:#1C1917">${g.title}</div>
             <div style="font-size:10px;color:#78716C;margin-top:2px">${freqLbl} · Meta: ${g.targetValue} ${g.unit} · ${prog.pct}%</div>
