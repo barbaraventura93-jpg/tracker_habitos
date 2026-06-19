@@ -946,20 +946,18 @@ function renderSemanaScreen(){
   const untrained=ALL.filter(g=>!muscleSets[g]);
   const remaining=weekDays.filter(w=>w.date>todayStr).length;
   let sugHtml='';
-  if(untrained.length>0&&remaining>0){
-    const pri=untrained.find(g=>g==='Perna'||g==='Costas'||g==='Core')||untrained[0];
-    sugHtml='<div class="card">'
-      +'<div class="sec-hdr"><div class="sec-lbl">Sugestão</div></div>'
-      +'<div style="font-size:13px;color:var(--txt);line-height:1.6;padding:6px 0"><b>'+pri+'</b> ainda não foi treinado — '+remaining+' dia'+(remaining>1?'s':'')+' restante'+(remaining>1?'s':'')+' para encaixar.</div>'
-      +(untrained.length>1?'<div style="font-size:11px;color:var(--muted);padding-top:4px">Também sem treino: '+untrained.filter(g=>g!==pri).join(', ')+'.</div>':'')
-      +'</div>';
-  } else if(untrained.length===0){
-    sugHtml='<div class="card" style="background:#F0FDF4;border-color:rgba(22,163,74,.2)">'
+  if(untrained.length===0){
+    sugHtml='<div id="week-sug-card" class="card" style="background:#F0FDF4;border-color:rgba(22,163,74,.2)">'
       +'<div style="display:flex;align-items:center;gap:10px">'
       +'<div style="font-size:22px">💪</div>'
       +'<div><div style="font-size:13px;font-weight:700;color:#16A34A">Semana equilibrada!</div>'
       +'<div style="font-size:11px;color:var(--muted);margin-top:2px">Todos os grupos musculares foram treinados.</div></div>'
       +'</div></div>';
+  } else if(remaining>0){
+    sugHtml='<div id="week-sug-card" class="card">'
+      +'<div class="sec-hdr"><div class="sec-lbl">Sugestão</div></div>'
+      +'<div style="font-size:12px;color:var(--muted);padding:8px 0">Carregando sugestão...</div>'
+      +'</div>';
   }
 
   body.innerHTML='<div class="fade-in">'
@@ -979,6 +977,29 @@ function renderSemanaScreen(){
     +'</div>'
     +sugHtml
     +'</div>';
+  if(untrained.length>0&&remaining>0){
+    const _tok=localStorage.getItem('ht:token')||'';
+    fetch(API_URL+'?action=week_suggestion',{
+      method:'POST',
+      headers:{'Authorization':'Bearer '+_tok,'Content-Type':'application/json'},
+      body:JSON.stringify({weekSummary:muscleSets,untrainedGroups:untrained,remainingDays:remaining})
+    }).then(r=>r.json()).then(data=>{
+      const el=document.getElementById('week-sug-card');
+      if(!el) return;
+      const sugs=(data.suggestions||[]).filter(Boolean);
+      if(sugs.length){
+        el.innerHTML='<div class="sec-hdr"><div class="sec-lbl">Sugestão</div></div>'
+          +'<div style="font-size:13px;color:var(--txt);line-height:1.7;padding:6px 0">'+sugs.join('<br><br>')+'</div>';
+      } else { el.remove(); }
+    }).catch(()=>{
+      const el=document.getElementById('week-sug-card');
+      if(!el) return;
+      const pri=untrained.find(g=>g==='Perna'||g==='Costas'||g==='Core')||untrained[0];
+      el.innerHTML='<div class="sec-hdr"><div class="sec-lbl">Sugestão</div></div>'
+        +'<div style="font-size:13px;color:var(--txt);line-height:1.6;padding:6px 0"><b>'+pri+'</b> ainda não foi treinado — '+remaining+' dia'+(remaining>1?'s':'')+' restante'+(remaining>1?'s':'')+' para encaixar.</div>'
+        +(untrained.length>1?'<div style="font-size:11px;color:var(--muted);padding-top:4px">Também sem treino: '+untrained.filter(g=>g!==pri).join(', ')+'.</div>':'');
+    });
+  }
 }
 function showSemana(){
   renderSemanaScreen();
