@@ -64,6 +64,14 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 - Confetti ao atingir 100%
 - Alerta de risco quando prazo próximo e progresso abaixo de 70%
 
+**Registro de progresso (Metas e Objetivos)**
+- Toque no card abre painel inline (desktop) ou bottom sheet (mobile) para registrar progresso
+- Botões rápidos gerados automaticamente pela unidade da meta (livros → +1/+2/+5 · horas → +30min/+1h/+2h · R$ → +50/+100/+500 · km, ml, páginas, etc.)
+- Campo de anotação opcional por registro (ex: "Atomic Habits", "Depósito junho")
+- Botão `···` abre histórico completo de registros com data, valor e nota
+- Previsão de conclusão calculada pelo ritmo atual ("No ritmo atual, termina em dez 2026 ✅")
+- Remoção de registro individual em caso de erro de digitação
+
 **Gestão:** criar, editar, arquivar e excluir metas. Ícone e unidade livres.
 
 ### Configurações de Saúde
@@ -149,4 +157,5 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 - [x] Suplementos personalizados com importação por IA
 - [x] Persistência em nuvem com DynamoDB + Lambda
 - [x] Autenticação com AWS Cognito
+- [x] Registro de progresso em metas de longo prazo — painel inline (desktop), bottom sheet (mobile), botões rápidos por unidade, anotações, histórico e previsão de conclusão
 - [ ] Domínio customizado via Route 53
