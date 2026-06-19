@@ -1,6 +1,13 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Description: Tracker Habitos - Backend API
 
+Parameters:
+  RapidApiKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: RapidAPI key for ExerciseDB (optional — cache still works without it)
+
 Resources:
 
   # ── Cognito ──────────────────────────────────────────────────────────────────
@@ -52,6 +59,18 @@ Resources:
         - AttributeName: date
           KeyType: RANGE
 
+  ExerciseCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: exercise-cache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: exerciseName
+          AttributeType: S
+      KeySchema:
+        - AttributeName: exerciseName
+          KeyType: HASH
+
   # ── Lambda ───────────────────────────────────────────────────────────────────
   LambdaRole:
     Type: AWS::IAM::Role
@@ -75,7 +94,9 @@ Resources:
                 Action:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
-                Resource: !GetAtt TrackerTable.Arn
+                Resource:
+                  - !GetAtt TrackerTable.Arn
+                  - !GetAtt ExerciseCacheTable.Arn
         - PolicyName: BedrockAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -96,14 +117,34 @@ Resources:
       Environment:
         Variables:
           TABLE_NAME: tracker-habitos-data
+          CACHE_TABLE_NAME: exercise-cache
+          RAPIDAPI_KEY: !Ref RapidApiKey
       Code:
         ZipFile: |
-          import json,boto3,os,urllib.request,decimal,re,base64
+          import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
+          cache_table=dynamo.Table(os.environ.get('CACHE_TABLE_NAME','exercise-cache'))
           bedrock=boto3.client('bedrock-runtime',region_name='us-east-1')
           REGION=os.environ.get('AWS_REGION','sa-east-1')
           MODEL='us.amazon.nova-lite-v1:0'
+          RAPIDAPI_KEY=os.environ.get('RAPIDAPI_KEY','')
+          BODY_PART_MAP={
+            'chest':'Peito','back':'Costas','shoulders':'Ombro',
+            'upper arms':'Biceps','lower arms':'Biceps',
+            'upper legs':'Perna','lower legs':'Perna',
+            'waist':'Core','cardio':'Cardio',
+          }
+          TARGET_MAP={
+            'pectorals':'Peito','serratus anterior':'Peito',
+            'lats':'Costas','traps':'Costas','rhomboids':'Costas','spine':'Costas',
+            'delts':'Ombro','rotator cuff':'Ombro',
+            'biceps':'Biceps','brachials':'Biceps','forearms':'Biceps',
+            'triceps':'Triceps',
+            'quads':'Perna','hamstrings':'Perna','calves':'Perna','adductors':'Perna','abductors':'Perna',
+            'glutes':'Gluteo',
+            'abs':'Core','obliques':'Core','cardiovascular system':'Cardio',
+          }
           class Dec(json.JSONEncoder):
             def default(self,o):
               if isinstance(o,decimal.Decimal):
@@ -134,6 +175,59 @@ Resources:
             if not m:
               raise Exception('Nenhum item identificado no arquivo')
             return json.loads(m.group())
+          def map_group(body_part,target):
+            t=TARGET_MAP.get(target.lower(),'')
+            if t: return t
+            return BODY_PART_MAP.get(body_part.lower(),'Outro')
+          def identify_exercise(name):
+            key=name.lower().strip()
+            cached=cache_table.get_item(Key={'exerciseName':key}).get('Item')
+            if cached: return cached
+            if not RAPIDAPI_KEY:
+              return {'exerciseName':key,'found':False,'fromCache':False}
+            encoded=urllib.parse.quote(key)
+            req=urllib.request.Request(
+              'https://exercisedb.p.rapidapi.com/exercises/name/'+encoded+'?limit=3',
+              headers={'X-RapidAPI-Key':RAPIDAPI_KEY,'X-RapidAPI-Host':'exercisedb.p.rapidapi.com'}
+            )
+            try:
+              with urllib.request.urlopen(req,timeout=6) as r:
+                data=json.loads(r.read())
+            except:
+              return {'exerciseName':key,'found':False,'fromCache':False}
+            if not data:
+              cache_table.put_item(Item={'exerciseName':key,'found':False,'cachedAt':datetime.datetime.utcnow().isoformat()+'Z'})
+              return {'exerciseName':key,'found':False}
+            ex=data[0]
+            grp=map_group(ex.get('bodyPart',''),ex.get('target',''))
+            result={
+              'exerciseName':key,
+              'exerciseId':ex.get('id',''),
+              'bodyPart':ex.get('bodyPart',''),
+              'targetMuscle':ex.get('target',''),
+              'group':grp,
+              'secondaryMuscles':ex.get('secondaryMuscles',[]),
+              'gifUrl':ex.get('gifUrl',''),
+              'instructions':ex.get('instructions',[]),
+              'found':True,
+              'cachedAt':datetime.datetime.utcnow().isoformat()+'Z',
+            }
+            cache_table.put_item(Item=result)
+            return result
+          def week_suggestion(week_summary,untrained,remaining_days):
+            if remaining_days==0: return []
+            untrained_str=', '.join(untrained) if untrained else 'nenhum — semana equilibrada'
+            prompt=(
+              'O usuario treinou isso essa semana: '+json.dumps(week_summary,ensure_ascii=False)+'\n\n'
+              'Grupos musculares NAO treinados: '+untrained_str+'\n'
+              'Dias restantes na semana: '+str(remaining_days)+'\n\n'
+              'Gere 1 ou 2 sugestoes curtas e motivadoras (max 2 linhas cada) sobre o que faz sentido '
+              'treinar nos dias restantes para equilibrar a semana. Linguagem simples, sem jargao tecnico. '
+              'Responda so com as sugestoes, sem introducao ou numeracao.'
+            )
+            resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':[{'text':prompt}]}],inferenceConfig={'maxTokens':200})
+            txt=resp['output']['message']['content'][0]['text']
+            return [s.strip() for s in txt.strip().split('\n') if s.strip()]
           def handler(event,context):
             method=event.get('requestContext',{}).get('http',{}).get('method','')
             auth=(event.get('headers') or {}).get('authorization','')
@@ -148,6 +242,22 @@ Resources:
                 body=json.loads(event.get('body') or '{}')
                 items=call_ai(body['file'],body['mimeType'],body.get('context','gym_plan'))
                 return{'statusCode':200,'body':json.dumps({'items':items})}
+              except Exception as e:
+                return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+            if action=='identify_exercise' and method=='GET':
+              name=params.get('name','').strip()
+              if not name:
+                return{'statusCode':400,'body':json.dumps({'error':'missing name'})}
+              try:
+                result=identify_exercise(name)
+                return{'statusCode':200,'body':json.dumps(result,cls=Dec)}
+              except Exception as e:
+                return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+            if action=='week_suggestion' and method=='POST':
+              try:
+                body=json.loads(event.get('body') or '{}')
+                suggestions=week_suggestion(body.get('weekSummary',{}),body.get('untrainedGroups',[]),body.get('remainingDays',0))
+                return{'statusCode':200,'body':json.dumps({'suggestions':suggestions})}
               except Exception as e:
                 return{'statusCode':500,'body':json.dumps({'error':str(e)})}
             if not date:

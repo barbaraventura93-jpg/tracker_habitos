@@ -41,7 +41,8 @@ jobs:
             --stack-name tracker-habitos-backend \
             --capabilities CAPABILITY_NAMED_IAM \
             --region sa-east-1 \
-            --no-fail-on-empty-changeset
+            --no-fail-on-empty-changeset \
+            --parameter-overrides "RapidApiKey=${{ secrets.RAPIDAPI_KEY }}"
 
       - name: Garantir permissão pública no Lambda URL
         run: |
