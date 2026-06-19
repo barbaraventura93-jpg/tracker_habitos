@@ -28,6 +28,9 @@ App de acompanhamento de rotina diária — refeições, água, suplementos, son
 - Comparação automática com a última sessão do mesmo treino
 - % de sucesso do dia sobe automaticamente ao concluir séries
 - Plano de treino por tipo (A/B/C) salvo como modelo, sessões isoladas por tipo
+- **Reordenação de exercícios** — drag & drop no desktop (handle ⠿), botões ↑ ↓ no mobile via long press
+- **Bi-set e Tri-set** — botão entre exercícios consecutivos agrupa com colchete visual e badge BI-SET / TRI-SET; sugestão automática de super-set quando músculos são antagonistas
+- **Edição inline** — botão ✏️ ou long press no nome abre painel com edição de nome, músculos principais (até 3), músculos secundários, grupo e observação; pergunta se deve propagar para o plano
 
 **Cardio / Aeróbico**
 - Log de atividades com duração (min) e distância (km) por intervalo
@@ -158,4 +161,7 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 - [x] Persistência em nuvem com DynamoDB + Lambda
 - [x] Autenticação com AWS Cognito
 - [x] Registro de progresso em metas de longo prazo — painel inline (desktop), bottom sheet (mobile), botões rápidos por unidade, anotações, histórico e previsão de conclusão
+- [x] Reordenação de exercícios — drag & drop desktop, botões ↑ ↓ mobile (long press)
+- [x] Agrupamento bi-set / tri-set com colchete visual e sugestão de super-set antagonista
+- [x] Edição inline de exercício — nome, músculos principais (array), secundários, grupo, obs; propagação opcional para o plano
 - [ ] Domínio customizado via Route 53
