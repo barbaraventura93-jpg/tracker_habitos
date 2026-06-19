@@ -1,93 +1,216 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="theme-color" content="#0d1117">
+<meta name="theme-color" content="#1C1917">
 <title>Rotina Diária</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,500;1,9..144,300&family=DM+Sans:wght@400;500&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
+:root{
+  --bg:#F7F5F2;--card:#FFFFFF;--deep:#1C1917;
+  --accent:#6C63FF;--accent-light:#EDE9FF;--gold:#C9A84C;
+  --txt:#1C1917;--muted:#78716C;--dim:#A8A29E;--border:#E7E5E4;
+  --r-sm:6px;--r-md:12px;--r-lg:20px;--r-xl:32px;
+  --shadow:0 1px 3px rgba(28,25,23,.06),0 4px 12px rgba(28,25,23,.04);
+  --sidebar:240px;--mhdr:52px;--bnav:64px;
+}
 *{box-sizing:border-box;margin:0;padding:0;}
-body{font-family:'Sora',system-ui,sans-serif;background:#0d1117;color:#e6edf3;min-height:100vh;-webkit-tap-highlight-color:transparent;}
+body{font-family:'DM Sans',system-ui,sans-serif;background:var(--bg);color:var(--txt);min-height:100vh;-webkit-tap-highlight-color:transparent;font-size:14px;}
 button{cursor:pointer;border:none;font-family:inherit;transition:all .13s ease;}
-button:active{transform:scale(.96);opacity:.85;}
-textarea,input{font-family:inherit;}
+button:active{transform:scale(.96);opacity:.88;}
+textarea,input,select{font-family:inherit;}
 ::-webkit-scrollbar{width:3px;}
-::-webkit-scrollbar-thumb{background:#30363d;border-radius:2px;}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px;}
+
+/* Animations */
 .fade-in{animation:fadeIn .22s ease;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
-@keyframes confetti-fall{to{transform:translateY(110vh) rotate(720deg);opacity:0}}
-#app{max-width:460px;margin:0 auto;}
-.header{background:#161b22;border-bottom:1px solid #21262d;padding:12px 16px;position:sticky;top:0;z-index:50;}
-.header-inner{display:flex;align-items:center;justify-content:space-between;}
-.nav-btn{background:#21262d;color:#8b949e;padding:7px 13px;border-radius:8px;font-size:14px;}
-.body{padding:12px 13px 80px;}
-.card{background:#161b22;border:1px solid #21262d;border-radius:16px;padding:15px 13px;margin-bottom:10px;}
-@media(min-width:768px){
-  #app{max-width:none;margin:0 0 0 80px;}
-  .bnav{top:0;right:auto;width:80px;border-top:none;border-right:1px solid #21262d;}
-  .bnav-inner{flex-direction:column;max-width:none;width:100%;height:100%;padding:20px 0;justify-content:flex-start;align-items:stretch;}
-  .bnav-btn{flex:0;padding:16px 8px;border-top:2px solid transparent;border-left:3px solid transparent;}
-  .bnav-btn.active{border-top-color:transparent;border-left-color:#3b82f6;}
-  .body{padding-bottom:24px;max-width:900px;}
-  .header-inner{max-width:900px;}
+@keyframes streakPulse{0%,100%{box-shadow:0 0 0 0 rgba(201,168,76,.4)}70%{box-shadow:0 0 0 6px rgba(201,168,76,0)}}
+.progress-fill{transition:width .6s cubic-bezier(.34,1.56,.64,1);}
+@media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important;}}
+
+/* Layout */
+.app-layout{display:flex;min-height:100vh;}
+.sidebar{
+  width:var(--sidebar);flex-shrink:0;background:var(--deep);
+  position:fixed;top:0;left:0;bottom:0;
+  display:none;flex-direction:column;z-index:100;overflow-y:auto;
 }
-.sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
-.sec-lbl{display:flex;align-items:center;gap:7px;font-size:10px;font-weight:700;color:#8b949e;letter-spacing:.1em;text-transform:uppercase;}
-.check-row{width:100%;display:flex;align-items:flex-start;gap:12px;padding:11px 12px;border-radius:10px;text-align:left;background:#0d1117;border:1px solid #21262d;margin-bottom:7px;}
-.check-row.done{background:#0d2818;border-color:#16a34a;}
-.check-circle{width:22px;height:22px;border-radius:50%;flex-shrink:0;margin-top:1px;background:transparent;border:2px solid #30363d;display:flex;align-items:center;justify-content:center;transition:all .2s ease;font-size:12px;font-weight:800;color:#fff;}
-.check-circle.done{background:#16a34a;border-color:#16a34a;}
-.score-bar-wrap{display:flex;align-items:center;gap:10px;margin-bottom:9px;}
-.score-bar-bg{flex:1;height:5px;background:#21262d;border-radius:99px;overflow:hidden;}
-.score-bar-fill{height:100%;border-radius:99px;transition:width .45s ease;}
-.meal-card{width:100%;text-align:left;border-radius:12px;padding:12px 13px;background:#0d1117;border:1px solid #21262d;display:flex;align-items:flex-start;gap:12px;margin-bottom:7px;}
-.meal-card.done{background:#0d2818;border-color:#16a34a;}
-.badge{display:inline-block;background:#21262d;border-radius:4px;padding:2px 7px;font-size:10px;color:#8b949e;font-weight:600;margin-top:5px;}
-.water-bar{flex:1;height:32px;border-radius:6px;transition:background .2s;background:#0d1117;border:1px solid #21262d;}
-.water-bar.active{background:#1d4ed8;border-color:#3b82f6;}
-.toggle-chip{flex:1;padding:7px 8px;border-radius:8px;font-size:11px;font-weight:600;background:#0d1117;color:#6e7681;border:1px solid #21262d;}
-.toggle-chip.active{background:rgba(249,115,22,.12);color:#f97316;border-color:rgba(249,115,22,.35);}
-.toggle-chip.active.fds{background:rgba(52,211,153,.12);color:#34d399;border-color:rgba(52,211,153,.35);}
-.day-type-btn{padding:10px 8px;border-radius:10px;font-size:11px;font-weight:700;line-height:1.3;background:#0d1117;color:#6e7681;border:1px solid #21262d;}
-.pending-dot{width:5px;height:5px;border-radius:50%;background:#f87171;margin-top:7px;flex-shrink:0;}
-.screen{display:none;}.screen.active{display:block;}
-.bnav{position:fixed;bottom:0;left:0;right:0;z-index:60;background:#161b22;border-top:1px solid #21262d;}
-.bnav-inner{display:flex;max-width:460px;margin:0 auto;}
-.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:8px 2px 12px;gap:2px;background:none;color:#6e7681;font-size:9px;font-weight:700;letter-spacing:.04em;border-top:2px solid transparent;border-radius:0;}
-.bnav-btn.active{color:#e6edf3;border-top-color:#3b82f6;}
+.main-content{flex:1;min-width:0;display:flex;flex-direction:column;}
+.screens-wrap{flex:1;padding-bottom:calc(var(--bnav) + 8px);}
+
+@media(min-width:768px){
+  .sidebar{display:flex;}
+  .main-content{margin-left:var(--sidebar);}
+  .screens-wrap{padding-bottom:40px;}
+  .bnav{display:none!important;}
+  .mobile-header{display:none!important;}
+}
+
+/* Sidebar */
+.sb-logo{padding:24px 20px 18px;display:flex;align-items:center;gap:10px;border-bottom:1px solid rgba(255,255,255,.08);}
+.sb-logo-icon{width:30px;height:30px;background:var(--accent);border-radius:var(--r-sm);display:flex;align-items:center;justify-content:center;font-size:15px;flex-shrink:0;}
+.sb-logo-text{font-family:'Fraunces',serif;font-weight:300;font-size:15px;color:#fff;letter-spacing:-.01em;}
+.sb-nav{flex:1;padding:10px 0;}
+.sb-item{
+  display:flex;align-items:center;gap:12px;padding:10px 20px;width:100%;background:none;
+  color:rgba(255,255,255,.5);font-size:14px;font-weight:400;border-radius:0;cursor:pointer;
+  border:none;font-family:'DM Sans',sans-serif;transition:all .15s;text-align:left;
+}
+.sb-item:hover{background:rgba(255,255,255,.05);color:rgba(255,255,255,.8);}
+.sb-item.active{background:rgba(108,99,255,.18);color:var(--accent);}
+.sb-item-icon{font-size:17px;flex-shrink:0;width:20px;text-align:center;}
+.sb-footer{padding:16px 20px;border-top:1px solid rgba(255,255,255,.08);display:flex;align-items:center;gap:10px;}
+.sb-avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-weight:700;border:2px solid rgba(108,99,255,.4);flex-shrink:0;}
+
+/* Streak badge */
+.streak-badge{
+  display:inline-flex;align-items:center;gap:4px;padding:4px 10px;
+  border-radius:var(--r-xl);background:rgba(201,168,76,.12);
+  border:1px solid rgba(201,168,76,.3);
+  font-family:'DM Mono',monospace;font-weight:500;font-size:13px;color:var(--gold);
+}
+.streak-badge.streak-hot{animation:streakPulse 2s ease-in-out infinite;}
+
+/* Mobile header */
+.mobile-header{
+  height:var(--mhdr);background:var(--deep);
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 16px;position:sticky;top:0;z-index:50;flex-shrink:0;
+}
+.mh-logo{font-family:'Fraunces',serif;font-weight:300;font-size:14px;color:#fff;display:flex;align-items:center;gap:7px;}
+.mh-dot{width:26px;height:26px;background:var(--accent);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:12px;}
+.mh-avatar{width:30px;height:30px;border-radius:50%;background:var(--accent);display:flex;align-items:center;justify-content:center;font-size:13px;color:#fff;font-weight:700;border:2px solid rgba(108,99,255,.4);}
+
+/* Bottom nav */
+.bnav{position:fixed;bottom:0;left:0;right:0;z-index:60;background:rgba(255,255,255,.93);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border-top:1px solid var(--border);height:var(--bnav);}
+.bnav-inner{display:flex;height:100%;}
+.bnav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:6px 2px;gap:2px;background:none;color:var(--muted);font-size:10px;font-weight:500;border-radius:0;min-height:44px;}
+.bnav-btn.active{color:var(--accent);}
 .bnav-icon{font-size:20px;line-height:1.2;}
+
+/* Screen header */
+.header{background:var(--card);border-bottom:1px solid var(--border);padding:12px 16px;position:sticky;top:var(--mhdr);z-index:40;}
+.header-inner{display:flex;align-items:center;justify-content:space-between;}
+@media(min-width:768px){.header{top:0;padding:16px 40px;}.header-inner{max-width:720px;}}
+
+/* Nav btn */
+.nav-btn{background:var(--bg);color:var(--muted);padding:7px 13px;border-radius:var(--r-sm);font-size:14px;border:1px solid var(--border);}
+
+/* Body */
+.body{padding:16px 14px 16px;}
+@media(min-width:768px){.body{padding:28px 40px;max-width:760px;}}
+
+/* Card */
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--r-md);padding:15px 14px;margin-bottom:10px;}
+@media(min-width:768px){.card{transition:box-shadow .15s,transform .15s;}.card:hover{box-shadow:var(--shadow);transform:translateY(-1px);}}
+
+/* Sections */
+.sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.sec-lbl{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:500;color:var(--muted);letter-spacing:.08em;text-transform:uppercase;}
+
+/* Check rows */
+.check-row{width:100%;display:flex;align-items:flex-start;gap:12px;padding:11px 12px;border-radius:var(--r-sm);text-align:left;background:var(--bg);border:1px solid var(--border);margin-bottom:7px;}
+.check-row.done{background:#F0FDF4;border-color:#BBF7D0;}
+.check-circle{width:22px;height:22px;border-radius:50%;flex-shrink:0;margin-top:1px;background:transparent;border:2px solid var(--border);display:flex;align-items:center;justify-content:center;transition:all .2s ease;font-size:12px;font-weight:800;color:#fff;}
+.check-circle.done{background:#4ADE80;border-color:#4ADE80;}
+
+/* Score bars */
+.score-bar-wrap{display:flex;align-items:center;gap:10px;margin-bottom:9px;}
+.score-bar-bg{flex:1;height:6px;background:var(--border);border-radius:99px;overflow:hidden;}
+.score-bar-fill{height:100%;border-radius:99px;transition:width .6s cubic-bezier(.34,1.56,.64,1);}
+
+/* Meal cards */
+.meal-card{width:100%;text-align:left;border-radius:var(--r-sm);padding:12px 13px;background:var(--bg);border:1px solid var(--border);display:flex;align-items:flex-start;gap:12px;margin-bottom:7px;}
+.meal-card.done{background:#F0FDF4;border-color:#BBF7D0;}
+
+/* Badge */
+.badge{display:inline-block;background:var(--accent-light);border-radius:4px;padding:2px 7px;font-size:10px;color:var(--accent);font-weight:500;margin-top:5px;}
+
+/* Water */
+.water-bar{flex:1;height:32px;border-radius:var(--r-sm);transition:background .2s;background:var(--bg);border:1px solid var(--border);}
+.water-bar.active{background:#60A5FA;border-color:#3B82F6;}
+
+/* Chips */
+.toggle-chip{flex:1;padding:7px 8px;border-radius:var(--r-sm);font-size:11px;font-weight:500;background:var(--bg);color:var(--muted);border:1px solid var(--border);}
+.toggle-chip.active{background:rgba(249,115,22,.08);color:#EA580C;border-color:rgba(249,115,22,.3);}
+.toggle-chip.active.fds{background:rgba(74,222,128,.1);color:#16A34A;border-color:rgba(74,222,128,.4);}
+
+/* Pending dot */
+.pending-dot{width:5px;height:5px;border-radius:50%;background:#F87171;margin-top:7px;flex-shrink:0;}
+
+/* Screen */
+.screen{display:none;}.screen.active{display:block;}
+
+/* Toast */
+.toast{position:fixed;top:68px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--accent);color:#fff;padding:11px 20px;border-radius:var(--r-lg);font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(108,99,255,.35);z-index:999;opacity:0;transition:all .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none;white-space:nowrap;}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 </style>
 </head>
 <body>
+<div class="app-layout">
+
+<!-- SIDEBAR (desktop) -->
+<aside class="sidebar" id="sidebar">
+  <div class="sb-logo">
+    <div class="sb-logo-icon">📋</div>
+    <span class="sb-logo-text">Rotina Diária</span>
+  </div>
+  <nav class="sb-nav">
+    <button type="button" class="sb-item active" id="snav-hoje" onclick="showBnav('hoje')"><span class="sb-item-icon">📊</span>Hoje</button>
+    <button type="button" class="sb-item" id="snav-nutricao" onclick="showBnav('nutricao')"><span class="sb-item-icon">🍽️</span>Nutrição</button>
+    <button type="button" class="sb-item" id="snav-suplday" onclick="showBnav('suplday')"><span class="sb-item-icon">💊</span>Suplementos</button>
+    <button type="button" class="sb-item" id="snav-gym" onclick="showBnav('gym')"><span class="sb-item-icon">🏋️</span>Treino</button>
+    <button type="button" class="sb-item" id="snav-mais" onclick="showBnav('mais')"><span class="sb-item-icon">☰</span>Mais</button>
+  </nav>
+  <div class="sb-footer">
+    <div id="sb-streak"></div>
+    <div style="flex:1"></div>
+    <div class="sb-avatar">B</div>
+  </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main-content">
+
+<!-- MOBILE HEADER -->
+<header class="mobile-header">
+  <div class="mh-logo"><div class="mh-dot">📋</div>RD</div>
+  <div id="mh-streak"></div>
+  <div class="mh-avatar">B</div>
+</header>
+
+<div class="screens-wrap">
 <div id="app">
   <!-- AUTH SCREEN -->
   <div id="screen-auth" class="screen active">
-    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px">
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)">
       <div style="width:100%;max-width:360px">
         <div style="text-align:center;margin-bottom:32px">
           <div style="font-size:36px;margin-bottom:10px">📋</div>
-          <div style="font-size:22px;font-weight:800;color:#e6edf3">Rotina Diária</div>
-          <div style="font-size:13px;color:#6e7681;margin-top:5px">Seus hábitos, em qualquer dispositivo</div>
+          <div style="font-family:'Fraunces',serif;font-size:24px;font-weight:400;color:var(--txt)">Rotina Diária</div>
+          <div style="font-size:13px;color:var(--muted);margin-top:5px">Seus hábitos, em qualquer dispositivo</div>
         </div>
-        <div id="auth-tabs" style="display:flex;background:#161b22;border-radius:10px;padding:3px;margin-bottom:20px;border:1px solid #21262d">
-          <button onclick="authTab('login')" id="tab-login" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:#21262d;color:#e6edf3">Entrar</button>
-          <button onclick="authTab('register')" id="tab-register" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:transparent;color:#6e7681">Criar conta</button>
+        <div id="auth-tabs" style="display:flex;background:var(--border);border-radius:10px;padding:3px;margin-bottom:20px;">
+          <button onclick="authTab('login')" id="tab-login" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:500;background:var(--card);color:var(--txt);border:none">Entrar</button>
+          <button onclick="authTab('register')" id="tab-register" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:500;background:transparent;color:var(--muted);border:none">Criar conta</button>
         </div>
         <div id="auth-form">
-          <input id="auth-email" type="email" placeholder="E-mail" autocomplete="email" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:10px;padding:13px 14px;color:#e6edf3;font-size:14px;margin-bottom:10px;outline:none">
-          <input id="auth-password" type="password" placeholder="Senha (mínimo 8 caracteres)" autocomplete="current-password" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:10px;padding:13px 14px;color:#e6edf3;font-size:14px;margin-bottom:6px;outline:none">
-          <div id="auth-error" style="font-size:12px;color:#f87171;min-height:18px;margin-bottom:8px;text-align:center"></div>
-          <button onclick="authSubmit()" id="auth-btn" style="width:100%;padding:14px;background:#1f6feb;border-radius:10px;color:#fff;font-size:15px;font-weight:700">Entrar</button>
+          <input id="auth-email" type="email" placeholder="E-mail" autocomplete="email" style="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:14px;margin-bottom:10px;outline:none">
+          <input id="auth-password" type="password" placeholder="Senha (mínimo 8 caracteres)" autocomplete="current-password" style="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:14px;margin-bottom:6px;outline:none">
+          <div id="auth-error" style="font-size:12px;color:#DC2626;min-height:18px;margin-bottom:8px;text-align:center"></div>
+          <button onclick="authSubmit()" id="auth-btn" style="width:100%;padding:14px;background:var(--accent);border-radius:10px;color:#fff;font-size:15px;font-weight:500">Entrar</button>
         </div>
         <div id="auth-confirm" style="display:none">
-          <div style="font-size:13px;color:#8b949e;text-align:center;margin-bottom:16px;line-height:1.5">Enviamos um código para o seu e-mail.<br>Digite abaixo para confirmar a conta.</div>
-          <input id="auth-code" type="text" inputmode="numeric" placeholder="000000" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:10px;padding:13px 14px;color:#e6edf3;font-size:22px;margin-bottom:6px;outline:none;text-align:center;letter-spacing:8px">
-          <div id="auth-confirm-error" style="font-size:12px;color:#f87171;min-height:18px;margin-bottom:8px;text-align:center"></div>
-          <button onclick="confirmCode()" style="width:100%;padding:14px;background:#16a34a;border-radius:10px;color:#fff;font-size:15px;font-weight:700">Confirmar e-mail</button>
+          <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:16px;line-height:1.5">Enviamos um código para o seu e-mail.<br>Digite abaixo para confirmar a conta.</div>
+          <input id="auth-code" type="text" inputmode="numeric" placeholder="000000" style="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:22px;margin-bottom:6px;outline:none;text-align:center;letter-spacing:8px">
+          <div id="auth-confirm-error" style="font-size:12px;color:#DC2626;min-height:18px;margin-bottom:8px;text-align:center"></div>
+          <button onclick="confirmCode()" style="width:100%;padding:14px;background:#16A34A;border-radius:10px;color:#fff;font-size:15px;font-weight:500">Confirmar e-mail</button>
         </div>
       </div>
     </div>
@@ -99,14 +222,14 @@ textarea,input{font-family:inherit;}
       <div class="header-inner">
         <button class="nav-btn" onclick="changeDay(-1)">←</button>
         <div style="text-align:center">
-          <div id="hdr-day" style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.14em;text-transform:uppercase"></div>
-          <div id="hdr-date" style="font-size:18px;font-weight:800;color:#e6edf3"></div>
-          <div id="hdr-status" style="font-size:10px;height:14px;color:#34d399;font-weight:600">● HOJE</div>
-          <div id="hdr-pct" style="font-size:11px;font-weight:700;margin-top:2px;height:16px"></div>
+          <div id="hdr-day" style="font-size:10px;color:var(--muted);font-weight:500;letter-spacing:.12em;text-transform:uppercase"></div>
+          <div id="hdr-date" style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)"></div>
+          <div id="hdr-status" style="font-size:10px;height:14px;color:#16A34A;font-weight:500">● HOJE</div>
+          <div id="hdr-pct" style="font-size:11px;font-weight:500;margin-top:2px;height:16px;font-family:'DM Mono',monospace"></div>
         </div>
         <button class="nav-btn" id="btn-next" onclick="changeDay(1)">→</button>
       </div>
-      <div id="home-section-label" style="text-align:center;font-size:10px;font-weight:700;letter-spacing:.1em;color:#4d5863;padding-top:6px;padding-bottom:2px"></div>
+      <div id="home-section-label" style="text-align:center;font-size:10px;font-weight:500;letter-spacing:.1em;color:var(--dim);padding-top:4px;padding-bottom:2px"></div>
     </div>
     <div class="body" id="main-body"></div>
   </div>
@@ -116,7 +239,7 @@ textarea,input{font-family:inherit;}
     <div class="header">
       <div class="header-inner">
         <button class="nav-btn" onclick="showMais()">←</button>
-        <div style="font-size:16px;font-weight:800;color:#e6edf3">Minhas Metas</div>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Minhas Metas</div>
         <div style="width:44px"></div>
       </div>
     </div>
@@ -128,8 +251,8 @@ textarea,input{font-family:inherit;}
     <div class="header">
       <div class="header-inner">
         <button class="nav-btn" onclick="showMais()">←</button>
-        <div style="font-size:16px;font-weight:800;color:#e6edf3">Gerenciar Suplementos</div>
-        <button onclick="editSup(null)" style="background:#1f6feb;color:#fff;padding:7px 13px;border-radius:8px;font-size:14px;font-weight:700">+ Novo</button>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Gerenciar Suplementos</div>
+        <button onclick="editSup(null)" style="background:var(--accent);color:#fff;padding:7px 13px;border-radius:var(--r-sm);font-size:13px;font-weight:500">+ Novo</button>
       </div>
     </div>
     <div class="body" id="sups-body"></div>
@@ -140,7 +263,7 @@ textarea,input{font-family:inherit;}
     <div class="header">
       <div class="header-inner">
         <button class="nav-btn" onclick="showMais()">←</button>
-        <div style="font-size:16px;font-weight:800;color:#e6edf3">Histórico</div>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Histórico</div>
         <div style="width:44px"></div>
       </div>
     </div>
@@ -152,7 +275,7 @@ textarea,input{font-family:inherit;}
     <div class="header">
       <div class="header-inner">
         <button class="nav-btn" onclick="showMais()">←</button>
-        <div style="font-size:16px;font-weight:800;color:#e6edf3">Composição Corporal</div>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Composição Corporal</div>
         <div style="width:44px"></div>
       </div>
     </div>
@@ -165,11 +288,15 @@ textarea,input{font-family:inherit;}
       <div class="header-inner">
         <button class="nav-btn" onclick="showBnav('hoje')">←</button>
         <div style="text-align:center">
-          <div id="gym-hdr-info" style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.12em;text-transform:uppercase"></div>
-          <div id="gym-hdr-title" style="font-size:16px;font-weight:800;color:#e6edf3">Log de Treino</div>
+          <div id="gym-hdr-info" style="font-size:10px;color:var(--muted);font-weight:500;letter-spacing:.1em;text-transform:uppercase"></div>
+          <div id="gym-hdr-title" style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Log de Treino</div>
         </div>
-        <button onclick="gymTogglePlan()" id="gym-plan-btn" style="background:#21262d;color:#8b949e;padding:6px 11px;border-radius:8px;font-size:12px;font-weight:700">📋 Plano</button>
+        <button onclick="gymTogglePlan()" id="gym-plan-btn" style="background:var(--bg);color:var(--muted);padding:6px 11px;border-radius:var(--r-sm);font-size:12px;font-weight:500;border:1px solid var(--border)">📋 Plano</button>
       </div>
+    </div>
+    <div id="gym-subtabs" style="display:flex;border-top:1px solid var(--border);background:var(--card)">
+      <button id="gym-tab-hoje" onclick="gymSetView('hoje')" style="flex:1;padding:9px;font-size:12px;font-weight:500;background:none;color:var(--accent);border-bottom:2px solid var(--accent);border-radius:0">Hoje</button>
+      <button id="gym-tab-semana" onclick="gymSetView('semana')" style="flex:1;padding:9px;font-size:12px;font-weight:500;background:none;color:var(--muted);border-bottom:2px solid transparent;border-radius:0">Semana</button>
     </div>
     <div class="body" id="gym-body"></div>
   </div>
@@ -179,7 +306,7 @@ textarea,input{font-family:inherit;}
     <div class="header">
       <div class="header-inner">
         <div style="width:44px"></div>
-        <div style="font-size:16px;font-weight:800;color:#e6edf3">Menu</div>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Menu</div>
         <div style="width:44px"></div>
       </div>
     </div>
@@ -191,24 +318,28 @@ textarea,input{font-family:inherit;}
     <div class="header">
       <div class="header-inner">
         <button class="nav-btn" onclick="showMais()">←</button>
-        <div style="font-size:16px;font-weight:800;color:#e6edf3">Metas e Objetivos</div>
-        <button onclick="showGoalForm(null)" style="background:#1f6feb;color:#fff;padding:7px 13px;border-radius:8px;font-size:14px;font-weight:700">+ Nova</button>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Metas e Objetivos</div>
+        <button onclick="showGoalForm(null)" style="background:var(--accent);color:#fff;padding:7px 13px;border-radius:var(--r-sm);font-size:13px;font-weight:500">+ Nova</button>
       </div>
     </div>
     <div class="body" id="goalsmgmt-body"></div>
   </div>
-</div>
+</div><!-- /#app -->
+</div><!-- /.screens-wrap -->
+</div><!-- /.main-content -->
+</div><!-- /.app-layout -->
 
 <div id="confetti-wrap" style="position:fixed;top:0;left:0;right:0;height:100vh;pointer-events:none;z-index:9999;display:none;overflow:hidden"></div>
+<div class="toast" id="toast"></div>
 
-<!-- BOTTOM NAV -->
+<!-- BOTTOM NAV (mobile only) -->
 <nav class="bnav">
   <div class="bnav-inner">
-    <button class="bnav-btn active" id="bnav-hoje" onclick="showBnav('hoje')"><span class="bnav-icon">📊</span>Hoje</button>
-    <button class="bnav-btn" id="bnav-nutricao" onclick="showBnav('nutricao')"><span class="bnav-icon">🍽️</span>Nutrição</button>
-    <button class="bnav-btn" id="bnav-suplday" onclick="showBnav('suplday')"><span class="bnav-icon">💊</span>Supl.</button>
-    <button class="bnav-btn" id="bnav-gym" onclick="showBnav('gym')"><span class="bnav-icon">🏋️</span>Treino</button>
-    <button class="bnav-btn" id="bnav-mais" onclick="showBnav('mais')"><span class="bnav-icon">☰</span>Mais</button>
+    <button type="button" class="bnav-btn active" id="bnav-hoje" onclick="showBnav('hoje')"><span class="bnav-icon">📊</span>Hoje</button>
+    <button type="button" class="bnav-btn" id="bnav-nutricao" onclick="showBnav('nutricao')"><span class="bnav-icon">🍽️</span>Nutrição</button>
+    <button type="button" class="bnav-btn" id="bnav-suplday" onclick="showBnav('suplday')"><span class="bnav-icon">💊</span>Supl.</button>
+    <button type="button" class="bnav-btn" id="bnav-gym" onclick="showBnav('gym')"><span class="bnav-icon">🏋️</span>Treino</button>
+    <button type="button" class="bnav-btn" id="bnav-mais" onclick="showBnav('mais')"><span class="bnav-icon">☰</span>Mais</button>
   </div>
 </nav>
 
@@ -216,7 +347,7 @@ textarea,input{font-family:inherit;}
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const DAYS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
-const DESCANSO={id:'descanso',name:'Descanso',type:'descanso',icon:'🛌',color:'#6e7681',weekDays:[]};
+const DESCANSO={id:'descanso',name:'Descanso',type:'descanso',icon:'🛌',color:'#78716C',weekDays:[]};
 const WK_COLORS={musculacao:'#818cf8',aerobico:'#38bdf8',descanso:'#6e7681'};
 const WK_ICONS ={musculacao:'🏋️',aerobico:'🏃',descanso:'🛌'};
 const GYM_GROUPS=['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo','Cardio','Outro'];
@@ -330,35 +461,35 @@ function renderSupsList(){
   const whenLbl={always:'Sempre · todos os dias',treino:'Só dias de treino',descanso:'Só dias de descanso'};
   const rows=customSups.length>0
     ?customSups.map(s=>`
-      <div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:12px 13px;margin-bottom:7px;display:flex;align-items:flex-start;gap:12px">
+      <div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:12px 13px;margin-bottom:7px;display:flex;align-items:flex-start;gap:12px">
         <div style="font-size:22px;flex-shrink:0;margin-top:1px">${s.icon||'💊'}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:700;color:#e6edf3;margin-bottom:2px">${s.label}</div>
-          ${s.sub?`<div style="font-size:11px;color:#6e7681;margin-bottom:3px">${s.sub}</div>`:''}
-          <div style="font-size:10px;color:#4d5863">${whenLbl[s.showOn]||'Sempre'}</div>
+          <div style="font-size:13px;font-weight:700;color:#1C1917;margin-bottom:2px">${s.label}</div>
+          ${s.sub?`<div style="font-size:11px;color:#78716C;margin-bottom:3px">${s.sub}</div>`:''}
+          <div style="font-size:10px;color:#A8A29E">${whenLbl[s.showOn]||'Sempre'}</div>
         </div>
         <div style="display:flex;gap:6px;flex-shrink:0">
-          <button onclick="editSup('${s.id}')" style="background:#21262d;color:#8b949e;padding:6px 10px;border-radius:7px;font-size:12px">✏️</button>
-          <button onclick="deleteSup('${s.id}')" style="background:#21262d;color:#f87171;padding:6px 10px;border-radius:7px;font-size:12px">🗑️</button>
+          <button onclick="editSup('${s.id}')" style="background:#F0EFED;color:#78716C;padding:6px 10px;border-radius:7px;font-size:12px">✏️</button>
+          <button onclick="deleteSup('${s.id}')" style="background:#F0EFED;color:#f87171;padding:6px 10px;border-radius:7px;font-size:12px">🗑️</button>
         </div>
       </div>`).join('')
-    :`<div style="text-align:center;color:#6e7681;padding:28px 0;font-size:13px;line-height:1.7">Nenhum suplemento cadastrado.<br>Adicione manualmente ou importe de PDF/foto.</div>`;
+    :`<div style="text-align:center;color:#78716C;padding:28px 0;font-size:13px;line-height:1.7">Nenhum suplemento cadastrado.<br>Adicione manualmente ou importe de PDF/foto.</div>`;
 
   const prevHtml=_importPreview.length?renderImportPreviewHtml():'';
 
   document.getElementById('sups-body').innerHTML=`
     <div class="card fade-in">
       <div class="sec-hdr"><div class="sec-lbl"><span>📎</span> IMPORTAR DE PDF OU FOTO</div></div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:10px">Envie uma receita, prescrição ou foto da sua suplementação. A IA extrai os itens automaticamente.</div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:10px">Envie uma receita, prescrição ou foto da sua suplementação. A IA extrai os itens automaticamente.</div>
       <input type="file" id="sup-file-input" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleSupFile(this)">
-      <button type="button" onclick="document.getElementById('sup-file-input').click()" style="display:block;width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:18px;text-align:center;color:#6e7681;font-size:13px" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='#30363d'">
+      <button type="button" onclick="document.getElementById('sup-file-input').click()" style="display:block;width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:18px;text-align:center;color:#78716C;font-size:13px" onmouseover="this.style.borderColor='#3b82f6'" onmouseout="this.style.borderColor='#30363d'">
         📄 Selecionar PDF ou imagem
       </button>
       <div id="import-status" style="margin-top:8px;font-size:12px;min-height:16px"></div>
       <div id="import-preview">${prevHtml}</div>
     </div>
     <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>💊</span> MINHA LISTA</div><span style="font-size:11px;color:#6e7681">${customSups.length} item${customSups.length!==1?'s':''}</span></div>
+      <div class="sec-hdr"><div class="sec-lbl"><span>💊</span> MINHA LISTA</div><span style="font-size:11px;color:#78716C">${customSups.length} item${customSups.length!==1?'s':''}</span></div>
       ${rows}
     </div>`;
 }
@@ -367,7 +498,7 @@ function editSup(id){
   _supEditId=id;
   const s=id?customSups.find(x=>x.id===id):null;
   const showOn=s?.showOn||'always';
-  const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:15px;outline:none';
+  const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:15px;outline:none';
   const whenDefs=[
     {v:'always', l:'💊 Sempre',   c:'#1f6feb'},
     {v:'treino',  l:'⚡ Treino',  c:'#16a34a'},
@@ -382,22 +513,22 @@ function editSup(id){
       <div class="sec-hdr"><div class="sec-lbl"><span>${id?'✏️':'➕'}</span> ${id?'EDITAR':'NOVO'} SUPLEMENTO</div></div>
       <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:14px">
         <div>
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Ícone</div>
-          <input type="text" id="se-icon" value="${s?.icon||''}" placeholder="💊" maxlength="4" style="width:58px;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px;color:#e6edf3;font-size:22px;outline:none;text-align:center">
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Ícone</div>
+          <input type="text" id="se-icon" value="${s?.icon||''}" placeholder="💊" maxlength="4" style="width:58px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px;color:#1C1917;font-size:22px;outline:none;text-align:center">
         </div>
         <div style="flex:1">
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Nome e dose</div>
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Nome e dose</div>
           <input type="text" id="se-label" value="${s?.label||''}" placeholder="ex: Creatina 5g" style="${inp}">
         </div>
       </div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Horário / instrução</div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:5px">Horário / instrução</div>
       <input type="text" id="se-sub" value="${s?.sub||''}" placeholder="ex: Com café da manhã · diário" style="${inp};margin-bottom:14px">
-      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Mostrar no checklist</div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:7px">Mostrar no checklist</div>
       <input type="hidden" id="se-when" value="${showOn}">
       <div style="display:flex;gap:6px;margin-bottom:20px">${whenBtns}</div>
-      <button onclick="saveSupForm()" style="width:100%;padding:13px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-bottom:8px">Salvar</button>
-      ${id?`<button onclick="deleteSup('${id}')" style="width:100%;padding:11px;background:#21262d;border:1px solid #30363d;border-radius:10px;color:#f87171;font-size:13px;font-weight:600;margin-bottom:8px">Excluir suplemento</button>`:''}
-      <button onclick="renderSupsList()" style="width:100%;padding:11px;background:none;border:1px solid #21262d;border-radius:10px;color:#6e7681;font-size:13px">Cancelar</button>
+      <button onclick="saveSupForm()" style="width:100%;padding:13px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-bottom:8px">Salvar</button>
+      ${id?`<button onclick="deleteSup('${id}')" style="width:100%;padding:11px;background:#F0EFED;border:1px solid #D4D0CE;border-radius:10px;color:#f87171;font-size:13px;font-weight:600;margin-bottom:8px">Excluir suplemento</button>`:''}
+      <button onclick="renderSupsList()" style="width:100%;padding:11px;background:none;border:1px solid #E7E5E4;border-radius:10px;color:#78716C;font-size:13px">Cancelar</button>
     </div>`;
 }
 
@@ -454,12 +585,12 @@ async function analyzeViaLambda(file,context){
 async function handleSupFile(input){
   const file=input.files[0];if(!file) return;
   const statusEl=document.getElementById('import-status');
-  statusEl.innerHTML='<span style="color:#fbbf24">⏳ Analisando com IA — aguarde...</span>';
+  statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando com IA — aguarde...</span>';
   try{
     const sups=await analyzeViaLambda(file,'supplements');
     _importPreview=sups.map((s,i)=>({...{showOn:'always'},...s,id:'cs_'+Date.now()+i,_checked:true}));
     document.getElementById('import-preview').innerHTML=renderImportPreviewHtml();
-    statusEl.innerHTML=`<span style="color:#34d399">✓ ${sups.length} item(s) encontrado(s) — selecione os que deseja importar</span>`;
+    statusEl.innerHTML=`<span style="color:#16A34A">✓ ${sups.length} item(s) encontrado(s) — selecione os que deseja importar</span>`;
   }catch(e){
     statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
   }
@@ -468,12 +599,12 @@ async function handleSupFile(input){
 function renderImportPreviewHtml(){
   if(!_importPreview.length) return '';
   const rows=_importPreview.map((s,i)=>`
-    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#0d1117;border:1px solid #21262d;border-radius:9px;margin-bottom:6px;cursor:pointer">
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:9px;margin-bottom:6px;cursor:pointer">
       <input type="checkbox" id="imp-${i}" ${s._checked?'checked':''} style="margin-top:3px;width:15px;height:15px;accent-color:#1f6feb;flex-shrink:0">
       <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;color:#e6edf3">${s.icon||'💊'} ${s.label}</div>
-        ${s.sub?`<div style="font-size:11px;color:#6e7681;margin-top:2px">${s.sub}</div>`:''}
-        <div style="font-size:10px;color:#4d5863;margin-top:2px">${{always:'Sempre',treino:'Treino',descanso:'Descanso'}[s.showOn]||'Sempre'}</div>
+        <div style="font-size:13px;font-weight:700;color:#1C1917">${s.icon||'💊'} ${s.label}</div>
+        ${s.sub?`<div style="font-size:11px;color:#78716C;margin-top:2px">${s.sub}</div>`:''}
+        <div style="font-size:10px;color:#A8A29E;margin-top:2px">${{always:'Sempre',treino:'Treino',descanso:'Descanso'}[s.showOn]||'Sempre'}</div>
       </div>
     </label>`).join('');
   return`<div style="margin-top:10px">${rows}<button onclick="importSelectedSups()" style="width:100%;padding:12px;background:#16a34a;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-top:4px">Importar selecionados</button></div>`;
@@ -489,7 +620,7 @@ function importSelectedSups(){
   if(count){saveCustomSups();renderUI();}
   _importPreview=[];
   renderSupsList();
-  if(count) document.getElementById('import-status').innerHTML=`<span style="color:#34d399">✓ ${count} suplemento(s) adicionado(s) à sua lista!</span>`;
+  if(count) document.getElementById('import-status').innerHTML=`<span style="color:#16A34A">✓ ${count} suplemento(s) adicionado(s) à sua lista!</span>`;
 }
 
 
@@ -499,6 +630,7 @@ let _gymAddOpen=false;
 let _gymViewPlan=false;
 let _gymPlanTr=null;
 let _gymPlanPreview=[];
+let _gymView='hoje';
 function loadGymPlan(){try{return JSON.parse(localStorage.getItem('ht:gymplan')||'{}');}catch{return{};}}
 function saveGymPlan(){
   try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}
@@ -591,11 +723,11 @@ function renderGym(){
   const selectorHtml='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;-webkit-overflow-scrolling:touch">'+
     getAllDayOptions().map(t=>{
       const sel=tr===t.id;
-      return`<button onclick="gymSetDay('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#0d1117'};color:${sel?t.color:'#6e7681'};border:1px solid ${sel?t.color+'60':'#21262d'};flex-shrink:0">${t.icon} ${t.name}</button>`;
+      return`<button onclick="gymSetDay('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#0d1117'};color:${sel?t.color:'#78716C'};border:1px solid ${sel?t.color+'60':'#21262d'};flex-shrink:0">${t.icon} ${t.name}</button>`;
     }).join('')+'</div>';
 
   if(tr==='descanso'){
-    gymBody.innerHTML=selectorHtml+`<div class="card fade-in" style="text-align:center;padding:32px 20px"><div style="font-size:40px;margin-bottom:12px">🛌</div><div style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:6px">Dia de Descanso Ativo</div><div style="font-size:12px;color:#6e7681">Sem musculação hoje. Recuperação é parte do treino.</div></div>`;
+    gymBody.innerHTML=selectorHtml+`<div class="card fade-in" style="text-align:center;padding:32px 20px"><div style="font-size:40px;margin-bottom:12px">🛌</div><div style="font-size:15px;font-weight:700;color:#1C1917;margin-bottom:6px">Dia de Descanso Ativo</div><div style="font-size:12px;color:#78716C">Sem musculação hoje. Recuperação é parte do treino.</div></div>`;
     return;
   }
 
@@ -621,17 +753,17 @@ function renderGym(){
   let html=selectorHtml;
   if(prev){
     const pl=dispDate(prev.date);
-    html+=`<div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#6e7681">📊 Comparando com: <b style="color:#8b949e">${pl.day} ${pl.date}</b></div>`;
+    html+=`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#78716C">📊 Comparando com: <b style="color:#78716C">${pl.day} ${pl.date}</b></div>`;
   }
   html+=`<div style="display:flex;align-items:center;margin-bottom:10px">
     <div style="flex:1"><div style="font-size:15px;font-weight:800;color:${trObj.color}">${trObj.icon} ${trObj.name}</div></div>
-    ${doneCount>0?`<div style="font-size:12px;color:#34d399;font-family:'DM Mono',monospace;font-weight:700">${doneCount}/${totalSets} séries ✓</div>`:''}
+    ${doneCount>0?`<div style="font-size:12px;color:#16A34A;font-family:'DM Mono',monospace;font-weight:700">${doneCount}/${totalSets} séries ✓</div>`:''}
   </div>
-  <div style="display:flex;align-items:center;gap:10px;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:9px 12px;margin-bottom:12px">
+  <div style="display:flex;align-items:center;gap:10px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:9px 12px;margin-bottom:12px">
     <span style="font-size:14px">⏱️</span>
-    <span style="font-size:12px;color:#6e7681;flex:1">Duração do treino</span>
-    <input type="number" inputmode="decimal" value="${dayData.gymDurMin||''}" placeholder="0" onchange="setGymDur(+this.value)" style="width:56px;background:#161b22;border:1px solid #30363d;border-radius:8px;padding:6px 4px;color:#e6edf3;font-size:14px;font-weight:700;text-align:center;outline:none">
-    <span style="font-size:11px;color:#4d5863">min</span>
+    <span style="font-size:12px;color:#78716C;flex:1">Duração do treino</span>
+    <input type="number" inputmode="decimal" value="${dayData.gymDurMin||''}" placeholder="0" onchange="setGymDur(+this.value)" style="width:56px;background:#fff;border:1px solid #D4D0CE;border-radius:8px;padding:6px 4px;color:#1C1917;font-size:14px;font-weight:700;text-align:center;outline:none">
+    <span style="font-size:11px;color:#A8A29E">min</span>
   </div>`;
 
   session.forEach((ex,ei)=>{
@@ -642,50 +774,50 @@ function renderGym(){
     const setRows=ex.sets.map((set,si)=>{
       const prevSet=prevEx?.sets?.[si];
       return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-        <div style="font-size:10px;color:#4d5863;font-family:'DM Mono',monospace;width:22px;text-align:center;flex-shrink:0">${si+1}</div>
-        <input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;background:#0d1117;border:1.5px solid ${set.done?'#16a34a':'#21262d'};border-radius:8px;padding:8px 4px;color:#e6edf3;font-size:15px;font-weight:700;text-align:center;outline:none">
-        <span style="color:#4d5863;font-size:13px;font-weight:700">×</span>
-        <input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'kg'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;background:#0d1117;border:1.5px solid ${set.done?'#16a34a':'#21262d'};border-radius:8px;padding:8px 4px;color:#e6edf3;font-size:15px;font-weight:700;text-align:center;outline:none">
-        <span style="color:#4d5863;font-size:11px">kg</span>
+        <div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;width:22px;text-align:center;flex-shrink:0">${si+1}</div>
+        <input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;background:#FAFAF9;border:1.5px solid ${set.done?'#16a34a':'#21262d'};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none">
+        <span style="color:#A8A29E;font-size:13px;font-weight:700">×</span>
+        <input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'kg'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;background:#FAFAF9;border:1.5px solid ${set.done?'#16a34a':'#21262d'};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none">
+        <span style="color:#A8A29E;font-size:11px">kg</span>
         <button onclick="gymDone(${ei},${si})" style="margin-left:auto;min-width:32px;height:32px;border-radius:50%;background:${set.done?'#16a34a':'#21262d'};color:${set.done?'#fff':'#6e7681'};font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${set.done?'✓':''}</button>
-        ${ex.sets.length>1?`<button onclick="gymDelSet(${ei},${si})" style="min-width:22px;height:22px;border-radius:50%;background:#161b22;color:#6e7681;font-size:10px;flex-shrink:0">✕</button>`:''}
+        ${ex.sets.length>1?`<button onclick="gymDelSet(${ei},${si})" style="min-width:22px;height:22px;border-radius:50%;background:#fff;color:#78716C;font-size:10px;flex-shrink:0">✕</button>`:''}
       </div>`;
     }).join('');
-    html+=`<div class="card" style="margin-bottom:8px;${allDone?'border-color:rgba(22,163,74,.35);':''}">
+    html+=`<div class="card" style="margin-bottom:8px;${allDone?'border-color:#BBF7D0;':''}">
       <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
-        <div style="flex:1"><div style="font-size:13px;font-weight:700;color:#e6edf3">${ex.name}</div>${ex.group?`<div style="font-size:10px;color:#6e7681;margin-top:1px">${ex.group}</div>`:''}</div>
-        <button onclick="gymDelEx(${ei})" style="background:#161b22;color:#6e7681;padding:4px 8px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
+        <div style="flex:1"><div style="font-size:13px;font-weight:700;color:#1C1917">${ex.name}</div>${ex.group?`<div style="font-size:10px;color:#78716C;margin-top:1px">${ex.group}</div>`:''}</div>
+        <button onclick="gymDelEx(${ei})" style="background:#fff;color:#78716C;padding:4px 8px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
       </div>
-      ${prevSummary?`<div style="font-size:10px;color:#4d5863;font-family:'DM Mono',monospace;margin-bottom:8px;padding:5px 8px;background:#161b22;border-radius:6px">Ant: ${prevSummary}</div>`:''}
+      ${prevSummary?`<div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;margin-bottom:8px;padding:5px 8px;background:#fff;border-radius:6px">Ant: ${prevSummary}</div>`:''}
       ${setRows}
-      <button onclick="gymAddSet(${ei})" style="width:100%;padding:6px;background:#161b22;border:1px dashed #30363d;border-radius:8px;color:#6e7681;font-size:11px;margin-top:2px">+ série</button>
+      <button onclick="gymAddSet(${ei})" style="width:100%;padding:6px;background:#fff;border:1px dashed #30363d;border-radius:8px;color:#78716C;font-size:11px;margin-top:2px">+ série</button>
     </div>`;
   });
 
   if(_gymAddOpen){
     // GYM_GROUPS defined at module level
-    const inp2='background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 8px;color:#e6edf3;font-size:14px;font-weight:700;outline:none;text-align:center;width:100%';
+    const inp2='background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 8px;color:#1C1917;font-size:14px;font-weight:700;outline:none;text-align:center;width:100%';
     html+=`<div class="card fade-in"><div class="sec-hdr"><div class="sec-lbl"><span>➕</span> ADICIONAR EXERCÍCIO</div></div>
-      <input type="text" id="gym-new-name" placeholder="Nome do exercício" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none;margin-bottom:8px">
-      <select id="gym-new-group" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+      <input type="text" id="gym-new-name" placeholder="Nome do exercício" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">
+      <select id="gym-new-group" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <div><div style="font-size:10px;color:#6e7681;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gym-new-sets" placeholder="3" value="3" style="${inp2}"></div>
-        <div><div style="font-size:10px;color:#6e7681;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gym-new-reps" placeholder="12" value="12" style="${inp2}"></div>
+        <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gym-new-sets" placeholder="3" value="3" style="${inp2}"></div>
+        <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gym-new-reps" placeholder="12" value="12" style="${inp2}"></div>
       </div>
       <div style="display:flex;gap:8px">
-        <button onclick="gymConfirmAdd()" style="flex:1;padding:12px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Adicionar</button>
-        <button onclick="gymCancelAdd()" style="padding:12px 16px;background:#21262d;border-radius:10px;color:#6e7681;font-size:14px">Cancelar</button>
+        <button onclick="gymConfirmAdd()" style="flex:1;padding:12px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Adicionar</button>
+        <button onclick="gymCancelAdd()" style="padding:12px 16px;background:#F0EFED;border-radius:10px;color:#78716C;font-size:14px">Cancelar</button>
       </div>
     </div>`;
   } else if(session.length===0){
     html=`<div class="card fade-in" style="text-align:center;padding:28px 16px">
       <div style="font-size:36px;margin-bottom:10px">🏋️</div>
-      <div style="font-size:14px;font-weight:700;color:#e6edf3;margin-bottom:6px">Nenhum exercício ainda</div>
-      <div style="font-size:12px;color:#6e7681;margin-bottom:16px">Adicione os exercícios da sessão de hoje.<br>Serão salvos como modelo para <b>${trObj.name}</b>.</div>
-      <button onclick="gymOpenAdd()" style="padding:12px 24px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ Primeiro exercício</button>
+      <div style="font-size:14px;font-weight:700;color:#1C1917;margin-bottom:6px">Nenhum exercício ainda</div>
+      <div style="font-size:12px;color:#78716C;margin-bottom:16px">Adicione os exercícios da sessão de hoje.<br>Serão salvos como modelo para <b>${trObj.name}</b>.</div>
+      <button onclick="gymOpenAdd()" style="padding:12px 24px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ Primeiro exercício</button>
     </div>`;
   } else {
-    html+=`<button onclick="gymOpenAdd()" style="width:100%;padding:12px;background:#161b22;border:1.5px dashed #30363d;border-radius:12px;color:#6e7681;font-size:13px;font-weight:600;margin-bottom:4px">+ Adicionar exercício</button>`;
+    html+=`<button onclick="gymOpenAdd()" style="width:100%;padding:12px;background:#fff;border:1.5px dashed #D4D0CE;border-radius:12px;color:#78716C;font-size:13px;font-weight:600;margin-bottom:4px">+ Adicionar exercício</button>`;
   }
   gymBody.innerHTML=html;
 }
@@ -758,7 +890,7 @@ function gymPlanManualConfirm(wId){
 }
 let _gymWkCreate=false;
 function renderGymPlan(gymBody){
-  const inp2='background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none';
+  const inp2='background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none';
   const workoutCards=userWorkouts.map(w=>{
     const isExp=_gymPlanTr===w.id;
     const plan=gymPlan[w.id]||[];
@@ -767,48 +899,48 @@ function renderGymPlan(gymBody){
     if(isExp){
       const previewHtml=_gymPlanPreview.length?renderGymPlanPreviewHtml():'';
       const exList=plan.length>0?plan.map((ex,i)=>`
-        <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#0d1117;border:1px solid #21262d;border-radius:10px;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;margin-bottom:6px">
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:700;color:#e6edf3">${ex.name}</div>
-            <div style="font-size:11px;color:#6e7681;margin-top:1px">${ex.group||''}${ex.defaultSets?' · '+ex.defaultSets+'×'+(ex.defaultReps||'?'):''}${ex.obs?' · '+ex.obs:''}</div>
+            <div style="font-size:13px;font-weight:700;color:#1C1917">${ex.name}</div>
+            <div style="font-size:11px;color:#78716C;margin-top:1px">${ex.group||''}${ex.defaultSets?' · '+ex.defaultSets+'×'+(ex.defaultReps||'?'):''}${ex.obs?' · '+ex.obs:''}</div>
           </div>
-          <button onclick="gymPlanDelEx('${w.id}',${i})" style="background:#21262d;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
+          <button onclick="gymPlanDelEx('${w.id}',${i})" style="background:#F0EFED;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
         </div>`).join('')
-        :'<div style="text-align:center;color:#6e7681;padding:16px 0;font-size:12px;line-height:1.6">Nenhum exercício. Importe um PDF ou realize o treino para preencher.</div>';
+        :'<div style="text-align:center;color:#78716C;padding:16px 0;font-size:12px;line-height:1.6">Nenhum exercício. Importe um PDF ou realize o treino para preencher.</div>';
       expContent=`
-        <div style="border-top:1px solid #21262d;margin-top:10px;padding-top:12px">
+        <div style="border-top:1px solid #E7E5E4;margin-top:10px;padding-top:12px">
           <input type="file" id="gym-plan-file-${w.id}" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleGymPlanFile(this,'${w.id}')">
-          <button type="button" onclick="document.getElementById('gym-plan-file-${w.id}').click()" style="width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:12px;text-align:center;color:#6e7681;font-size:12px;cursor:pointer;margin-bottom:8px">📄 Importar plano de PDF ou imagem</button>
+          <button type="button" onclick="document.getElementById('gym-plan-file-${w.id}').click()" style="width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:12px;text-align:center;color:#78716C;font-size:12px;cursor:pointer;margin-bottom:8px">📄 Importar plano de PDF ou imagem</button>
           <div id="gym-import-status" style="font-size:12px;min-height:14px;margin-bottom:4px"></div>
           <div id="gym-import-preview">${previewHtml}</div>
           ${exList}
           ${_gymPlanAddOpen===w.id?`
-          <div style="background:#0d1117;border:1px solid #30363d;border-radius:10px;padding:12px;margin-top:8px" class="fade-in">
-            <input type="text" id="gpa-name" placeholder="Nome do exercício" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:8px">
-            <select id="gpa-group" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
+          <div style="background:#FAFAF9;border:1px solid #D4D0CE;border-radius:10px;padding:12px;margin-top:8px" class="fade-in">
+            <input type="text" id="gpa-name" placeholder="Nome do exercício" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none;margin-bottom:8px">
+            <select id="gpa-group" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-              <div><div style="font-size:10px;color:#6e7681;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gpa-sets" value="3" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:8px 4px;color:#e6edf3;font-size:15px;font-weight:700;text-align:center;outline:none"></div>
-              <div><div style="font-size:10px;color:#6e7681;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gpa-reps" placeholder="12" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:8px 4px;color:#e6edf3;font-size:15px;font-weight:700;text-align:center;outline:none"></div>
+              <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gpa-sets" value="3" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none"></div>
+              <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gpa-reps" placeholder="12" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none"></div>
             </div>
-            <input type="text" id="gpa-obs" placeholder="Observação (opcional)" style="width:100%;background:#161b22;border:1px solid #21262d;border-radius:8px;padding:9px 12px;color:#e6edf3;font-size:13px;outline:none;margin-bottom:10px">
+            <input type="text" id="gpa-obs" placeholder="Observação (opcional)" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none;margin-bottom:10px">
             <div style="display:flex;gap:8px">
-              <button onclick="gymPlanManualConfirm('${w.id}')" style="flex:1;padding:10px;background:#1f6feb;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Adicionar</button>
-              <button onclick="gymPlanManualCancel()" style="padding:10px 14px;background:#21262d;border-radius:8px;color:#6e7681;font-size:13px">Cancelar</button>
+              <button onclick="gymPlanManualConfirm('${w.id}')" style="flex:1;padding:10px;background:#6C63FF;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Adicionar</button>
+              <button onclick="gymPlanManualCancel()" style="padding:10px 14px;background:#F0EFED;border-radius:8px;color:#78716C;font-size:13px">Cancelar</button>
             </div>
           </div>`
-          :`<button onclick="gymPlanManualAdd('${w.id}')" style="width:100%;padding:9px;background:none;border:1.5px dashed #30363d;border-radius:9px;color:#6e7681;font-size:12px;margin-top:8px">+ Adicionar exercício manualmente</button>`}
-          ${plan.length>0?`<button onclick="gymPlanClearAll('${w.id}')" style="width:100%;padding:8px;background:none;border:1px solid #21262d;border-radius:8px;color:#6e7681;font-size:12px;margin-top:6px">🗑️ Limpar plano</button>`:''}
+          :`<button onclick="gymPlanManualAdd('${w.id}')" style="width:100%;padding:9px;background:none;border:1.5px dashed #D4D0CE;border-radius:9px;color:#78716C;font-size:12px;margin-top:8px">+ Adicionar exercício manualmente</button>`}
+          ${plan.length>0?`<button onclick="gymPlanClearAll('${w.id}')" style="width:100%;padding:8px;background:none;border:1px solid #E7E5E4;border-radius:8px;color:#78716C;font-size:12px;margin-top:6px">🗑️ Limpar plano</button>`:''}
         </div>`;
     }
     return`<div class="card" style="margin-bottom:8px${isExp?';border-color:'+w.color+'50':''}">
       <div style="display:flex;align-items:center;gap:10px">
         <div style="width:36px;height:36px;border-radius:10px;background:${w.color}20;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${w.icon}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:14px;font-weight:700;color:#e6edf3">${w.name}</div>
-          <div style="font-size:10px;color:#6e7681;margin-top:2px">${w.type==='musculacao'?'Musculação':'Aeróbico'} · ${days} · <b style="color:${w.color}">${plan.length} ex.</b></div>
+          <div style="font-size:14px;font-weight:700;color:#1C1917">${w.name}</div>
+          <div style="font-size:10px;color:#78716C;margin-top:2px">${w.type==='musculacao'?'Musculação':'Aeróbico'} · ${days} · <b style="color:${w.color}">${plan.length} ex.</b></div>
         </div>
-        <button onclick="gymPlanSetTr('${isExp?'none':w.id}')" style="padding:6px 10px;border-radius:8px;background:${isExp?w.color+'20':'#21262d'};color:${isExp?w.color:'#8b949e'};font-size:12px;flex-shrink:0">${isExp?'▲':'▼'}</button>
-        <button onclick="gymDeleteWorkout('${w.id}')" style="background:#21262d;color:#f87171;padding:6px 9px;border-radius:8px;font-size:11px;flex-shrink:0">✕</button>
+        <button onclick="gymPlanSetTr('${isExp?'none':w.id}')" style="padding:6px 10px;border-radius:8px;background:${isExp?w.color+'20':'#21262d'};color:${isExp?w.color:'#78716C'};font-size:12px;flex-shrink:0">${isExp?'▲':'▼'}</button>
+        <button onclick="gymDeleteWorkout('${w.id}')" style="background:#F0EFED;color:#f87171;padding:6px 9px;border-radius:8px;font-size:11px;flex-shrink:0">✕</button>
       </div>
       ${expContent}
     </div>`;
@@ -821,32 +953,32 @@ function renderGymPlan(gymBody){
         <option value="musculacao">🏋️ Musculação</option>
         <option value="aerobico">🏃 Aeróbico</option>
       </select>
-      <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:6px">DIAS SUGERIDOS</div>
+      <div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:6px">DIAS SUGERIDOS</div>
       <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:6px">
-        ${[0,1,2,3,4,5,6].map(d=>`<label style="display:flex;align-items:center;gap:4px;padding:5px 10px;background:#161b22;border:1px solid #21262d;border-radius:20px;font-size:11px;color:#c9d1d9;cursor:pointer"><input type="checkbox" id="gwk-d${d}" value="${d}" style="accent-color:#818cf8"> ${DAYS[d]}</label>`).join('')}
+        ${[0,1,2,3,4,5,6].map(d=>`<label style="display:flex;align-items:center;gap:4px;padding:5px 10px;background:#fff;border:1px solid #E7E5E4;border-radius:20px;font-size:11px;color:#1C1917;cursor:pointer"><input type="checkbox" id="gwk-d${d}" value="${d}" style="accent-color:#818cf8"> ${DAYS[d]}</label>`).join('')}
       </div>
-      <div style="font-size:10px;color:#4d5863;margin-bottom:12px">Deixe sem dia fixo para registrar quando quiser</div>
-      <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:6px">PLANO DE EXERCÍCIOS (opcional)</div>
+      <div style="font-size:10px;color:#A8A29E;margin-bottom:12px">Deixe sem dia fixo para registrar quando quiser</div>
+      <div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:6px">PLANO DE EXERCÍCIOS (opcional)</div>
       <input type="file" id="gwk-plan-file" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="gymCreateFilePick(this)">
-      <button type="button" id="gwk-file-label" onclick="document.getElementById('gwk-plan-file').click()" style="width:100%;background:#0d1117;border:2px dashed #30363d;border-radius:10px;padding:12px;text-align:center;color:#6e7681;font-size:12px;cursor:pointer;margin-bottom:12px">📄 Importar plano (PDF ou imagem) — opcional</button>
+      <button type="button" id="gwk-file-label" onclick="document.getElementById('gwk-plan-file').click()" style="width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:12px;text-align:center;color:#78716C;font-size:12px;cursor:pointer;margin-bottom:12px">📄 Importar plano (PDF ou imagem) — opcional</button>
       <div style="display:flex;gap:8px">
-        <button onclick="gymCreateWorkout()" style="flex:1;padding:10px;background:#1f6feb;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Criar treino</button>
-        <button onclick="_gymWkCreate=false;_gymCreateFile=null;renderGym()" style="padding:10px 14px;background:#21262d;border-radius:8px;color:#6e7681;font-size:13px">Cancelar</button>
+        <button onclick="gymCreateWorkout()" style="flex:1;padding:10px;background:#6C63FF;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Criar treino</button>
+        <button onclick="_gymWkCreate=false;_gymCreateFile=null;renderGym()" style="padding:10px 14px;background:#F0EFED;border-radius:8px;color:#78716C;font-size:13px">Cancelar</button>
       </div>
     </div>`
-    :`<button onclick="_gymWkCreate=true;renderGym()" style="width:100%;padding:10px;background:none;border:1.5px dashed #30363d;border-radius:10px;color:#6e7681;font-size:12px;margin-bottom:8px">+ Criar novo treino</button>`;
-  gymBody.innerHTML=workoutCards+createForm+`<button onclick="gymTogglePlan()" style="width:100%;padding:12px;background:#21262d;border-radius:10px;color:#e6edf3;font-size:14px;font-weight:600;margin-bottom:4px">← Voltar ao log de treino</button>`;
+    :`<button onclick="_gymWkCreate=true;renderGym()" style="width:100%;padding:10px;background:none;border:1.5px dashed #D4D0CE;border-radius:10px;color:#78716C;font-size:12px;margin-bottom:8px">+ Criar novo treino</button>`;
+  gymBody.innerHTML=workoutCards+createForm+`<button onclick="gymTogglePlan()" style="width:100%;padding:12px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:14px;font-weight:600;margin-bottom:4px">← Voltar ao log de treino</button>`;
 }
 
 function renderGymPlanPreviewHtml(){
   if(!_gymPlanPreview.length) return '';
   const rows=_gymPlanPreview.map((ex,i)=>`
-    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#0d1117;border:1px solid #21262d;border-radius:9px;margin-bottom:6px;cursor:pointer">
+    <label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:9px;margin-bottom:6px;cursor:pointer">
       <input type="checkbox" id="gimp-${i}" ${ex._checked?'checked':''} style="margin-top:3px;width:15px;height:15px;accent-color:#818cf8;flex-shrink:0">
       <div style="flex:1">
-        <div style="font-size:13px;font-weight:700;color:#e6edf3">${ex.name}</div>
-        <div style="font-size:11px;color:#6e7681;margin-top:2px">${ex.group||''}${ex.sets?' · '+ex.sets+'×'+(ex.reps||'?')+'reps':''}</div>
-        ${ex.obs?`<div style="font-size:10px;color:#4d5863;margin-top:1px">${ex.obs}</div>`:''}
+        <div style="font-size:13px;font-weight:700;color:#1C1917">${ex.name}</div>
+        <div style="font-size:11px;color:#78716C;margin-top:2px">${ex.group||''}${ex.sets?' · '+ex.sets+'×'+(ex.reps||'?')+'reps':''}</div>
+        ${ex.obs?`<div style="font-size:10px;color:#A8A29E;margin-top:1px">${ex.obs}</div>`:''}
       </div>
     </label>`).join('');
   return`<div style="margin-top:10px">${rows}<button onclick="importGymPlanSelected()" style="width:100%;padding:12px;background:#818cf8;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-top:4px">Importar selecionados para o plano</button></div>`;
@@ -867,18 +999,18 @@ function importGymPlanSelected(){
   _gymPlanPreview=[];
   renderGym();
   const st=document.getElementById('gym-import-status');
-  if(st&&count) st.innerHTML=`<span style="color:#34d399">✓ ${count} exercício(s) adicionado(s) ao plano de ${getWorkoutById(tr)?.name||tr}!</span>`;
+  if(st&&count) st.innerHTML=`<span style="color:#16A34A">✓ ${count} exercício(s) adicionado(s) ao plano de ${getWorkoutById(tr)?.name||tr}!</span>`;
 }
 
 async function handleGymPlanFile(input,tr){
   const file=input.files[0];if(!file) return;
   const statusEl=document.getElementById('gym-import-status');
-  statusEl.innerHTML='<span style="color:#fbbf24">⏳ Analisando plano com IA — aguarde...</span>';
+  statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando plano com IA — aguarde...</span>';
   try{
     const items=await analyzeViaLambda(file,'gym_plan');
     _gymPlanPreview=items.map((ex,i)=>({...ex,id:'ex_'+Date.now()+i,_checked:true}));
     document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
-    statusEl.innerHTML=`<span style="color:#34d399">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
+    statusEl.innerHTML=`<span style="color:#16A34A">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
   }catch(e){
     statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
   }
@@ -905,7 +1037,7 @@ function setBodyMetric(m){_bodyMetric=m;renderBodyComp();}
 
 function renderBodyChart(sorted,metric){
   const data=sorted.map(e=>({date:e.date,v:metric==='fat'?e.fat:metric==='lean'?e.lean:e.weight})).filter(e=>e.v!=null&&!isNaN(e.v));
-  if(data.length<2) return '<div style="text-align:center;color:#6e7681;padding:24px;font-size:12px">Adicione mais registros para ver o gráfico</div>';
+  if(data.length<2) return '<div style="text-align:center;color:#78716C;padding:24px;font-size:12px">Adicione mais registros para ver o gráfico</div>';
   const W=320,H=150,padT=12,padB=28,padL=40,padR=10,cW=W-padL-padR,cH=H-padT-padB;
   const vals=data.map(d=>d.v);
   const minV=Math.min(...vals),maxV=Math.max(...vals),range=maxV-minV||0.5,padded=range*0.15;
@@ -952,9 +1084,9 @@ function renderBodyComp(){
       else dColor=delta>0?'#fb923c':delta<0?'#34d399':'#6e7681';
     }
     const dHtml=delta!=null?`<div style="font-size:10px;color:${dColor};margin-top:2px">${delta>0?'+':''}${delta.toFixed(1)}${unit}</div>`:'';
-    return`<div style="background:#0d1117;border:1px solid #21262d;border-radius:12px;padding:12px 6px;text-align:center">
-      <div style="font-size:9px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:4px">${label}</div>
-      <div style="font-size:19px;font-weight:800;color:${color}">${value!=null?value.toFixed(1):'—'}<span style="font-size:10px;color:#6e7681;font-weight:400">${unit}</span></div>
+    return`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:12px;padding:12px 6px;text-align:center">
+      <div style="font-size:9px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:4px">${label}</div>
+      <div style="font-size:19px;font-weight:800;color:${color}">${value!=null?value.toFixed(1):'—'}<span style="font-size:10px;color:#78716C;font-weight:400">${unit}</span></div>
       ${dHtml}
     </div>`;
   }
@@ -967,15 +1099,15 @@ function renderBodyComp(){
     ${statCard('PESO',latest.weight,'kg',wDelta,'#38bdf8')}
     ${statCard('GORDURA',latest.fat,'%',fDelta,'#fb923c')}
     ${statCard('MASSA MAGRA',latest.lean,'kg',lDelta,'#34d399')}
-  </div>`:'<div style="text-align:center;color:#6e7681;padding:20px;font-size:13px">Nenhum registro ainda. Adicione o primeiro abaixo.</div>';
+  </div>`:'<div style="text-align:center;color:#78716C;padding:20px;font-size:13px">Nenhum registro ainda. Adicione o primeiro abaixo.</div>';
 
   let totalHtml='';
   if(sorted.length>=2&&earliest.weight!=null&&latest.weight!=null){
     const totalW=latest.weight-earliest.weight;
     const nDays=Math.round((new Date(latest.date)-new Date(earliest.date))/86400000);
-    totalHtml=`<div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px">
-      <span style="color:#8b949e;font-weight:600">Variação total: </span><span style="color:${totalW<0?'#34d399':'#fb923c'};font-weight:700">${totalW>0?'+':''}${totalW.toFixed(1)} kg</span>
-      <span style="color:#4d5863"> em ${nDays} dias · ${sorted.length} registros</span>
+    totalHtml=`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;margin-bottom:10px;font-size:12px">
+      <span style="color:#78716C;font-weight:600">Variação total: </span><span style="color:${totalW<0?'#34d399':'#fb923c'};font-weight:700">${totalW>0?'+':''}${totalW.toFixed(1)} kg</span>
+      <span style="color:#A8A29E"> em ${nDays} dias · ${sorted.length} registros</span>
     </div>`;
   }
 
@@ -985,21 +1117,21 @@ function renderBodyComp(){
   const todayStr=today();
   const todayEntry=bodyEntries.find(e=>e.date===todayStr);
   const hasToday=!!todayEntry;
-  const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:15px;outline:none';
+  const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:15px;outline:none';
   const leanPreview=todayEntry?.lean!=null?todayEntry.lean.toFixed(1)+' kg':'—';
 
   const histRows=[...bodyEntries].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(e=>{
     const{day,date:d}=dispDate(e.date);
-    return`<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;background:#0d1117;border:1px solid #21262d;border-radius:10px;margin-bottom:6px">
+    return`<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;margin-bottom:6px">
       <div style="flex:1;min-width:0">
-        <span style="font-size:12px;font-weight:700;color:#e6edf3">${day} ${d}</span>
+        <span style="font-size:12px;font-weight:700;color:#1C1917">${day} ${d}</span>
         <div style="display:flex;gap:10px;margin-top:3px">
           ${e.weight!=null?`<span style="font-size:11px;color:#38bdf8;font-family:'DM Mono',monospace">${e.weight.toFixed(1)} kg</span>`:''}
           ${e.fat!=null?`<span style="font-size:11px;color:#fb923c;font-family:'DM Mono',monospace">${e.fat.toFixed(1)}%</span>`:''}
-          ${e.lean!=null?`<span style="font-size:11px;color:#34d399;font-family:'DM Mono',monospace">${e.lean.toFixed(1)} kg</span>`:''}
+          ${e.lean!=null?`<span style="font-size:11px;color:#16A34A;font-family:'DM Mono',monospace">${e.lean.toFixed(1)} kg</span>`:''}
         </div>
       </div>
-      <button onclick="deleteBodyEntry('${e.date}')" style="background:#21262d;color:#f87171;padding:6px 10px;border-radius:7px;font-size:12px;flex-shrink:0">🗑️</button>
+      <button onclick="deleteBodyEntry('${e.date}')" style="background:#F0EFED;color:#f87171;padding:6px 10px;border-radius:7px;font-size:12px;flex-shrink:0">🗑️</button>
     </div>`;
   }).join('');
 
@@ -1012,17 +1144,17 @@ function renderBodyComp(){
       ${renderBodyChart(sorted,_bodyMetric)}
     </div>
     <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>${hasToday?'✏️':'➕'}</span> ${hasToday?'ATUALIZAR HOJE':'NOVO REGISTRO'}</div><span style="font-size:11px;color:#6e7681">${todayStr}</span></div>
+      <div class="sec-hdr"><div class="sec-lbl"><span>${hasToday?'✏️':'➕'}</span> ${hasToday?'ATUALIZAR HOJE':'NOVO REGISTRO'}</div><span style="font-size:11px;color:#78716C">${todayStr}</span></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <div><div style="font-size:11px;color:#6e7681;margin-bottom:5px">Peso (kg) *</div><input type="number" id="bc-weight" step="0.1" placeholder="ex: 68.5" value="${todayEntry?.weight||''}" oninput="bcUpdateLean()" style="${inp}"></div>
-        <div><div style="font-size:11px;color:#6e7681;margin-bottom:5px">% Gordura</div><input type="number" id="bc-fat" step="0.1" placeholder="ex: 22.0" value="${todayEntry?.fat||''}" oninput="bcUpdateLean()" style="${inp}"></div>
+        <div><div style="font-size:11px;color:#78716C;margin-bottom:5px">Peso (kg) *</div><input type="number" id="bc-weight" step="0.1" placeholder="ex: 68.5" value="${todayEntry?.weight||''}" oninput="bcUpdateLean()" style="${inp}"></div>
+        <div><div style="font-size:11px;color:#78716C;margin-bottom:5px">% Gordura</div><input type="number" id="bc-fat" step="0.1" placeholder="ex: 22.0" value="${todayEntry?.fat||''}" oninput="bcUpdateLean()" style="${inp}"></div>
       </div>
-      <div style="background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px">
-        <span style="color:#6e7681">Massa magra: </span><span id="bc-lean-preview" style="color:#34d399;font-weight:700">${leanPreview}</span><span style="font-size:10px;color:#4d5863;margin-left:6px">= peso × (1 − %gordura)</span>
+      <div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px">
+        <span style="color:#78716C">Massa magra: </span><span id="bc-lean-preview" style="color:#16A34A;font-weight:700">${leanPreview}</span><span style="font-size:10px;color:#A8A29E;margin-left:6px">= peso × (1 − %gordura)</span>
       </div>
-      <button onclick="saveBodyEntry()" style="width:100%;padding:13px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700">${hasToday?'Atualizar registro':'Salvar registro'}</button>
+      <button onclick="saveBodyEntry()" style="width:100%;padding:13px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">${hasToday?'Atualizar registro':'Salvar registro'}</button>
     </div>
-    ${histRows?`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📋</span> HISTÓRICO</div><span style="font-size:11px;color:#6e7681">${bodyEntries.length} registro${bodyEntries.length!==1?'s':''}</span></div>${histRows}</div>`:''}`;
+    ${histRows?`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📋</span> HISTÓRICO</div><span style="font-size:11px;color:#78716C">${bodyEntries.length} registro${bodyEntries.length!==1?'s':''}</span></div>${histRows}</div>`:''}`;
 }
 
 function bcUpdateLean(){
@@ -1072,25 +1204,25 @@ function saveGoals(g){
 }
 function showGoals(){
   const g=goals;
-  const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:15px;outline:none';
+  const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:15px;outline:none';
   const dias=[1,2,3,4,5,6,7];
   const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#16a34a':'#0d1117'};color:${sel?'#fff':'#6e7681'};border:1px solid ${sel?'#16a34a':'#21262d'}">${n}d</button>`;}).join('');
   const isMasc=g.sexo==='m';
   document.getElementById('goals-body').innerHTML=`
     <div class="card fade-in">
       <div class="sec-hdr"><div class="sec-lbl"><span>👤</span> MEU PERFIL</div></div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:6px">Sexo</div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:6px">Sexo</div>
       <div style="display:flex;gap:6px;margin-bottom:12px">
         <button id="gs-f" onclick="goalsSelectSexo('f')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${!isMasc?'#1f6feb':'#0d1117'};color:${!isMasc?'#fff':'#6e7681'};border:1px solid ${!isMasc?'#388bfd':'#21262d'}">♀ Feminino</button>
         <button id="gs-m" onclick="goalsSelectSexo('m')" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${isMasc?'#1f6feb':'#0d1117'};color:${isMasc?'#fff':'#6e7681'};border:1px solid ${isMasc?'#388bfd':'#21262d'}">♂ Masculino</button>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div>
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Idade</div>
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Idade</div>
           <input type="number" id="g-idade" value="${g.idade}" placeholder="ex: 28" oninput="goalsCalcUpdate()" style="${inp}">
         </div>
         <div>
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Altura (cm)</div>
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Altura (cm)</div>
           <input type="number" id="g-altura" value="${g.altura}" placeholder="ex: 165" oninput="goalsCalcUpdate()" style="${inp}">
         </div>
       </div>
@@ -1099,11 +1231,11 @@ function showGoals(){
       <div class="sec-hdr"><div class="sec-lbl"><span>⚖️</span> PESO</div></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
         <div>
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Peso atual (kg)</div>
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Peso atual (kg)</div>
           <input type="number" id="g-peso-atual" value="${g.pesoAtual}" placeholder="ex: 70" oninput="goalsCalcUpdate()" style="${inp}">
         </div>
         <div>
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Peso meta (kg)</div>
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Peso meta (kg)</div>
           <input type="number" id="g-peso-meta" value="${g.pesoMeta}" placeholder="ex: 65" oninput="goalsCalcUpdate()" style="${inp}">
         </div>
       </div>
@@ -1111,22 +1243,22 @@ function showGoals(){
     </div>
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><span>🏋️</span> TREINOS</div></div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Dias de treino por semana</div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:7px">Dias de treino por semana</div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px">${diasBtns}</div>
     </div>
     <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>🔥</span> CALORIAS</div><span id="g-cal-badge" style="font-size:10px;color:#6e7681"></span></div>
-      <div id="g-cal-formula" style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#6e7681;line-height:1.6">Preencha perfil e peso para calcular automaticamente</div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Meta diária (kcal) — aceite o sugerido ou ajuste:</div>
+      <div class="sec-hdr"><div class="sec-lbl"><span>🔥</span> CALORIAS</div><span id="g-cal-badge" style="font-size:10px;color:#78716C"></span></div>
+      <div id="g-cal-formula" style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#78716C;line-height:1.6">Preencha perfil e peso para calcular automaticamente</div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:5px">Meta diária (kcal) — aceite o sugerido ou ajuste:</div>
       <input type="number" id="g-calorias" value="${g.calorias}" style="${inp}">
     </div>
     <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span id="g-agua-badge" style="font-size:10px;color:#6e7681"></span></div>
-      <div id="g-agua-formula" style="background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#6e7681;line-height:1.6">Preencha o peso atual para calcular automaticamente</div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Copos por dia — aceite o sugerido ou ajuste:</div>
+      <div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span id="g-agua-badge" style="font-size:10px;color:#78716C"></span></div>
+      <div id="g-agua-formula" style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#78716C;line-height:1.6">Preencha o peso atual para calcular automaticamente</div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:7px">Copos por dia — aceite o sugerido ou ajuste:</div>
       <div id="g-agua-btns" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>
     </div>
-    <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#1f6feb;border-radius:12px;color:#fff;font-size:15px;font-weight:700;margin-bottom:10px">Salvar metas</button>`;
+    <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#6C63FF;border-radius:12px;color:#fff;font-size:15px;font-weight:700;margin-bottom:10px">Salvar metas</button>`;
   showScreen('goals');setBnavActive('mais');
   goalsCalcUpdate();
 }
@@ -1159,7 +1291,7 @@ function goalsCalcUpdate(){
   const pesoInfoEl=document.getElementById('g-peso-info');
   if(pesoInfoEl&&peso>0&&meta>0){
     const diff=+(meta-peso).toFixed(1);
-    if(Math.abs(diff)<=1) pesoInfoEl.innerHTML=`<span style="color:#34d399">✓ Manutenção — peso próximo da meta</span>`;
+    if(Math.abs(diff)<=1) pesoInfoEl.innerHTML=`<span style="color:#16A34A">✓ Manutenção — peso próximo da meta</span>`;
     else if(diff<0) pesoInfoEl.innerHTML=`<span style="color:#38bdf8">↓ Objetivo: perder ${Math.abs(diff)} kg</span>`;
     else pesoInfoEl.innerHTML=`<span style="color:#fb923c">↑ Objetivo: ganhar ${diff} kg</span>`;
   } else if(pesoInfoEl) pesoInfoEl.innerHTML='';
@@ -1174,7 +1306,7 @@ function goalsCalcUpdate(){
     const copos=Math.max(6,Math.min(12,Math.round(ml/250)));
     const liters=(ml/1000).toFixed(1).replace('.',',');
     aguaSug=copos;
-    if(aguaFormulaEl) aguaFormulaEl.innerHTML=`🧮 <b>${peso} kg</b> × 35 ml = <b>${ml} ml</b> (<b>${liters} L</b>) ÷ 250 ml/copo = <span style="color:#38bdf8;font-weight:700">${copos} copos · ${liters} L/dia</span><br><span style="color:#4d5863;font-size:10px">Base: 30–40 ml/kg — EFSA & Institute of Medicine</span>`;
+    if(aguaFormulaEl) aguaFormulaEl.innerHTML=`🧮 <b>${peso} kg</b> × 35 ml = <b>${ml} ml</b> (<b>${liters} L</b>) ÷ 250 ml/copo = <span style="color:#38bdf8;font-weight:700">${copos} copos · ${liters} L/dia</span><br><span style="color:#A8A29E;font-size:10px">Base: 30–40 ml/kg — EFSA & Institute of Medicine</span>`;
     if(aguaBadgeEl) aguaBadgeEl.textContent='calculado automaticamente';
   } else {
     if(aguaFormulaEl) aguaFormulaEl.innerHTML='Preencha o peso atual para calcular automaticamente';
@@ -1202,11 +1334,11 @@ function goalsCalcUpdate(){
     const tdee=Math.round(bmr*fac);
     let adj=0,adjHtml='';
     if(meta>0&&Math.abs(meta-peso)>1){
-      if(meta<peso){adj=-400;adjHtml=` <span style="color:#38bdf8">− 400 kcal <span style="color:#4d5863">(déficit para perda)</span></span>`;}
-      else{adj=300;adjHtml=` <span style="color:#fb923c">+ 300 kcal <span style="color:#4d5863">(superávit para ganho)</span></span>`;}
+      if(meta<peso){adj=-400;adjHtml=` <span style="color:#38bdf8">− 400 kcal <span style="color:#A8A29E">(déficit para perda)</span></span>`;}
+      else{adj=300;adjHtml=` <span style="color:#fb923c">+ 300 kcal <span style="color:#A8A29E">(superávit para ganho)</span></span>`;}
     }
     const cal=tdee+adj;
-    if(calFormulaEl) calFormulaEl.innerHTML=`🧮 BMR <b>${Math.round(bmr)}</b> kcal × <b>${fac}</b> <span style="color:#8b949e">(treino ${lbl})</span> = <b>${tdee}</b> kcal${adjHtml}<br>→ <span style="color:#fb923c;font-weight:700">${cal} kcal/dia</span><br><span style="color:#4d5863;font-size:10px">Fórmula Mifflin-St Jeor (2005) — padrão ISSN/ACSM</span>`;
+    if(calFormulaEl) calFormulaEl.innerHTML=`🧮 BMR <b>${Math.round(bmr)}</b> kcal × <b>${fac}</b> <span style="color:#78716C">(treino ${lbl})</span> = <b>${tdee}</b> kcal${adjHtml}<br>→ <span style="color:#fb923c;font-weight:700">${cal} kcal/dia</span><br><span style="color:#A8A29E;font-size:10px">Fórmula Mifflin-St Jeor (2005) — padrão ISSN/ACSM</span>`;
     if(calInpEl) calInpEl.value=cal;
     if(calBadgeEl) calBadgeEl.textContent='calculado automaticamente';
   } else {
@@ -1251,7 +1383,7 @@ function getGoalProgress(goal){
   const period=getGoalPeriod(goal);
   let total=goalLogs.filter(l=>l.goalId===goal.id&&l.date>=period.start&&l.date<=period.end).reduce((s,l)=>s+(l.value||0),0);
   if(goal.linkedWorkout){
-    let d=period.start;while(d<=period.end&&d<=currentDate){const dd=d===currentDate?dayData:loadDay(d);if(dd.tr===goal.linkedWorkout)total+=(dd.gymDurMin||0);d=addDays(d,1);}
+    let d=period.start;while(d<=period.end&&d<=currentDate){const dd=d===currentDate?dayData:loadDay(d);if(getWorkoutById(dd.tr)?.type===goal.linkedWorkout){if(goal.linkedMetric==='sessions'){const sess=loadGymSession(d,dd.tr);if(sess&&sess.some(ex=>ex.sets&&ex.sets.some(s=>s.done)))total+=1;}else total+=(dd.gymDurMin||0);}d=addDays(d,1);}
   }
   const pct=goal.targetValue>0?Math.min(100,Math.round(total/goal.targetValue*100)):0;
   const remaining=Math.max(0,goal.targetValue-total);
@@ -1494,6 +1626,7 @@ async function render(syncG=false){
   }
 }
 function renderUI(){
+  renderStreakBadge();
   const sc=calcScore(dayData,currentDate);
   const{day,date}=dispDate(currentDate);
   const isT=currentDate===today();
@@ -1502,7 +1635,7 @@ function renderUI(){
   document.getElementById('hdr-status').textContent=isT?'● HOJE':'';
   const pctEl=document.getElementById('hdr-pct');
   pctEl.textContent=sc.pct>0?sc.pct+'% do dia':'';
-  pctEl.style.color=sc.pct>=80?'#34d399':sc.pct>=55?'#fbbf24':sc.pct>0?'#f87171':'transparent';
+  pctEl.style.color=sc.pct>=80?'#16A34A':sc.pct>=50?'#D97706':sc.pct>0?'#FB923C':'transparent';
   document.getElementById('btn-next').style.opacity=isT?0.3:1;
   document.getElementById('btn-next').disabled=isT;
   const lblMap={hoje:'📊 EFICIÊNCIA DIÁRIA',nutricao:'🍽️ NUTRIÇÃO',suplday:'💊 SUPLEMENTAÇÃO'};
@@ -1517,7 +1650,7 @@ function renderUI(){
 
 function renderHoje(body,sc){
   const pct=sc.pct;
-  const rc=pct>=80?'#34d399':pct>=55?'#fbbf24':pct>0?'#f87171':'#30363d';
+  const rc=pct>=100?'#6C63FF':pct>=90?'#86EFAC':pct>=80?'#4ADE80':pct>=50?'#FCD34D':pct>0?'#FB923C':'#E7E5E4';
   const msg=pct===100?'🎉 Dia perfeito!':pct>=80?'💪 Ótimo dia!':pct>=55?'👍 Progredindo':pct>0?'🌿 Acontece. Amanhã é novo.':'🔄 Vamos lá!';
   const ring=2*Math.PI*40;
   const bars=[
@@ -1526,19 +1659,19 @@ function renderHoje(body,sc){
     {l:'Suplementos',s:sc.sups,c:'#fbbf24'},
     ...(sc.treino.t>0?[{l:'Treino',s:sc.treino,c:'#818cf8'}]:[]),
   ];
-  const barsHtml=bars.map(b=>{const bp=b.s.t>0?Math.round(b.s.d/b.s.t*100):0;return`<div class="score-bar-wrap"><div style="width:80px;font-size:11px;color:#6e7681;font-weight:600">${b.l}</div><div class="score-bar-bg"><div class="score-bar-fill" style="width:${bp}%;background:${b.c}"></div></div><div style="font-size:11px;color:#6e7681;font-family:'DM Mono',monospace;width:28px;text-align:right">${b.s.d}/${b.s.t}</div></div>`;}).join('');
+  const barsHtml=bars.map(b=>{const bp=b.s.t>0?Math.round(b.s.d/b.s.t*100):0;return`<div class="score-bar-wrap"><div style="width:80px;font-size:11px;color:#78716C;font-weight:600">${b.l}</div><div class="score-bar-bg"><div class="score-bar-fill" style="width:${bp}%;background:${b.c}"></div></div><div style="font-size:11px;color:#78716C;font-family:'DM Mono',monospace;width:28px;text-align:right">${b.s.d}/${b.s.t}</div></div>`;}).join('');
   let html=`<div class="card fade-in">
     <div style="display:flex;align-items:center;gap:18px;margin-bottom:18px">
       <svg width="96" height="96" viewBox="0 0 96 96" style="flex-shrink:0">
-        <circle cx="48" cy="48" r="40" fill="none" stroke="#1c2128" stroke-width="10"/>
+        <circle cx="48" cy="48" r="40" fill="none" stroke="#E7E5E4" stroke-width="10"/>
         <circle cx="48" cy="48" r="40" fill="none" stroke="${rc}" stroke-width="10" stroke-linecap="round" stroke-dasharray="${ring}" stroke-dashoffset="${ring-(pct/100)*ring}" transform="rotate(-90 48 48)" style="transition:stroke-dashoffset .5s ease"/>
-        <text x="48" y="44" text-anchor="middle" font-size="20" font-weight="800" fill="#e6edf3" font-family="Sora">${pct}%</text>
-        <text x="48" y="58" text-anchor="middle" font-size="9" fill="#6e7681" font-family="Sora" letter-spacing="0.08em">SUCESSO</text>
+        <text x="48" y="44" text-anchor="middle" font-size="20" font-weight="500" fill="#1C1917" font-family="DM Mono">${pct}%</text>
+        <text x="48" y="58" text-anchor="middle" font-size="9" fill="#A8A29E" font-family="DM Sans" letter-spacing="0.08em">SUCESSO</text>
       </svg>
       <div style="flex:1">
-        <div style="font-size:15px;font-weight:800;color:#e6edf3;margin-bottom:5px">${msg}</div>
-        <div style="font-size:11px;color:#6e7681;font-family:'DM Mono',monospace">${sc.done}/${sc.total} pontos</div>
-        <button onclick="showHistory()" style="margin-top:8px;background:#21262d;border:1px solid #30363d;color:#8b949e;padding:5px 12px;border-radius:8px;font-size:11px;font-weight:600">📊 Ver histórico</button>
+        <div style="font-family:'Fraunces',serif;font-size:16px;font-weight:400;color:#1C1917;margin-bottom:5px">${msg}</div>
+        <div style="font-size:11px;color:#78716C;font-family:'DM Mono',monospace">${sc.done}/${sc.total} pontos</div>
+        <button onclick="showHistory()" style="margin-top:8px;background:#F0EFED;border:1px solid #D4D0CE;color:#78716C;padding:5px 12px;border-radius:8px;font-size:11px;font-weight:600">📊 Ver histórico</button>
       </div>
     </div>
     ${barsHtml}
@@ -1550,25 +1683,25 @@ function renderHoje(body,sc){
   const wLCur=wMlCur>=1000?(wMlCur/1000).toFixed(1).replace('.',',')+'L':wMlCur+'ml';
   const wLMeta=wMlMeta>=1000?(wMlMeta/1000).toFixed(1).replace('.',',')+'L':wMlMeta+'ml';
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=goals.aguaCopos?'#34d399':'#6e7681'}">${dayData.water}/${goals.aguaCopos} copos</span></div>
-    <div style="font-size:11px;color:#6e7681;margin-bottom:8px">Consumido: <b style="color:${dayData.water>=goals.aguaCopos?'#34d399':'#e6edf3'}">${wLCur}</b> · Meta: <b>${wLMeta}/dia</b></div>
+    <div style="font-size:11px;color:#78716C;margin-bottom:8px">Consumido: <b style="color:${dayData.water>=goals.aguaCopos?'#34d399':'#e6edf3'}">${wLCur}</b> · Meta: <b>${wLMeta}/dia</b></div>
     <div style="display:flex;gap:5px;margin-bottom:8px">${wBars}</div>
     <div style="display:flex;gap:8px">
-      <button onclick="addWater(-1)" style="flex:1;padding:8px;background:#0d1117;border:1px solid #21262d;color:#6e7681;border-radius:8px;font-size:12px;font-weight:600">− 1</button>
-      <button onclick="addWater(1)" style="flex:1;padding:8px;background:#1d4ed8;border:1px solid #3b82f6;color:#fff;border-radius:8px;font-size:12px;font-weight:600">+ 1 copo</button>
+      <button onclick="addWater(-1)" style="flex:1;padding:8px;background:#FAFAF9;border:1px solid #E7E5E4;color:#78716C;border-radius:8px;font-size:12px;font-weight:600">− 1</button>
+      <button onclick="addWater(1)" style="flex:1;padding:8px;background:#5A52E8;border:1px solid #6C63FF;color:#fff;border-radius:8px;font-size:12px;font-weight:600">+ 1 copo</button>
     </div>
   </div>`;
   // SONO
   const sOpts=SLEEPS.map(o=>{const sel=dayData.sleep===o.id;return`<button onclick="setSleep('${o.id}')" style="padding:9px 4px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?(o.ok?'#166534':'#7f1d1d'):'#0d1117'};color:${sel?(o.ok?'#86efac':'#fca5a5'):'#6e7681'};border:1px solid ${sel?(o.ok?'#16a34a':'#dc2626'):'#21262d'}">${o.l}</button>`;}).join('');
   const sOk=[{v:'true',l:'✓ Sim'},{v:'false',l:'✗ Não'}].map(o=>{const sel=String(dayData.sleepOk)===o.v;return`<button onclick="setSleepOk(${o.v})" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?(o.v==='true'?'#166534':'#7f1d1d'):'#0d1117'};color:${sel?(o.v==='true'?'#86efac':'#fca5a5'):'#6e7681'};border:1px solid ${sel?(o.v==='true'?'#16a34a':'#dc2626'):'#21262d'}">${o.l}</button>`;}).join('');
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>😴</span> SONO</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.sleep.d===sc.sleep.t?'#a78bfa':'#6e7681'}">${sc.sleep.d}/${sc.sleep.t}</span></div>
-    <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORAS DORMIDAS</div>
+    <div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORAS DORMIDAS</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">${sOpts}</div>
-    <div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORÁRIO CONSISTENTE?</div>
+    <div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORÁRIO CONSISTENTE?</div>
     <div style="display:flex;gap:7px">${sOk}</div>
   </div>`;
   // OBSERVAÇÕES
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📝</span> OBSERVAÇÕES</div></div>
-    <textarea placeholder="Como foi o dia? O que dificultou? O que funcionou bem?" onchange="setNotes(this.value)" style="width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:10px 12px;color:#e6edf3;font-size:13px;resize:none;height:72px;outline:none;line-height:1.5">${dayData.notes||''}</textarea>
+    <textarea placeholder="Como foi o dia? O que dificultou? O que funcionou bem?" onchange="setNotes(this.value)" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;color:#1C1917;font-size:13px;resize:none;height:72px;outline:none;line-height:1.5">${dayData.notes||''}</textarea>
   </div>`;
   // PENDÊNCIAS
   const missing=[];
@@ -1579,20 +1712,20 @@ function renderHoje(body,sc){
   if(pct>0&&pct<55&&missing.length){
     const SO=['💧','😴','☀️','🥗','🥛','🌙','🍓','🚴'];
     const top2=[...missing].sort((a,b)=>(SO.findIndex(ic=>a.startsWith(ic))+1||99)-(SO.findIndex(ic=>b.startsWith(ic))+1||99)).slice(0,2);
-    html+=`<div class="card" style="border-color:#1e3a2f;background:#0a1f14"><div class="sec-hdr"><div class="sec-lbl" style="color:#4ade80"><span>🌿</span> AMANHÃ, SÓ ISSO</div></div><div style="font-size:12px;color:#6e7681;margin-bottom:10px">Dia difícil acontece. Um pequeno ajuste já vale.</div>${top2.map(m=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;background:#0d1117;border-radius:10px;border:1px solid #1e3a2f;margin-bottom:6px"><div style="width:5px;height:5px;border-radius:50%;background:#34d399;margin-top:7px;flex-shrink:0"></div><span style="font-size:13px;color:#d1fae5;line-height:1.5">${m}</span></div>`).join('')}</div>`;
+    html+=`<div class="card" style="border-color:#BBF7D0;background:#F0FDF4"><div class="sec-hdr"><div class="sec-lbl" style="color:#16A34A"><span>🌿</span> AMANHÃ, SÓ ISSO</div></div><div style="font-size:12px;color:#78716C;margin-bottom:10px">Dia difícil acontece. Um pequeno ajuste já vale.</div>${top2.map(m=>`<div style="display:flex;gap:10px;align-items:flex-start;padding:9px 10px;background:#FAFAF9;border-radius:10px;border:1px solid #1e3a2f;margin-bottom:6px"><div style="width:5px;height:5px;border-radius:50%;background:#34d399;margin-top:7px;flex-shrink:0"></div><span style="font-size:13px;color:#16A34A;line-height:1.5">${m}</span></div>`).join('')}</div>`;
   }else if(missing.length){
-    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🔍</span> PENDÊNCIAS</div></div><div style="display:flex;flex-direction:column;gap:6px">${missing.map(m=>`<div style="display:flex;gap:10px;align-items:flex-start"><div class="pending-dot"></div><span style="font-size:13px;color:#fca5a5;line-height:1.5">${m}</span></div>`).join('')}</div></div>`;
+    html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🔍</span> PENDÊNCIAS</div></div><div style="display:flex;flex-direction:column;gap:6px">${missing.map(m=>`<div style="display:flex;gap:10px;align-items:flex-start"><div class="pending-dot"></div><span style="font-size:13px;color:#DC2626;line-height:1.5">${m}</span></div>`).join('')}</div></div>`;
   }
-  if(pct===100) html+=`<div style="background:#0d2818;border:1px solid #16a34a;border-radius:14px;padding:22px;text-align:center;margin-bottom:10px"><div style="font-size:28px;margin-bottom:6px">🎉</div><div style="font-size:16px;font-weight:800;color:#34d399">100% — dia perfeito!</div><div style="font-size:12px;color:#4ade80;margin-top:4px">Continue assim — consistência é tudo.</div></div>`;
+  if(pct===100) html+=`<div style="background:#F0FDF4;border:1px solid #16a34a;border-radius:14px;padding:22px;text-align:center;margin-bottom:10px"><div style="font-size:28px;margin-bottom:6px">🎉</div><div style="font-size:16px;font-weight:800;color:#16A34A">100% — dia perfeito!</div><div style="font-size:12px;color:#16A34A;margin-top:4px">Continue assim — consistência é tudo.</div></div>`;
   body.innerHTML=html;
 }
 
 function renderNutricao(body,sc){
   let html='';
   const jBtns=[{id:'refeicao',l:'🍽️ Refeição'},{id:'rap10',l:'🌯 Rap10'},{id:'hamburguer',l:'🍔 Hambúrguer'}].map(v=>`<button onclick="setJantar('${v.id}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;background:${dayData.jantarV===v.id?'#1f6feb':'#0d1117'};color:${dayData.jantarV===v.id?'#fff':'#6e7681'};border:1px solid ${dayData.jantarV===v.id?'#388bfd':'#21262d'}">${v.l}</button>`).join('');
-  const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#6e7681;font-family:'DM Mono',monospace">${m.time}</span></div><div style="font-size:10px;color:${done?'#3d5040':'#6e7681'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#3d5040':'#4d5863'};line-height:1.45">${det.hint}</div><div class="badge">${det.badge}</div></div></button>`;}).join('');
+  const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#e6edf3'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#78716C;font-family:'DM Mono',monospace">${m.time}</span></div><div style="font-size:10px;color:${done?'#3d5040':'#6e7681'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#3d5040':'#4d5863'};line-height:1.45">${det.hint}</div><div class="badge">${det.badge}</div></div></button>`;}).join('');
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.meals.d===sc.meals.t?'#fb923c':'#6e7681'}">${sc.meals.d}/${sc.meals.t}</span></div>
-    <div style="margin-bottom:10px"><div style="font-size:10px;color:#6e7681;font-weight:700;letter-spacing:.08em;margin-bottom:6px">VARIANTE DO JANTAR</div><div style="display:flex;gap:6px">${jBtns}</div></div>
+    <div style="margin-bottom:10px"><div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.08em;margin-bottom:6px">VARIANTE DO JANTAR</div><div style="display:flex;gap:6px">${jBtns}</div></div>
     ${mealCards}
   </div>`;
   body.innerHTML=html;
@@ -1606,15 +1739,15 @@ function renderSuplDay(body,sc){
   if(sups.length===0){
     html=`<div class="card fade-in" style="text-align:center;padding:28px 16px">
       <div style="font-size:36px;margin-bottom:10px">💊</div>
-      <div style="font-size:14px;font-weight:700;color:#e6edf3;margin-bottom:6px">Nenhum suplemento configurado</div>
-      <div style="font-size:12px;color:#6e7681;margin-bottom:16px">Configure seus suplementos em Mais → Gerenciar Suplementos</div>
-      <button onclick="showBnav('mais')" style="padding:10px 20px;background:#21262d;border-radius:10px;color:#e6edf3;font-size:13px;font-weight:600">Ir para Mais →</button>
+      <div style="font-size:14px;font-weight:700;color:#1C1917;margin-bottom:6px">Nenhum suplemento configurado</div>
+      <div style="font-size:12px;color:#78716C;margin-bottom:16px">Configure seus suplementos em Mais → Gerenciar Suplementos</div>
+      <button onclick="showBnav('mais')" style="padding:10px 20px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:13px;font-weight:600">Ir para Mais →</button>
     </div>`;
   } else {
     const supRows=sups.map(s=>{
       const done=!!dayData.sups[s.id];
       return`<button class="check-row ${done?'done':''}" onclick="toggleSup('${s.id}')">
-        <div class="check-circle ${done?'done':''}" style="${done?'':'border-color:#30363d'}">${done?'✓':''}</div>
+        <div class="check-circle ${done?'done':''}" style="${done?'':'border-color:#D4D0CE'}">${done?'✓':''}</div>
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">${s.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#6e7681':'#c9d1d9'};text-decoration:${done?'line-through':'none'}">${s.label}</span></div>
           <div style="font-size:11px;color:${done?'#3d5040':'#4d5863'};margin-top:3px;line-height:1.4">${s.sub}</div>
@@ -1628,12 +1761,12 @@ function renderSuplDay(body,sc){
         <div class="sec-lbl"><span>💊</span> SUPLEMENTOS DO DIA</div>
         <span style="font-size:11px;font-family:'DM Mono',monospace;color:${allDone?'#fbbf24':'#6e7681'}">${doneCnt}/${sups.length}</span>
       </div>
-      <div style="font-size:11px;color:#6e7681;margin-bottom:12px">Protocolo: <b style="color:#8b949e">${contextLabel}</b></div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:12px">Protocolo: <b style="color:#78716C">${contextLabel}</b></div>
       ${supRows}
-      ${allDone?'<div style="text-align:center;font-size:11px;color:#fbbf24;font-weight:600;padding-top:4px">⭐ Todos os suplementos tomados!</div>':''}
+      ${allDone?'<div style="text-align:center;font-size:11px;color:#D97706;font-weight:600;padding-top:4px">⭐ Todos os suplementos tomados!</div>':''}
     </div>
     <div style="text-align:center;margin-top:8px">
-      <button onclick="showBnav('mais')" style="font-size:11px;color:#4d5863;background:none;text-decoration:underline">Gerenciar lista de suplementos →</button>
+      <button onclick="showBnav('mais')" style="font-size:11px;color:#A8A29E;background:none;text-decoration:underline">Gerenciar lista de suplementos →</button>
     </div>`;
   }
   body.innerHTML=html;
@@ -1652,6 +1785,38 @@ function showBnav(id){
 function setBnavActive(id){
   document.querySelectorAll('.bnav-btn').forEach(b=>b.classList.remove('active'));
   const el=document.getElementById('bnav-'+id);if(el) el.classList.add('active');
+  document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
+  const sel=document.getElementById('snav-'+id);if(sel) sel.classList.add('active');
+}
+function calcStreak(){
+  let s=0;
+  const t=today();
+  for(let i=0;i<365;i++){
+    const d=addDays(t,-i);
+    const dd=loadDay(d);
+    if(calcScore(dd,d).pct>=80) s++;
+    else break;
+  }
+  return s;
+}
+function renderStreakBadge(){
+  const s=calcStreak();
+  if(!s) return;
+  const hot=s>=7?'streak-hot':'';
+  const html=`<div class="streak-badge ${hot}">🔥 ${s}</div>`;
+  const mh=document.getElementById('mh-streak');
+  const sb=document.getElementById('sb-streak');
+  if(mh) mh.innerHTML=html;
+  if(sb) sb.innerHTML=html;
+}
+let _toastTimer=null;
+function showToast(msg){
+  const el=document.getElementById('toast');
+  if(!el) return;
+  el.textContent=msg;
+  el.classList.add('show');
+  clearTimeout(_toastTimer);
+  _toastTimer=setTimeout(()=>el.classList.remove('show'),3000);
 }
 function closeBnavMore(){}
 function showMais(){
@@ -1670,19 +1835,19 @@ function renderMais(){
     {icon:'💊',label:'Gerenciar Suplementos',sub:'Cadastrar e editar seus suplementos',fn:"showSups()",c:'#fbbf24'},
   ];
   const cards=items.map(it=>`
-    <button onclick="${it.fn}" style="width:100%;display:flex;align-items:center;gap:14px;padding:16px 14px;background:#161b22;border:1px solid #21262d;border-radius:14px;margin-bottom:8px;text-align:left">
+    <button onclick="${it.fn}" style="width:100%;display:flex;align-items:center;gap:14px;padding:16px 14px;background:#fff;border:1px solid #E7E5E4;border-radius:14px;margin-bottom:8px;text-align:left">
       <div style="width:44px;height:44px;border-radius:12px;background:${it.c}18;border:1px solid ${it.c}40;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">${it.icon}</div>
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:700;color:#e6edf3">${it.label}</div>
-        <div style="font-size:11px;color:#6e7681;margin-top:2px">${it.sub}</div>
+        <div style="font-size:14px;font-weight:700;color:#1C1917">${it.label}</div>
+        <div style="font-size:11px;color:#78716C;margin-top:2px">${it.sub}</div>
       </div>
-      <span style="color:#4d5863;font-size:16px">›</span>
+      <span style="color:#A8A29E;font-size:16px">›</span>
     </button>`).join('');
   body.innerHTML=`
     <div class="fade-in">
       ${cards}
-      <div style="height:1px;background:#21262d;margin:12px 0"></div>
-      <button onclick="signOut()" style="width:100%;display:flex;align-items:center;gap:14px;padding:14px;background:none;border:1px solid #21262d;border-radius:14px;text-align:left">
+      <div style="height:1px;background:#F0EFED;margin:12px 0"></div>
+      <button onclick="signOut()" style="width:100%;display:flex;align-items:center;gap:14px;padding:14px;background:none;border:1px solid #E7E5E4;border-radius:14px;text-align:left">
         <div style="width:44px;height:44px;border-radius:12px;background:#f8717118;border:1px solid #f8717140;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🚪</div>
         <div style="font-size:14px;font-weight:700;color:#f87171">Sair da conta</div>
       </button>
@@ -1703,7 +1868,7 @@ function showHistory(){
   let streak=0; for(const d of hist){if(d.pct>=80)streak++;else break;}
 
   const stats=[{l:'Média 60d',v:avg+'%',c:'#818cf8'},{l:'Dias ótimos',v:great,c:'#34d399'},{l:'Sequência',v:streak+'d',c:'#fbbf24'}];
-  const statsHtml=stats.map(s=>`<div class="card" style="padding:14px 10px;text-align:center;margin-bottom:0"><div style="font-size:22px;font-weight:800;color:${s.c}">${s.v}</div><div style="font-size:10px;color:#6e7681;font-weight:600;margin-top:3px">${s.l}</div></div>`).join('');
+  const statsHtml=stats.map(s=>`<div class="card" style="padding:14px 10px;text-align:center;margin-bottom:0"><div style="font-size:22px;font-weight:800;color:${s.c}">${s.v}</div><div style="font-size:10px;color:#78716C;font-weight:600;margin-top:3px">${s.l}</div></div>`).join('');
 
   const hist60=[...hist].reverse();
   const firstDow=getDow(hist60[0].date);
@@ -1718,10 +1883,10 @@ function showHistory(){
   const listRows=hist.map(({date,pct})=>{
     const{day,date:d}=dispDate(date);
     const c=pct>=80?'#34d399':pct>=55?'#fbbf24':pct>0?'#f87171':'#30363d';
-    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;background:#0d1117;border-radius:10px;border:1px solid #21262d;margin-bottom:6px">
-      <div><span style="font-size:12px;font-weight:700;color:#e6edf3">${day} </span><span style="font-size:12px;color:#6e7681">${d}</span></div>
+    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:9px 10px;background:#FAFAF9;border-radius:10px;border:1px solid #E7E5E4;margin-bottom:6px">
+      <div><span style="font-size:12px;font-weight:700;color:#1C1917">${day} </span><span style="font-size:12px;color:#78716C">${d}</span></div>
       <div style="display:flex;align-items:center;gap:8px">
-        <div style="width:60px;height:4px;background:#21262d;border-radius:99px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${c};border-radius:99px"></div></div>
+        <div style="width:60px;height:4px;background:#F0EFED;border-radius:99px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${c};border-radius:99px"></div></div>
         <span style="font-size:12px;font-weight:700;color:${c};font-family:'DM Mono',monospace;width:32px;text-align:right">${pct}%</span>
       </div>
     </div>`;
@@ -1732,7 +1897,7 @@ function showHistory(){
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><span>📅</span> ÚLTIMOS 60 DIAS</div></div>
       <div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px">
-        ${DAYS.map(d=>`<div style="font-size:9px;color:#6e7681;font-weight:700;text-align:center;margin-bottom:4px">${d}</div>`).join('')}
+        ${DAYS.map(d=>`<div style="font-size:9px;color:#78716C;font-weight:700;text-align:center;margin-bottom:4px">${d}</div>`).join('')}
         ${offsetCells}${calCells}
       </div>
       <div style="display:flex;gap:8px;margin-top:10px;justify-content:center;flex-wrap:wrap">
@@ -1756,31 +1921,34 @@ function renderGoalCard(goal,mini=false){
   const freqLbl={daily:'Hoje',weekly:'Semana',monthly:'Mês',yearly:'Ano',once:'Total'}[goal.frequency]||'Período';
   let html=`<div style="margin-bottom:12px">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-      <div style="font-size:13px;font-weight:700;color:#e6edf3">${goal.icon||cat.icon} ${goal.title}</div>
+      <div style="font-size:13px;font-weight:700;color:#1C1917">${goal.icon||cat.icon} ${goal.title}</div>
       <div style="font-size:11px;font-family:'DM Mono',monospace;color:${barCol}">${prog.pct}%</div>
     </div>
     <div class="score-bar-bg" style="margin-bottom:${mini?0:7}px"><div class="score-bar-fill" style="width:${prog.pct}%;background:${barCol}"></div></div>`;
   if(!mini){
-    html+=`<div style="font-size:10px;color:#6e7681;margin-bottom:8px">${freqLbl}: <b style="color:#8b949e">${prog.total}/${goal.targetValue} ${goal.unit}</b>`;
-    if(prog.pct>=100) html+=` <span style="color:#34d399">✓ Meta batida! 🎉</span>`;
+    html+=`<div style="font-size:10px;color:#78716C;margin-bottom:8px">${freqLbl}: <b style="color:#78716C">${prog.total}/${goal.targetValue} ${goal.unit}</b>`;
+    if(prog.pct>=100) html+=` <span style="color:#16A34A">✓ Meta batida! 🎉</span>`;
     else if(prog.isAtRisk) html+=` <span style="color:#fb923c">⚠️ Prazo próximo</span>`;
     html+=`</div>`;
     if(goal.linkedWorkout){
-      const wk=getWorkoutById(goal.linkedWorkout);
-      const todayMin=dayData.tr===goal.linkedWorkout?(dayData.gymDurMin||0):0;
-      html+=`<div style="display:flex;align-items:center;gap:7px;background:#0d1117;border:1px solid #21262d;border-radius:9px;padding:8px 11px"><span style="font-size:12px">⏱️</span><span style="font-size:12px;color:#6e7681;flex:1">Hoje: <b style="color:#e6edf3">${todayMin} min</b>${wk?` — ${wk.icon} ${wk.name}`:''}</span><span style="font-size:10px;color:#4d5863">lido do treino →</span></div>`;
+      const typeLabel={musculacao:'🏋️ Musculação',aerobico:'🏃 Cardio / Aeróbico'}[goal.linkedWorkout]||goal.linkedWorkout;
+      const todayTypeMatch=getWorkoutById(dayData.tr)?.type===goal.linkedWorkout;
+      let todayDisplay;
+      if(goal.linkedMetric==='sessions'){const sess=todayTypeMatch?loadGymSession(currentDate,dayData.tr):null;const sessOk=sess&&sess.some(ex=>ex.sets&&ex.sets.some(s=>s.done));todayDisplay=sessOk?'<b style="color:#16A34A">✓ Sessão concluída</b>':'<b style="color:#78716C">Nenhuma sessão hoje</b>';}
+      else{const todayMin=todayTypeMatch?(dayData.gymDurMin||0):0;todayDisplay=`<b style="color:#1C1917">${todayMin} min</b>`;}
+      html+=`<div style="display:flex;align-items:center;gap:7px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:9px;padding:8px 11px"><span style="font-size:12px">${goal.linkedMetric==='sessions'?'📅':'⏱️'}</span><span style="font-size:12px;color:#78716C;flex:1">Hoje: ${todayDisplay} — ${typeLabel}</span><span style="font-size:10px;color:#A8A29E">lido do treino →</span></div>`;
     } else if(prog.pct<100){
       const deltas=cat.deltas.length?cat.deltas:[1,5,10];
       html+=`<div style="display:flex;gap:5px;align-items:center">
-        ${deltas.map(d=>`<button onclick="quickLog('${goal.id}',${d})" style="flex:1;padding:7px 4px;border-radius:8px;background:rgba(31,111,235,.12);border:1px solid rgba(31,111,235,.3);color:#388bfd;font-size:12px;font-weight:700">+${d}</button>`).join('')}
-        <input type="number" inputmode="decimal" placeholder="0" onchange="addGoalLog('${goal.id}',+this.value);this.value=''" style="width:58px;background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:7px 4px;color:#e6edf3;font-size:13px;font-weight:700;text-align:center;outline:none">
-        <span style="font-size:11px;color:#4d5863">${goal.unit}</span>
+        ${deltas.map(d=>`<button onclick="quickLog('${goal.id}',${d})" style="flex:1;padding:7px 4px;border-radius:8px;background:rgba(108,99,255,.1);border:1px solid rgba(108,99,255,.3);color:#6C63FF;font-size:12px;font-weight:700">+${d}</button>`).join('')}
+        <input type="number" inputmode="decimal" placeholder="0" onchange="addGoalLog('${goal.id}',+this.value);this.value=''" style="width:58px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:8px;padding:7px 4px;color:#1C1917;font-size:13px;font-weight:700;text-align:center;outline:none">
+        <span style="font-size:11px;color:#A8A29E">${goal.unit}</span>
       </div>`;
     } else {
-      html+=`<div style="font-size:12px;color:#34d399;font-weight:700;text-align:center;padding:4px 0">✓ Meta batida! 🎉</div>`;
+      html+=`<div style="font-size:12px;color:#16A34A;font-weight:700;text-align:center;padding:4px 0">✓ Meta batida! 🎉</div>`;
     }
   } else {
-    html+=`<div style="font-size:10px;color:#6e7681;margin-top:5px">${freqLbl}: <b style="color:#8b949e">${prog.total}/${goal.targetValue} ${goal.unit}</b></div>`;
+    html+=`<div style="font-size:10px;color:#78716C;margin-top:5px">${freqLbl}: <b style="color:#78716C">${prog.total}/${goal.targetValue} ${goal.unit}</b></div>`;
   }
   html+=`</div>`;
   return html;
@@ -1819,14 +1987,14 @@ function renderGoalsMgmt(){
   if(_goalFormMode){body.innerHTML=renderGoalFormHtml();return;}
   const active=goalsDefs.filter(g=>!g.archived);
   const archived=goalsDefs.filter(g=>g.archived);
-  const inp2='background:#0d1117;border:1px solid #21262d;border-radius:8px;padding:9px 10px;color:#e6edf3;font-size:13px;outline:none';
+  const inp2='background:#FAFAF9;border:1px solid #E7E5E4;border-radius:8px;padding:9px 10px;color:#1C1917;font-size:13px;outline:none';
   let html='';
   if(!active.length){
     html+=`<div class="card fade-in" style="text-align:center;padding:32px 20px">
       <div style="font-size:40px;margin-bottom:12px">🎯</div>
-      <div style="font-size:15px;font-weight:700;color:#e6edf3;margin-bottom:6px">Nenhuma meta ainda</div>
-      <div style="font-size:12px;color:#6e7681;margin-bottom:16px">Crie sua primeira meta e comece a acompanhar seu progresso.</div>
-      <button onclick="showGoalForm(null)" style="padding:12px 24px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ Criar primeira meta</button>
+      <div style="font-size:15px;font-weight:700;color:#1C1917;margin-bottom:6px">Nenhuma meta ainda</div>
+      <div style="font-size:12px;color:#78716C;margin-bottom:16px">Crie sua primeira meta e comece a acompanhar seu progresso.</div>
+      <button onclick="showGoalForm(null)" style="padding:12px 24px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ Criar primeira meta</button>
     </div>`;
   } else {
     active.forEach(g=>{
@@ -1838,13 +2006,13 @@ function renderGoalsMgmt(){
         <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:8px">
           <div style="width:40px;height:40px;border-radius:10px;background:${cat.icon?'#21262d':'#21262d'};display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${g.icon||cat.icon}</div>
           <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:700;color:#e6edf3">${g.title}</div>
-            <div style="font-size:10px;color:#6e7681;margin-top:2px">${freqLbl} · Meta: ${g.targetValue} ${g.unit} · ${prog.pct}%</div>
+            <div style="font-size:13px;font-weight:700;color:#1C1917">${g.title}</div>
+            <div style="font-size:10px;color:#78716C;margin-top:2px">${freqLbl} · Meta: ${g.targetValue} ${g.unit} · ${prog.pct}%</div>
             ${prog.isAtRisk?`<div style="font-size:10px;color:#fb923c;margin-top:2px">⚠️ Apenas ${prog.daysLeft} dia(s) restante(s)</div>`:''}
           </div>
           <div style="display:flex;gap:5px;flex-shrink:0">
-            <button onclick="showGoalForm('${g.id}')" style="background:#21262d;color:#8b949e;padding:6px 9px;border-radius:7px;font-size:12px">✏️</button>
-            <button onclick="archiveGoal('${g.id}')" style="background:#21262d;color:#8b949e;padding:6px 9px;border-radius:7px;font-size:12px">🗃️</button>
+            <button onclick="showGoalForm('${g.id}')" style="background:#F0EFED;color:#78716C;padding:6px 9px;border-radius:7px;font-size:12px">✏️</button>
+            <button onclick="archiveGoal('${g.id}')" style="background:#F0EFED;color:#78716C;padding:6px 9px;border-radius:7px;font-size:12px">🗃️</button>
           </div>
         </div>
         <div class="score-bar-bg"><div class="score-bar-fill" style="width:${prog.pct}%;background:${barCol}"></div></div>
@@ -1852,13 +2020,13 @@ function renderGoalsMgmt(){
     });
   }
   if(archived.length){
-    html+=`<details style="margin-top:8px"><summary style="font-size:11px;color:#6e7681;font-weight:700;letter-spacing:.07em;padding:10px 0;cursor:pointer">🗃️ ARQUIVADAS (${archived.length})</summary>`;
+    html+=`<details style="margin-top:8px"><summary style="font-size:11px;color:#78716C;font-weight:700;letter-spacing:.07em;padding:10px 0;cursor:pointer">🗃️ ARQUIVADAS (${archived.length})</summary>`;
     archived.forEach(g=>{
-      html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#161b22;border:1px solid #21262d;border-radius:10px;margin-top:6px">
+      html+=`<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#fff;border:1px solid #E7E5E4;border-radius:10px;margin-top:6px">
         <div style="font-size:20px;flex-shrink:0">${g.icon||getCat(g.category).icon}</div>
-        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#6e7681">${g.title}</div><div style="font-size:10px;color:#4d5863">${g.targetValue} ${g.unit}</div></div>
-        <button onclick="unarchiveGoal('${g.id}')" style="background:#21262d;color:#34d399;padding:6px 10px;border-radius:7px;font-size:11px;font-weight:600">Restaurar</button>
-        <button onclick="deleteGoalCompletely('${g.id}')" style="background:#21262d;color:#f87171;padding:6px 9px;border-radius:7px;font-size:11px">🗑️</button>
+        <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#78716C">${g.title}</div><div style="font-size:10px;color:#A8A29E">${g.targetValue} ${g.unit}</div></div>
+        <button onclick="unarchiveGoal('${g.id}')" style="background:#F0EFED;color:#16A34A;padding:6px 10px;border-radius:7px;font-size:11px;font-weight:600">Restaurar</button>
+        <button onclick="deleteGoalCompletely('${g.id}')" style="background:#F0EFED;color:#f87171;padding:6px 9px;border-radius:7px;font-size:11px">🗑️</button>
       </div>`;
     });
     html+=`</details>`;
@@ -1870,63 +2038,72 @@ function renderGoalFormHtml(){
   const isEdit=_goalFormMode==='edit';
   const g=_goalDraft;
   const cat=getCat(g.category||'custom');
-  const inp='width:100%;background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none';
-  const inp2='background:#0d1117;border:1px solid #21262d;border-radius:10px;padding:11px 13px;color:#e6edf3;font-size:14px;outline:none';
+  const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none';
+  const inp2='background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none';
   const catOpts=GOAL_CATS.map(c=>`<option value="${c.id}" ${g.category===c.id?'selected':''}>${c.icon} ${c.label}</option>`).join('');
   const freqOpts=[{v:'daily',l:'Diária (todo dia)'},{v:'weekly',l:'Semanal'},{v:'monthly',l:'Mensal'},{v:'yearly',l:'Anual'},{v:'once',l:'Uma vez (com prazo)'}].map(f=>`<option value="${f.v}" ${g.frequency===f.v?'selected':''}>${f.l}</option>`).join('');
   const unitSugg=cat.units.map(u=>`<option value="${u}">`).join('');
-  const wkOpts=userWorkouts.map(w=>`<option value="${w.id}" ${g.linkedWorkout===w.id?'selected':''}>${w.icon} ${w.name}</option>`).join('');
+  const WK_TYPE_LABELS={musculacao:'🏋️ Musculação',aerobico:'🏃 Cardio / Aeróbico'};
+  const uniqueWkTypes=[...new Set(userWorkouts.filter(w=>w.type!=='descanso').map(w=>w.type))];
+  const wkTypeOpts=uniqueWkTypes.map(t=>`<option value="${t}" ${g.linkedWorkout===t?'selected':''}>${WK_TYPE_LABELS[t]||t}</option>`).join('');
   const placeholders=['Ler 12 livros este ano','Malhar 150 min por semana','Beber 2L de água todo dia','Economizar R$500 este mês','Meditar 10 min por dia'];
   const ph=placeholders[Math.floor(Math.random()*placeholders.length)];
   return`<div class="card fade-in">
     <div class="sec-hdr"><div class="sec-lbl"><span>${isEdit?'✏️':'➕'}</span> ${isEdit?'EDITAR META':'NOVA META'}</div></div>
-    <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Título da meta</div>
+    <div style="font-size:11px;color:#78716C;margin-bottom:5px">Título da meta</div>
     <input type="text" id="gf-title" value="${g.title||''}" placeholder="${ph}" oninput="goalFormTitleChange(this.value)" style="${inp};margin-bottom:12px">
     <div style="display:grid;grid-template-columns:1fr 70px;gap:8px;margin-bottom:12px">
       <div>
-        <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Categoria</div>
+        <div style="font-size:11px;color:#78716C;margin-bottom:5px">Categoria</div>
         <select id="gf-cat" onchange="goalFormCatChange(this.value)" style="width:100%;${inp2}">${catOpts}</select>
       </div>
       <div>
-        <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Ícone</div>
+        <div style="font-size:11px;color:#78716C;margin-bottom:5px">Ícone</div>
         <input type="text" id="gf-icon" value="${g.icon||cat.icon}" maxlength="4" style="width:100%;${inp2};text-align:center;font-size:20px">
       </div>
     </div>
-    <div style="font-size:11px;color:#6e7681;margin-bottom:7px">Quero atingir</div>
+    <div style="font-size:11px;color:#78716C;margin-bottom:7px">Quero atingir</div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:12px">
       <div>
-        <div style="font-size:10px;color:#4d5863;margin-bottom:4px">Quantidade</div>
+        <div style="font-size:10px;color:#A8A29E;margin-bottom:4px">Quantidade</div>
         <input type="number" id="gf-target" value="${g.targetValue||''}" placeholder="ex: 12" style="width:100%;${inp2}">
       </div>
       <div>
-        <div style="font-size:10px;color:#4d5863;margin-bottom:4px">Unidade</div>
+        <div style="font-size:10px;color:#A8A29E;margin-bottom:4px">Unidade</div>
         <input type="text" id="gf-unit" value="${g.unit||cat.units[0]||''}" placeholder="ex: livros" list="gf-unit-list" style="width:100%;${inp2}">
         <datalist id="gf-unit-list">${unitSugg}</datalist>
       </div>
       <div>
-        <div style="font-size:10px;color:#4d5863;margin-bottom:4px">Por</div>
+        <div style="font-size:10px;color:#A8A29E;margin-bottom:4px">Por</div>
         <select id="gf-freq" style="width:100%;${inp2}">${freqOpts}</select>
       </div>
     </div>
     <details style="margin-bottom:14px">
-      <summary style="font-size:11px;color:#6e7681;font-weight:700;letter-spacing:.07em;cursor:pointer;padding:4px 0">⚙️ OPÇÕES AVANÇADAS</summary>
+      <summary style="font-size:11px;color:#78716C;font-weight:700;letter-spacing:.07em;cursor:pointer;padding:4px 0">⚙️ OPÇÕES AVANÇADAS</summary>
       <div style="padding-top:10px;display:flex;flex-direction:column;gap:10px">
         <div>
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Prazo (só para frequência "Uma vez")</div>
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Prazo (só para frequência "Uma vez")</div>
           <input type="date" id="gf-deadline" value="${g.deadline||''}" style="width:100%;${inp2}">
         </div>
         <div>
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Vincular a treino <span style="color:#4d5863">(lê duração automaticamente)</span></div>
-          <select id="gf-linked" style="width:100%;${inp2}"><option value="" ${!g.linkedWorkout?'selected':''}>— nenhum (entrada manual) —</option>${wkOpts}</select>
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Vincular a tipo de treino <span style="color:#A8A29E">(lê progresso automaticamente)</span></div>
+          <select id="gf-linked" onchange="document.getElementById('gf-metric-wrap').style.display=this.value?'block':'none'" style="width:100%;${inp2}"><option value="" ${!g.linkedWorkout?'selected':''}>— nenhum (entrada manual) —</option>${wkTypeOpts}</select>
+        </div>
+        <div id="gf-metric-wrap" style="${g.linkedWorkout?'':'display:none'}">
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Medir por</div>
+          <select id="gf-linked-metric" style="width:100%;${inp2}">
+            <option value="duration" ${(g.linkedMetric||'duration')==='duration'?'selected':''}>⏱️ Duração (min)</option>
+            <option value="sessions" ${g.linkedMetric==='sessions'?'selected':''}>📅 Sessões realizadas</option>
+          </select>
         </div>
         <div>
-          <div style="font-size:11px;color:#6e7681;margin-bottom:5px">Notas</div>
+          <div style="font-size:11px;color:#78716C;margin-bottom:5px">Notas</div>
           <input type="text" id="gf-notes" value="${g.notes||''}" placeholder="Contexto, motivação..." style="${inp}">
         </div>
       </div>
     </details>
-    <button onclick="saveGoalForm()" style="width:100%;padding:13px;background:#1f6feb;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-bottom:8px">Salvar meta</button>
-    <button onclick="cancelGoalForm()" style="width:100%;padding:11px;background:none;border:1px solid #21262d;border-radius:10px;color:#6e7681;font-size:13px">Cancelar</button>
+    <button onclick="saveGoalForm()" style="width:100%;padding:13px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-bottom:8px">Salvar meta</button>
+    <button onclick="cancelGoalForm()" style="width:100%;padding:11px;background:none;border:1px solid #E7E5E4;border-radius:10px;color:#78716C;font-size:13px">Cancelar</button>
     ${isEdit?`<button onclick="deleteGoalCompletely('${g.id}')" style="width:100%;padding:11px;background:none;border:1px solid #f8717140;border-radius:10px;color:#f87171;font-size:12px;margin-top:8px">🗑️ Excluir meta e histórico</button>`:''}
   </div>`;
 }
@@ -1951,12 +2128,13 @@ function saveGoalForm(){
   const frequency=document.getElementById('gf-freq')?.value||'weekly';
   const deadline=document.getElementById('gf-deadline')?.value||null;
   const linkedWorkout=document.getElementById('gf-linked')?.value||'';
+  const linkedMetric=document.getElementById('gf-linked-metric')?.value||'duration';
   const notes=(document.getElementById('gf-notes')?.value||'').trim();
   if(_goalFormMode==='edit'&&_goalEditId){
     const idx=goalsDefs.findIndex(g=>g.id===_goalEditId);
-    if(idx>=0) goalsDefs[idx]={...goalsDefs[idx],title,category:cat,icon,targetValue,unit,frequency,deadline:deadline||null,linkedWorkout,notes};
+    if(idx>=0) goalsDefs[idx]={...goalsDefs[idx],title,category:cat,icon,targetValue,unit,frequency,deadline:deadline||null,linkedWorkout,linkedMetric,notes};
   } else {
-    goalsDefs.push({id:'goal_'+Date.now(),title,category:cat,icon,targetValue,unit,frequency,deadline:deadline||null,linkedWorkout,notes,active:true,archived:false,createdAt:currentDate});
+    goalsDefs.push({id:'goal_'+Date.now(),title,category:cat,icon,targetValue,unit,frequency,deadline:deadline||null,linkedWorkout,linkedMetric,notes,active:true,archived:false,createdAt:currentDate});
   }
   saveGoalsDefs();
   _goalFormMode=null;_goalEditId=null;_goalDraft={};

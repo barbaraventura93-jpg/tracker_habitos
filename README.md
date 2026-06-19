@@ -35,9 +35,27 @@ App de acompanhamento de rotina diária — refeições, água, suplementos, son
 ### Suplementos
 - Cadastro livre de suplementos com nome, dose, ícone e visibilidade (sempre / dia de treino / descanso)
 
-### Metas Pessoais
+### Metas e Objetivos
 
-Tela de configuração com cálculo automático baseado em evidências científicas:
+Sistema completo com 12 categorias, 5 frequências e acompanhamento automático.
+
+**Categorias:** Treino · Nutrição · Saúde · Sono · Meditação · Leitura · Finanças · Criatividade · Carreira · Social · Bem-estar · Personalizado
+
+**Frequências:** Diária · Semanal · Mensal · Anual · Uma vez (com prazo)
+
+**Vínculo com tipo de treino** — progresso lido automaticamente, sem entrada manual:
+- **Duração (min):** soma os minutos de cada sessão no período
+- **Sessões realizadas:** conta dias com exercícios concluídos
+
+**Tela Hoje — 3 seções:** Foco do Dia / Esta Semana / Longo Prazo. Card mostra barra de progresso, status do dia (min ou ✓ Sessão concluída) e botões de log rápido (+1, +5, +10).
+
+**Gestão:** criar, editar, arquivar metas. Confetti ao atingir 100%. Alerta de risco quando prazo próximo e progresso baixo.
+
+---
+
+### Configurações de Saúde
+
+Tela com cálculo automático baseado em evidências científicas:
 
 | Meta | Fórmula | Referência |
 |---|---|---|
@@ -51,16 +69,6 @@ Tela de configuração com cálculo automático baseado em evidências científi
 - 6–7 dias → ×1,725 (intenso)
 
 **Ajuste de meta de peso:** −400 kcal (perda) / +300 kcal (ganho) / sem ajuste (manutenção).
-
-#### Metas Personalizadas
-
-Crie metas livres com frequência e acompanhamento automático:
-
-- **Nome + ícone** configuráveis (ex: 🚴 Bike)
-- **Unidade** livre (min, km, h, sessões…)
-- **Frequência:** Diária / Semanal / Mensal
-- **Vínculo com treino:** ao vincular a um tipo de treino, o progresso é lido automaticamente da duração registrada na sessão — sem entrada manual
-- Barra de progresso e % de completude exibidos na tela Hoje
 
 ### Histórico
 - Calendário dos últimos 60 dias com % diário
@@ -121,8 +129,8 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 ## Changelog recente
 
 - [x] Layout responsivo com sidebar no desktop
-- [x] Metas personalizadas (frequência diária/semanal/mensal)
-- [x] Vínculo entre meta e tipo de treino — duração lida automaticamente
+- [x] Metas e objetivos com 12 categorias e 5 frequências
+- [x] Vínculo com tipo de treino — duração ou sessões lidas automaticamente
 - [x] Duração do treino contabilizada no % de sucesso do dia
 - [x] Sessão de treino separada por tipo (A/B/C) — troca sem perder dados
 - [x] Plano de treino por tipo com upload de PDF/imagem via IA
