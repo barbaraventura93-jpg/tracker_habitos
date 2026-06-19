@@ -738,10 +738,9 @@ function renderWeekView(){
   const mon=addDays(now,-(dow===0?6:dow-1));
   const sun=addDays(mon,6);
   const todayStr=today();
-  const DAY_LABELS=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+  const DAY_LABELS=['Seg','Ter','Qua','Qui','Sex','Sab','Dom'];
   const mNames=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
-  // Collect all 7 days
   const weekDays=[];
   for(let i=0;i<7;i++){
     const d=addDays(mon,i);
@@ -752,7 +751,6 @@ function renderWeekView(){
     weekDays.push({date:d,tr,trObj,session,dd,label:DAY_LABELS[i]});
   }
 
-  // Tally completed sets per muscle group
   const muscleSets={};
   weekDays.forEach(({session})=>{
     if(!session) return;
@@ -764,128 +762,114 @@ function renderWeekView(){
   });
   const cardioMin=weekDays.reduce((s,{dd})=>s+(dd.gymDurMin||0),0);
 
-  // Intensity 0–100 (15 sets/week = 100%)
   function pct(g){return Math.min(100,Math.round((muscleSets[g]||0)/15*100));}
   function intStyle(p){
-    if(p===0)  return{bg:'#21262d20',border:'#21262d',text:'#4d5863'};
-    if(p<35)   return{bg:'#1d4ed818',border:'#1d4ed870',text:'#60a5fa'};
-    if(p<70)   return{bg:'#2563eb22',border:'#2563eb80',text:'#3b82f6'};
-    return        {bg:'#f9731618',border:'#f9731670',text:'#f97316'};
+    if(p===0) return{bg:'#FAFAF9',border:'#E7E5E4',text:'#A8A29E'};
+    if(p<35)  return{bg:'#EDE9FF',border:'rgba(108,99,255,.35)',text:'#6C63FF'};
+    if(p<70)  return{bg:'#DDD8FF',border:'rgba(108,99,255,.6)',text:'#5B52E8'};
+    return     {bg:'#FFF0E6',border:'rgba(249,115,22,.4)',text:'#f97316'};
   }
 
-  // Muscle grid layout
-  const FRONT=['Ombro','Peito','Bíceps','Core','Perna'];
-  const BACK= ['Ombro','Costas','Tríceps','Glúteo','Perna'];
-  const ALL=  ['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo'];
+  const FRONT=['Ombro','Peito','Biceps','Core','Perna'];
+  const BACK= ['Ombro','Costas','Triceps','Gluteo','Perna'];
+  const ALL=  ['Peito','Costas','Ombro','Biceps','Triceps','Perna','Core','Gluteo'];
+  const DISP= {'Biceps':'Biceps','Triceps':'Triceps','Gluteo':'Gluteo'};
+  function dispG(g){return DISP[g]||g;}
 
   function muscleCard(g){
-    const p=pct(g);const{bg,border,text}=intStyle(p);
-    const sets=muscleSets[g]||0;
-    return `<div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:7px 5px;text-align:center">
-      <div style="font-size:9px;font-weight:700;color:${text};letter-spacing:.05em">${g.toUpperCase()}</div>
-      <div style="font-size:9px;color:${text}99;margin-top:2px">${sets>0?sets+' s':'—'}</div>
-    </div>`;
+    const p=pct(g),{bg,border,text}=intStyle(p),sets=muscleSets[g]||0;
+    return '<div style="background:'+bg+';border:1px solid '+border+';border-radius:8px;padding:7px 5px;text-align:center">'
+      +'<div style="font-size:9px;font-weight:600;color:'+text+';letter-spacing:.04em">'+dispG(g).toUpperCase()+'</div>'
+      +'<div style="font-size:9px;color:'+text+'99;margin-top:2px">'+(sets>0?sets+' s':'--')+'</div>'
+      +'</div>';
   }
 
-  // Week label
   const [,m1,d1]=mon.split('-');
   const [,m2,d2]=sun.split('-');
-  const weekLabel=`${+d1} ${mNames[+m1-1]} – ${+d2} ${mNames[+m2-1]}`;
+  const weekLabel=(+d1)+' '+mNames[+m1-1]+' - '+(+d2)+' '+mNames[+m2-1];
 
-  // Day timeline
-  const timeline=weekDays.map(({date,tr,trObj,session,label})=>{
-    const isToday=date===todayStr;
-    const isPast=date<todayStr;
-    const [,,dd]=date.split('-');
-    const hasDone=session&&session.some(e=>e.sets.some(s=>s.done));
-    const groups=[...new Set((session||[]).filter(e=>e.sets.some(s=>s.done)&&e.group&&e.group!=='Outro').map(e=>e.group))];
-    const trName=tr==='descanso'?'Descanso':(trObj?.name||tr);
-    const trColor=tr==='descanso'?'#A8A29E':(trObj?.color||'#78716C');
-    const mark=hasDone?'<span style="color:#16a34a">✓</span>':isPast&&tr!=='descanso'?'<span style="color:#f87171">✗</span>':'';
-    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px ${isToday?'8':'0'}px;border-bottom:1px solid #E7E5E4;${isToday?'background:rgba(108,99,255,.06);border-radius:8px;margin:0 -4px;':''}">
-      <div style="width:30px;text-align:center;flex-shrink:0;padding-top:1px">
-        <div style="font-size:9px;font-weight:700;color:${isToday?'#6C63FF':'#78716C'}">${label}</div>
-        <div style="font-size:12px;font-weight:700;color:${isToday?'#1C1917':'#78716C'}">${+dd}</div>
-      </div>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:700;color:${trColor}">${trName} ${mark}</div>
-        ${groups.length?`<div style="font-size:10px;color:#78716C;margin-top:2px">${groups.join(' · ')}</div>`:''}
-      </div>
-    </div>`;
+  const timeline=weekDays.map(function({date,tr,trObj,session,label}){
+    const isToday=date===todayStr,isPast=date<todayStr;
+    const dd=date.split('-')[2];
+    const hasDone=session&&session.some(function(e){return e.sets.some(function(s){return s.done;});});
+    const groups=[...new Set((session||[]).filter(function(e){return e.sets.some(function(s){return s.done;})&&e.group&&e.group!=='Outro';}).map(function(e){return e.group;}))];
+    const trName=tr==='descanso'?'Descanso':(trObj?trObj.name:tr);
+    const trColor=tr==='descanso'?'#A8A29E':(trObj?trObj.color:'#78716C');
+    const mark=hasDone?'<span style="color:#16A34A">v</span>':isPast&&tr!=='descanso'?'<span style="color:#FDA4A4">x</span>':'';
+    const bg=isToday?'background:#EDE9FF;border-radius:10px;margin:0 -4px;':'';
+    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:8px '+(isToday?'8':'0')+'px;border-bottom:1px solid #E7E5E4;'+bg+'">'
+      +'<div style="width:30px;text-align:center;flex-shrink:0;padding-top:1px">'
+        +'<div style="font-size:9px;font-weight:600;color:'+(isToday?'#6C63FF':'#A8A29E')+'">'+label+'</div>'
+        +'<div style="font-size:12px;font-weight:700;color:'+(isToday?'#1C1917':'#78716C')+'">'+parseInt(dd,10)+'</div>'
+      +'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-size:12px;font-weight:600;color:'+trColor+'">'+trName+' '+mark+'</div>'
+        +(groups.length?'<div style="font-size:10px;color:#A8A29E;margin-top:2px">'+groups.join(' · ')+'</div>':'')
+      +'</div></div>';
   }).join('');
 
-  // Balance
-  const balance=ALL.map(g=>{
-    const p=pct(g);const sets=muscleSets[g]||0;
-    const{text}=intStyle(p);
-    const lbl=p===0?'Não treinou':p<35?`${sets} séries — leve`:p<70?`${sets} séries — moderado`:`${sets} séries — intenso`;
-    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #E7E5E440">
-      <span style="font-size:12px">${p>0?'✅':'⚠️'}</span>
-      <div style="flex:1;font-size:12px;font-weight:700;color:#1C1917">${g}</div>
-      <div style="font-size:11px;font-weight:600;color:${p>0?text:'#78716C'}">${lbl}</div>
-    </div>`;
+  const balance=ALL.map(function(g){
+    const p=pct(g),sets=muscleSets[g]||0,st=intStyle(p);
+    const lbl=p===0?'Nao treinou':p<35?(sets+' series — leve'):p<70?(sets+' series — moderado'):(sets+' series — intenso');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #E7E5E4">'
+      +'<div style="flex:1;font-size:12px;font-weight:600;color:#1C1917">'+dispG(g)+'</div>'
+      +'<div style="font-size:11px;font-weight:500;color:'+(p>0?st.text:'#A8A29E')+'">'+lbl+'</div>'
+      +'</div>';
   }).join('');
 
-  // Suggestions
-  const untrained=ALL.filter(g=>!muscleSets[g]);
-  const remaining=weekDays.filter(({date})=>date>todayStr).length;
-  const ICONS={Perna:'🦵',Costas:'🔙',Core:'🎯',Peito:'💪',Ombro:'🏋️',Bíceps:'💪',Tríceps:'💪',Glúteo:'🍑'};
+  const untrained=ALL.filter(function(g){return !muscleSets[g];});
+  const remaining=weekDays.filter(function(w){return w.date>todayStr;}).length;
   let sugHtml='';
   if(untrained.length>0&&remaining>0){
-    const pri=untrained.find(g=>['Perna','Costas','Core'].includes(g))||untrained[0];
-    sugHtml=`<div class="card" style="margin-bottom:10px">
-      <div class="sec-hdr"><div class="sec-lbl"><span>💡</span> SUGESTÕES</div></div>
-      <div style="font-size:12px;color:#1C1917;line-height:1.6;padding:6px 0;border-bottom:1px solid #E7E5E440">${ICONS[pri]||'💪'} <b>${pri}</b> ainda não foi treinado — ${remaining} dia${remaining>1?'s':''}restante${remaining>1?'s':''} para encaixar.</div>
-      ${untrained.length>1?`<div style="font-size:11px;color:#78716C;line-height:1.5;padding-top:6px">Também sem treino: ${untrained.filter(g=>g!==pri).join(', ')}.</div>`:''}
-    </div>`;
+    const pri=untrained.find(function(g){return g==='Perna'||g==='Costas'||g==='Core';})||untrained[0];
+    sugHtml='<div class="card"><div class="sec-hdr"><div class="sec-lbl">Sugestoes</div></div>'
+      +'<div style="font-size:12px;color:#1C1917;line-height:1.6;padding:6px 0;border-bottom:1px solid #E7E5E4"><b>'+dispG(pri)+'</b> ainda nao foi treinado — '+remaining+' dia'+(remaining>1?'s':'')+' restante'+(remaining>1?'s':'')+' para encaixar.</div>'
+      +(untrained.length>1?'<div style="font-size:11px;color:#78716C;line-height:1.5;padding-top:6px">Tambem sem treino: '+untrained.filter(function(g){return g!==pri;}).map(dispG).join(', ')+'.</div>':'')
+      +'</div>';
   } else if(untrained.length===0){
-    sugHtml=`<div class="card" style="margin-bottom:10px;background:#0d2818;border-color:#16a34a40">
-      <div style="display:flex;align-items:center;gap:10px">
-        <span style="font-size:22px">🎉</span>
-        <div><div style="font-size:13px;font-weight:700;color:#34d399">Semana equilibrada!</div>
-        <div style="font-size:11px;color:#78716C;margin-top:2px">Todos os grupos musculares foram treinados.</div></div>
-      </div>
-    </div>`;
+    sugHtml='<div class="card" style="background:#F0FDF4;border-color:rgba(22,163,74,.2)">'
+      +'<div style="display:flex;align-items:center;gap:10px">'
+      +'<div><div style="font-size:13px;font-weight:700;color:#16A34A">Semana equilibrada!</div>'
+      +'<div style="font-size:11px;color:#78716C;margin-top:2px">Todos os grupos musculares foram treinados.</div></div>'
+      +'</div></div>';
   }
 
-  gymBody.innerHTML=`<div class="fade-in">
-    <div style="display:flex;align-items:center;margin-bottom:12px">
-      <div style="font-size:13px;font-weight:800;color:#1C1917">Semana · ${weekLabel}</div>
-    </div>
+  const legendHtml='<div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">'
+    +'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#A8A29E"><div style="width:8px;height:8px;border-radius:2px;background:#FAFAF9;border:1px solid #E7E5E4"></div>Nao treinou</div>'
+    +'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#A8A29E"><div style="width:8px;height:8px;border-radius:2px;background:#EDE9FF;border:1px solid rgba(108,99,255,.35)"></div>Leve</div>'
+    +'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#A8A29E"><div style="width:8px;height:8px;border-radius:2px;background:#DDD8FF;border:1px solid rgba(108,99,255,.6)"></div>Moderado</div>'
+    +'<div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#A8A29E"><div style="width:8px;height:8px;border-radius:2px;background:#FFF0E6;border:1px solid rgba(249,115,22,.4)"></div>Intenso</div>'
+    +'</div>';
 
-    <div class="card" style="margin-bottom:10px">
-      <div class="sec-hdr" style="margin-bottom:10px"><div class="sec-lbl"><span>💪</span> MAPA MUSCULAR</div></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-        <div>
-          <div style="font-size:9px;font-weight:700;color:#A8A29E;letter-spacing:.08em;margin-bottom:6px;text-align:center">FRENTE</div>
-          <div style="display:flex;flex-direction:column;gap:5px">${FRONT.map(g=>muscleCard(g)).join('')}</div>
-        </div>
-        <div>
-          <div style="font-size:9px;font-weight:700;color:#A8A29E;letter-spacing:.08em;margin-bottom:6px;text-align:center">COSTAS</div>
-          <div style="display:flex;flex-direction:column;gap:5px">${BACK.map(g=>muscleCard(g)).join('')}</div>
-        </div>
-      </div>
-      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
-        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#78716C"><div style="width:8px;height:8px;border-radius:2px;background:#E7E5E440;border:1px solid #E7E5E4"></div>Não treinou</div>
-        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#78716C"><div style="width:8px;height:8px;border-radius:2px;background:rgba(108,99,255,.08);border:1px solid rgba(108,99,255,.5)"></div>Leve</div>
-        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#78716C"><div style="width:8px;height:8px;border-radius:2px;background:#2563eb22;border:1px solid #2563eb80"></div>Moderado</div>
-        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#78716C"><div style="width:8px;height:8px;border-radius:2px;background:#f9731618;border:1px solid #f9731670"></div>Intenso</div>
-      </div>
-    </div>
+  gymBody.innerHTML='<div class="fade-in">'
+    +'<div style="display:flex;align-items:center;margin-bottom:12px">'
+    +'<div style="font-size:13px;font-weight:600;color:#1C1917">Semana · '+weekLabel+'</div>'
+    +'</div>'
 
-    <div class="card" style="margin-bottom:10px">
-      <div class="sec-hdr"><div class="sec-lbl"><span>📅</span> ESTA SEMANA</div></div>
-      ${timeline}
-    </div>
+    +'<div class="card">'
+    +'<div class="sec-hdr" style="margin-bottom:10px"><div class="sec-lbl">Mapa Muscular</div></div>'
+    +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">'
+    +'<div><div style="font-size:9px;font-weight:600;color:#A8A29E;letter-spacing:.08em;margin-bottom:6px;text-align:center">FRENTE</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px">'+FRONT.map(muscleCard).join('')+'</div></div>'
+    +'<div><div style="font-size:9px;font-weight:600;color:#A8A29E;letter-spacing:.08em;margin-bottom:6px;text-align:center">COSTAS</div>'
+    +'<div style="display:flex;flex-direction:column;gap:5px">'+BACK.map(muscleCard).join('')+'</div></div>'
+    +'</div>'
+    +legendHtml
+    +'</div>'
 
-    <div class="card" style="margin-bottom:10px">
-      <div class="sec-hdr"><div class="sec-lbl"><span>⚖️</span> EQUILÍBRIO MUSCULAR</div></div>
-      ${balance}
-      ${cardioMin>0?`<div style="display:flex;align-items:center;gap:10px;padding:7px 0"><span style="font-size:12px">✅</span><div style="flex:1;font-size:12px;font-weight:700;color:#1C1917">Cardio</div><div style="font-size:11px;font-weight:600;color:#34d399">${cardioMin} min</div></div>`:''}
-    </div>
+    +'<div class="card">'
+    +'<div class="sec-hdr"><div class="sec-lbl">Esta Semana</div></div>'
+    +timeline
+    +'</div>'
 
-    ${sugHtml}
-  </div>`;
+    +'<div class="card">'
+    +'<div class="sec-hdr"><div class="sec-lbl">Equilibrio Muscular</div></div>'
+    +balance
+    +(cardioMin>0?'<div style="display:flex;align-items:center;gap:10px;padding:7px 0"><div style="flex:1;font-size:12px;font-weight:600;color:#1C1917">Cardio</div><div style="font-size:11px;font-weight:500;color:#16A34A">'+cardioMin+' min</div></div>':'')
+    +'</div>'
+
+    +sugHtml
+    +'</div>';
 }
 function renderGym(){
   const date=currentDate;
