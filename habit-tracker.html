@@ -937,12 +937,7 @@ function renderGym(){
     <div style="flex:1"><div style="font-size:15px;font-weight:800;color:${trObj.color}">${trObj.icon} ${trObj.name}</div></div>
     ${doneCount>0?`<div style="font-size:12px;color:#16A34A;font-family:'DM Mono',monospace;font-weight:700">${doneCount}/${totalSets} ${isCardio?'atividades':'séries'} ✓</div>`:''}
   </div>
-  ${isCardio?`<div style="display:flex;align-items:center;gap:10px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:9px 12px;margin-bottom:12px">
-    <span style="font-size:14px">⏱️</span>
-    <span style="font-size:12px;color:#78716C;flex:1">Duração total do treino</span>
-    <input type="number" inputmode="decimal" value="${dayData.gymDurMin||''}" placeholder="0" onchange="setGymDur(+this.value)" style="width:56px;background:#fff;border:1px solid #D4D0CE;border-radius:8px;padding:6px 4px;color:#1C1917;font-size:14px;font-weight:700;text-align:center;outline:none">
-    <span style="font-size:11px;color:#A8A29E">min</span>
-  </div>`:''}  `;
+  `;
 
   session.forEach((ex,ei)=>{
     const prevEx=prevMap[ex.id];
@@ -1026,7 +1021,12 @@ function gymSetVal(ei,si,field,val){
 function gymDone(ei,si){
   const tr=loadDay(currentDate).tr;
   const s=loadGymSession(currentDate,tr)||[];if(!s?.[ei]?.sets?.[si]) return;
-  s[ei].sets[si].done=!s[ei].sets[si].done;saveGymSession(currentDate,tr,s);renderGym();
+  s[ei].sets[si].done=!s[ei].sets[si].done;saveGymSession(currentDate,tr,s);
+  if(getWorkoutById(tr)?.type==='aerobico'){
+    dayData.gymDurMin=s.reduce((a,ex)=>a+ex.sets.filter(st=>st.done).reduce((b,st)=>b+(parseFloat(st.reps)||0),0),0);
+    save();
+  }
+  renderGym();
 }
 function gymAddSet(ei){
   const tr=loadDay(currentDate).tr;
