@@ -13,62 +13,69 @@ App de acompanhamento de rotina diária — refeições, água, suplementos, son
 - Layout responsivo: sidebar lateral no desktop, barra inferior no mobile
 
 ### Hoje
-- Marcação de refeições do dia com detalhes de macros
-- Controle de água com indicador de copos, ml e litros consumidos/meta
-- Suplementos com checklist configurável por tipo de dia (treino/descanso)
-- Registro de sono (horas + horário consistente)
-- Metas personalizadas com progresso em tempo real
+
 - Score diário com anel de progresso, barras por categoria e pendências
+- Marcação de refeições com detalhes de macros
+- Controle de água com indicador de copos, ml e litros
+- Suplementos com checklist configurável por tipo de dia (treino / descanso)
+- Registro de sono — horas e horário consistente
+- Metas personalizadas com barra de progresso e status em tempo real
 
 ### Treino
-- Log de exercícios com séries, reps e kg
+
+**Musculação**
+- Log de exercícios com séries, reps e kg por set
 - Comparação automática com a última sessão do mesmo treino
-- Campo de duração (⏱️ min) que alimenta as metas automaticamente
-- Plano de treino por tipo (A/B/C) — separado por sessão, sem misturar dados
-- Upload de plano via PDF ou imagem (interpretado via IA)
 - % de sucesso do dia sobe automaticamente ao concluir séries
+- Plano de treino por tipo (A/B/C) salvo como modelo, sessões isoladas por tipo
+
+**Cardio / Aeróbico**
+- Log de atividades com duração (min) e distância (km) por intervalo
+- `gymDurMin` calculado automaticamente ao marcar atividade concluída — sem entrada manual
+- Suporte a múltiplos intervalos (ex: 5 tiros de 400m)
+
+**Geral**
+- Upload de plano via PDF ou imagem — IA extrai exercícios automaticamente
+- Visualização semanal com mapa muscular (intensidade por grupo) e timeline de dias
+- Sugestão de grupos não treinados na semana
 
 ### Nutrição
 - Controle de macros por refeição
-- Metas de calorias calculadas automaticamente
+- Meta de calorias calculada automaticamente (BMR × TDEE)
 
 ### Suplementos
-- Cadastro livre de suplementos com nome, dose, ícone e visibilidade (sempre / dia de treino / descanso)
+- Cadastro livre com nome, dose, ícone e visibilidade (sempre / treino / descanso)
+- Importação via PDF ou foto — IA extrai os itens
 
 ### Metas e Objetivos
 
-Sistema completo com 12 categorias, 5 frequências e acompanhamento automático.
+Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento automático.
 
 **Categorias:** Treino · Nutrição · Saúde · Sono · Meditação · Leitura · Finanças · Criatividade · Carreira · Social · Bem-estar · Personalizado
 
 **Frequências:** Diária · Semanal · Mensal · Anual · Uma vez (com prazo)
 
-**Vínculo com tipo de treino** — progresso lido automaticamente, sem entrada manual:
-- **Duração (min):** soma os minutos de cada sessão no período
-- **Sessões realizadas:** conta dias com exercícios concluídos
+**Vínculo com tipo de treino** — progresso alimentado automaticamente:
+- **Duração (min):** soma os minutos das sessões concluídas no período
+- **Sessões realizadas:** conta dias com atividades marcadas como feitas
 
-**Tela Hoje — 3 seções:** Foco do Dia / Esta Semana / Longo Prazo. Card mostra barra de progresso, status do dia (min ou ✓ Sessão concluída) e botões de log rápido (+1, +5, +10).
+**Tela Hoje — 3 seções:** Foco do Dia / Esta Semana / Longo Prazo
+- Card mostra barra de progresso, status do dia e botões de log rápido (+1, +5, +10)
+- Confetti ao atingir 100%
+- Alerta de risco quando prazo próximo e progresso abaixo de 70%
 
-**Gestão:** criar, editar, arquivar metas. Confetti ao atingir 100%. Alerta de risco quando prazo próximo e progresso baixo.
-
----
+**Gestão:** criar, editar, arquivar e excluir metas. Ícone e unidade livres.
 
 ### Configurações de Saúde
 
-Tela com cálculo automático baseado em evidências científicas:
-
 | Meta | Fórmula | Referência |
 |---|---|---|
-| **Água** | Peso atual × 35 ml/kg → copos de 250 ml | EFSA & Institute of Medicine |
+| **Água** | Peso × 35 ml/kg → copos de 250 ml | EFSA & Institute of Medicine |
 | **Calorias** | BMR (Mifflin-St Jeor) × fator de atividade ± ajuste de peso | ISSN / ACSM (2005) |
 
-**Fator de atividade (TDEE):**
-- 0–1 dias/semana → ×1,2 (sedentário)
-- 2–3 dias → ×1,375 (leve)
-- 4–5 dias → ×1,55 (moderado)
-- 6–7 dias → ×1,725 (intenso)
+**Fator de atividade (TDEE):** sedentário ×1,2 · leve ×1,375 · moderado ×1,55 · intenso ×1,725
 
-**Ajuste de meta de peso:** −400 kcal (perda) / +300 kcal (ganho) / sem ajuste (manutenção).
+**Ajuste de peso:** −400 kcal (perda) / +300 kcal (ganho) / sem ajuste (manutenção)
 
 ### Histórico
 - Calendário dos últimos 60 dias com % diário
@@ -78,10 +85,11 @@ Tela com cálculo automático baseado em evidências científicas:
 
 ## Tecnologias
 
-- HTML5 + CSS3 + JavaScript puro (sem frameworks)
+- HTML5 + CSS3 + JavaScript puro (sem frameworks, single file)
 - Hospedagem: **AWS S3 + CloudFront**
 - Autenticação: **AWS Cognito**
-- Backend: **AWS Lambda + DynamoDB**
+- Backend: **AWS Lambda (Python 3.12) + DynamoDB**
+- IA: **AWS Bedrock** (Amazon Nova Lite) — análise de PDF/imagem
 - Infraestrutura como código: **AWS CloudFormation**
 - CI/CD: **GitHub Actions**
 
@@ -95,7 +103,8 @@ Tela com cálculo automático baseado em evidências científicas:
 | CloudFront | CDN + HTTPS + invalidação automática | Free Tier |
 | Cognito | Autenticação de usuários | Free Tier (50k MAU) |
 | DynamoDB | Persistência dos dados por usuário | Free Tier |
-| Lambda | API de leitura/escrita dos dados | Free Tier |
+| Lambda | API de leitura/escrita + análise de IA | Free Tier |
+| Bedrock | Extração de planos via PDF/imagem | Pay per use |
 | GitHub Actions | CI/CD automático no push | Gratuito |
 
 **Bucket:** `tracker-habitos` · **Região:** `sa-east-1` (São Paulo) · **URL:** `https://d1o1gejacy6m9o.cloudfront.net`
@@ -126,15 +135,18 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 
 ---
 
-## Changelog recente
+## Changelog
 
-- [x] Layout responsivo com sidebar no desktop
-- [x] Metas e objetivos com 12 categorias e 5 frequências
-- [x] Vínculo com tipo de treino — duração ou sessões lidas automaticamente
-- [x] Duração do treino contabilizada no % de sucesso do dia
-- [x] Sessão de treino separada por tipo (A/B/C) — troca sem perder dados
-- [x] Plano de treino por tipo com upload de PDF/imagem via IA
-- [x] Suplementos personalizados
+- [x] Layout responsivo — sidebar no desktop, barra inferior no mobile
+- [x] Sessão de treino separada por tipo (A/B/C) — troca sem misturar dados
+- [x] Musculação: séries com reps e kg, comparação com sessão anterior
+- [x] Cardio: atividades com min e km, duração calculada automaticamente
+- [x] Upload de plano de treino via PDF/imagem — extração por IA
+- [x] Mapa muscular semanal com intensidade por grupo
+- [x] Metas e objetivos — 12 categorias, 5 frequências, logs, confetti
+- [x] Vínculo de meta com tipo de treino — duração ou sessões automáticas
+- [x] % de sucesso do dia alimentado pelo treino concluído
+- [x] Suplementos personalizados com importação por IA
 - [x] Persistência em nuvem com DynamoDB + Lambda
 - [x] Autenticação com AWS Cognito
 - [ ] Domínio customizado via Route 53
