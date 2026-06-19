@@ -680,7 +680,7 @@ function showGym(){
   const{day}=dispDate(currentDate);
   document.getElementById('gym-hdr-info').textContent=day+' · '+(wk?.name||dd.tr);
   document.getElementById('gym-hdr-title').textContent='Log de Treino';
-  document.getElementById('gym-plan-btn').style.color='#8b949e';
+  document.getElementById('gym-plan-btn').style.color='#78716C';
   gymUpdateTabs();
   renderGym();
   showScreen('gym');
@@ -730,6 +730,163 @@ function gymDeleteWorkout(id){
   renderGym();
 }
 
+function renderWeekView(){
+  const gymBody=document.getElementById('gym-body');
+  if(!gymBody) return;
+  const now=currentDate;
+  const dow=getDow(now);
+  const mon=addDays(now,-(dow===0?6:dow-1));
+  const sun=addDays(mon,6);
+  const todayStr=today();
+  const DAY_LABELS=['Seg','Ter','Qua','Qui','Sex','Sáb','Dom'];
+  const mNames=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
+
+  // Collect all 7 days
+  const weekDays=[];
+  for(let i=0;i<7;i++){
+    const d=addDays(mon,i);
+    const dd=d===currentDate?dayData:loadDay(d);
+    const tr=dd.tr||'descanso';
+    const trObj=getWorkoutById(tr)||null;
+    const session=tr!=='descanso'?loadGymSession(d,tr):null;
+    weekDays.push({date:d,tr,trObj,session,dd,label:DAY_LABELS[i]});
+  }
+
+  // Tally completed sets per muscle group
+  const muscleSets={};
+  weekDays.forEach(({session})=>{
+    if(!session) return;
+    session.forEach(ex=>{
+      if(!ex.group||ex.group==='Outro'||ex.group==='Cardio') return;
+      const done=ex.sets.filter(s=>s.done).length;
+      if(done>0) muscleSets[ex.group]=(muscleSets[ex.group]||0)+done;
+    });
+  });
+  const cardioMin=weekDays.reduce((s,{dd})=>s+(dd.gymDurMin||0),0);
+
+  // Intensity 0–100 (15 sets/week = 100%)
+  function pct(g){return Math.min(100,Math.round((muscleSets[g]||0)/15*100));}
+  function intStyle(p){
+    if(p===0)  return{bg:'#21262d20',border:'#21262d',text:'#4d5863'};
+    if(p<35)   return{bg:'#1d4ed818',border:'#1d4ed870',text:'#60a5fa'};
+    if(p<70)   return{bg:'#2563eb22',border:'#2563eb80',text:'#3b82f6'};
+    return        {bg:'#f9731618',border:'#f9731670',text:'#f97316'};
+  }
+
+  // Muscle grid layout
+  const FRONT=['Ombro','Peito','Bíceps','Core','Perna'];
+  const BACK= ['Ombro','Costas','Tríceps','Glúteo','Perna'];
+  const ALL=  ['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo'];
+
+  function muscleCard(g){
+    const p=pct(g);const{bg,border,text}=intStyle(p);
+    const sets=muscleSets[g]||0;
+    return `<div style="background:${bg};border:1px solid ${border};border-radius:8px;padding:7px 5px;text-align:center">
+      <div style="font-size:9px;font-weight:700;color:${text};letter-spacing:.05em">${g.toUpperCase()}</div>
+      <div style="font-size:9px;color:${text}99;margin-top:2px">${sets>0?sets+' s':'—'}</div>
+    </div>`;
+  }
+
+  // Week label
+  const [,m1,d1]=mon.split('-');
+  const [,m2,d2]=sun.split('-');
+  const weekLabel=`${+d1} ${mNames[+m1-1]} – ${+d2} ${mNames[+m2-1]}`;
+
+  // Day timeline
+  const timeline=weekDays.map(({date,tr,trObj,session,label})=>{
+    const isToday=date===todayStr;
+    const isPast=date<todayStr;
+    const [,,dd]=date.split('-');
+    const hasDone=session&&session.some(e=>e.sets.some(s=>s.done));
+    const groups=[...new Set((session||[]).filter(e=>e.sets.some(s=>s.done)&&e.group&&e.group!=='Outro').map(e=>e.group))];
+    const trName=tr==='descanso'?'Descanso':(trObj?.name||tr);
+    const trColor=tr==='descanso'?'#A8A29E':(trObj?.color||'#78716C');
+    const mark=hasDone?'<span style="color:#16a34a">✓</span>':isPast&&tr!=='descanso'?'<span style="color:#f87171">✗</span>':'';
+    return `<div style="display:flex;align-items:flex-start;gap:10px;padding:8px ${isToday?'8':'0'}px;border-bottom:1px solid #E7E5E4;${isToday?'background:rgba(108,99,255,.06);border-radius:8px;margin:0 -4px;':''}">
+      <div style="width:30px;text-align:center;flex-shrink:0;padding-top:1px">
+        <div style="font-size:9px;font-weight:700;color:${isToday?'#6C63FF':'#78716C'}">${label}</div>
+        <div style="font-size:12px;font-weight:700;color:${isToday?'#1C1917':'#78716C'}">${+dd}</div>
+      </div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:${trColor}">${trName} ${mark}</div>
+        ${groups.length?`<div style="font-size:10px;color:#78716C;margin-top:2px">${groups.join(' · ')}</div>`:''}
+      </div>
+    </div>`;
+  }).join('');
+
+  // Balance
+  const balance=ALL.map(g=>{
+    const p=pct(g);const sets=muscleSets[g]||0;
+    const{text}=intStyle(p);
+    const lbl=p===0?'Não treinou':p<35?`${sets} séries — leve`:p<70?`${sets} séries — moderado`:`${sets} séries — intenso`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid #E7E5E440">
+      <span style="font-size:12px">${p>0?'✅':'⚠️'}</span>
+      <div style="flex:1;font-size:12px;font-weight:700;color:#1C1917">${g}</div>
+      <div style="font-size:11px;font-weight:600;color:${p>0?text:'#78716C'}">${lbl}</div>
+    </div>`;
+  }).join('');
+
+  // Suggestions
+  const untrained=ALL.filter(g=>!muscleSets[g]);
+  const remaining=weekDays.filter(({date})=>date>todayStr).length;
+  const ICONS={Perna:'🦵',Costas:'🔙',Core:'🎯',Peito:'💪',Ombro:'🏋️',Bíceps:'💪',Tríceps:'💪',Glúteo:'🍑'};
+  let sugHtml='';
+  if(untrained.length>0&&remaining>0){
+    const pri=untrained.find(g=>['Perna','Costas','Core'].includes(g))||untrained[0];
+    sugHtml=`<div class="card" style="margin-bottom:10px">
+      <div class="sec-hdr"><div class="sec-lbl"><span>💡</span> SUGESTÕES</div></div>
+      <div style="font-size:12px;color:#1C1917;line-height:1.6;padding:6px 0;border-bottom:1px solid #E7E5E440">${ICONS[pri]||'💪'} <b>${pri}</b> ainda não foi treinado — ${remaining} dia${remaining>1?'s':''}restante${remaining>1?'s':''} para encaixar.</div>
+      ${untrained.length>1?`<div style="font-size:11px;color:#78716C;line-height:1.5;padding-top:6px">Também sem treino: ${untrained.filter(g=>g!==pri).join(', ')}.</div>`:''}
+    </div>`;
+  } else if(untrained.length===0){
+    sugHtml=`<div class="card" style="margin-bottom:10px;background:#0d2818;border-color:#16a34a40">
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-size:22px">🎉</span>
+        <div><div style="font-size:13px;font-weight:700;color:#34d399">Semana equilibrada!</div>
+        <div style="font-size:11px;color:#78716C;margin-top:2px">Todos os grupos musculares foram treinados.</div></div>
+      </div>
+    </div>`;
+  }
+
+  gymBody.innerHTML=`<div class="fade-in">
+    <div style="display:flex;align-items:center;margin-bottom:12px">
+      <div style="font-size:13px;font-weight:800;color:#1C1917">Semana · ${weekLabel}</div>
+    </div>
+
+    <div class="card" style="margin-bottom:10px">
+      <div class="sec-hdr" style="margin-bottom:10px"><div class="sec-lbl"><span>💪</span> MAPA MUSCULAR</div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+        <div>
+          <div style="font-size:9px;font-weight:700;color:#A8A29E;letter-spacing:.08em;margin-bottom:6px;text-align:center">FRENTE</div>
+          <div style="display:flex;flex-direction:column;gap:5px">${FRONT.map(g=>muscleCard(g)).join('')}</div>
+        </div>
+        <div>
+          <div style="font-size:9px;font-weight:700;color:#A8A29E;letter-spacing:.08em;margin-bottom:6px;text-align:center">COSTAS</div>
+          <div style="display:flex;flex-direction:column;gap:5px">${BACK.map(g=>muscleCard(g)).join('')}</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:10px;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#78716C"><div style="width:8px;height:8px;border-radius:2px;background:#E7E5E440;border:1px solid #E7E5E4"></div>Não treinou</div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#78716C"><div style="width:8px;height:8px;border-radius:2px;background:rgba(108,99,255,.08);border:1px solid rgba(108,99,255,.5)"></div>Leve</div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#78716C"><div style="width:8px;height:8px;border-radius:2px;background:#2563eb22;border:1px solid #2563eb80"></div>Moderado</div>
+        <div style="display:flex;align-items:center;gap:4px;font-size:9px;color:#78716C"><div style="width:8px;height:8px;border-radius:2px;background:#f9731618;border:1px solid #f9731670"></div>Intenso</div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:10px">
+      <div class="sec-hdr"><div class="sec-lbl"><span>📅</span> ESTA SEMANA</div></div>
+      ${timeline}
+    </div>
+
+    <div class="card" style="margin-bottom:10px">
+      <div class="sec-hdr"><div class="sec-lbl"><span>⚖️</span> EQUILÍBRIO MUSCULAR</div></div>
+      ${balance}
+      ${cardioMin>0?`<div style="display:flex;align-items:center;gap:10px;padding:7px 0"><span style="font-size:12px">✅</span><div style="flex:1;font-size:12px;font-weight:700;color:#1C1917">Cardio</div><div style="font-size:11px;font-weight:600;color:#34d399">${cardioMin} min</div></div>`:''}
+    </div>
+
+    ${sugHtml}
+  </div>`;
+}
 function renderGym(){
   const date=currentDate;
   const dd=loadDay(date);
@@ -770,6 +927,7 @@ function renderGym(){
   const doneCount=session.reduce((a,ex)=>a+ex.sets.filter(s=>s.done).length,0);
   const totalSets=session.reduce((a,ex)=>a+ex.sets.length,0);
 
+  const isCardio=trObj.type==='aerobico';
   let html=selectorHtml;
   if(prev){
     const pl=dispDate(prev.date);
@@ -777,30 +935,43 @@ function renderGym(){
   }
   html+=`<div style="display:flex;align-items:center;margin-bottom:10px">
     <div style="flex:1"><div style="font-size:15px;font-weight:800;color:${trObj.color}">${trObj.icon} ${trObj.name}</div></div>
-    ${doneCount>0?`<div style="font-size:12px;color:#16A34A;font-family:'DM Mono',monospace;font-weight:700">${doneCount}/${totalSets} séries ✓</div>`:''}
+    ${doneCount>0?`<div style="font-size:12px;color:#16A34A;font-family:'DM Mono',monospace;font-weight:700">${doneCount}/${totalSets} ${isCardio?'atividades':'séries'} ✓</div>`:''}
   </div>
-  <div style="display:flex;align-items:center;gap:10px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:9px 12px;margin-bottom:12px">
+  ${isCardio?`<div style="display:flex;align-items:center;gap:10px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:9px 12px;margin-bottom:12px">
     <span style="font-size:14px">⏱️</span>
-    <span style="font-size:12px;color:#78716C;flex:1">Duração do treino</span>
+    <span style="font-size:12px;color:#78716C;flex:1">Duração total do treino</span>
     <input type="number" inputmode="decimal" value="${dayData.gymDurMin||''}" placeholder="0" onchange="setGymDur(+this.value)" style="width:56px;background:#fff;border:1px solid #D4D0CE;border-radius:8px;padding:6px 4px;color:#1C1917;font-size:14px;font-weight:700;text-align:center;outline:none">
     <span style="font-size:11px;color:#A8A29E">min</span>
-  </div>`;
+  </div>`:''}  `;
 
   session.forEach((ex,ei)=>{
     const prevEx=prevMap[ex.id];
-    const prevSummary=prevEx?prevEx.sets.filter(s=>s.done&&s.reps).map(s=>`${s.reps}×${s.kg||'?'}kg`).join(' · '):'';
+    const prevSummary=prevEx?prevEx.sets.filter(s=>s.done&&(s.reps||s.kg)).map(s=>isCardio?[s.reps?s.reps+'min':null,s.kg?s.kg+'km':null].filter(Boolean).join(' '):`${s.reps}×${s.kg||'?'}kg`).join(' · '):'';
     const doneSets=ex.sets.filter(s=>s.done).length;
     const allDone=doneSets===ex.sets.length&&doneSets>0;
     const setRows=ex.sets.map((set,si)=>{
       const prevSet=prevEx?.sets?.[si];
+      const bdr=`border:1.5px solid ${set.done?'#16a34a':'#E7E5E4'}`;
+      const inp=`background:#FAFAF9;${bdr};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none`;
+      const doneBtn=`<button onclick="gymDone(${ei},${si})" style="margin-left:auto;min-width:32px;height:32px;border-radius:50%;background:${set.done?'#16a34a':'#E7E5E4'};color:${set.done?'#fff':'#78716C'};font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${set.done?'✓':''}</button>`;
+      const delBtn=ex.sets.length>1?`<button onclick="gymDelSet(${ei},${si})" style="min-width:22px;height:22px;border-radius:50%;background:#fff;color:#78716C;font-size:10px;flex-shrink:0">✕</button>`:'';
+      if(isCardio){
+        return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+          <div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;width:22px;text-align:center;flex-shrink:0">${si+1}</div>
+          <input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'min'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:62px;${inp}">
+          <span style="color:#A8A29E;font-size:11px">min</span>
+          <input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'km'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;${inp}">
+          <span style="color:#A8A29E;font-size:11px">km</span>
+          ${doneBtn}${delBtn}
+        </div>`;
+      }
       return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
         <div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;width:22px;text-align:center;flex-shrink:0">${si+1}</div>
-        <input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;background:#FAFAF9;border:1.5px solid ${set.done?'#16a34a':'#E7E5E4'};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none">
+        <input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;${inp}">
         <span style="color:#A8A29E;font-size:13px;font-weight:700">×</span>
-        <input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'kg'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;background:#FAFAF9;border:1.5px solid ${set.done?'#16a34a':'#E7E5E4'};border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none">
+        <input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'kg'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;${inp}">
         <span style="color:#A8A29E;font-size:11px">kg</span>
-        <button onclick="gymDone(${ei},${si})" style="margin-left:auto;min-width:32px;height:32px;border-radius:50%;background:${set.done?'#16a34a':'#E7E5E4'};color:${set.done?'#fff':'#78716C'};font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0">${set.done?'✓':''}</button>
-        ${ex.sets.length>1?`<button onclick="gymDelSet(${ei},${si})" style="min-width:22px;height:22px;border-radius:50%;background:#fff;color:#78716C;font-size:10px;flex-shrink:0">✕</button>`:''}
+        ${doneBtn}${delBtn}
       </div>`;
     }).join('');
     html+=`<div class="card" style="margin-bottom:8px;${allDone?'border-color:#BBF7D0;':''}">
@@ -810,20 +981,25 @@ function renderGym(){
       </div>
       ${prevSummary?`<div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;margin-bottom:8px;padding:5px 8px;background:#fff;border-radius:6px">Ant: ${prevSummary}</div>`:''}
       ${setRows}
-      <button onclick="gymAddSet(${ei})" style="width:100%;padding:6px;background:#fff;border:1px dashed #D4D0CE;border-radius:8px;color:#78716C;font-size:11px;margin-top:2px">+ série</button>
+      <button onclick="gymAddSet(${ei})" style="width:100%;padding:6px;background:#fff;border:1px dashed #D4D0CE;border-radius:8px;color:#78716C;font-size:11px;margin-top:2px">+ ${isCardio?'intervalo':'série'}</button>
     </div>`;
   });
 
   if(_gymAddOpen){
-    // GYM_GROUPS defined at module level
     const inp2='background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 8px;color:#1C1917;font-size:14px;font-weight:700;outline:none;text-align:center;width:100%';
-    html+=`<div class="card fade-in"><div class="sec-hdr"><div class="sec-lbl"><span>➕</span> ADICIONAR EXERCÍCIO</div></div>
-      <input type="text" id="gym-new-name" placeholder="Nome do exercício" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">
-      <select id="gym-new-group" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gym-new-sets" placeholder="3" value="3" style="${inp2}"></div>
-        <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gym-new-reps" placeholder="12" value="12" style="${inp2}"></div>
-      </div>
+    const addFormFields=isCardio
+      ?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+          <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Intervalos</div><input type="number" id="gym-new-sets" placeholder="1" value="1" style="${inp2}"></div>
+          <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Duração padrão (min)</div><input type="text" id="gym-new-reps" placeholder="30" value="" style="${inp2}"></div>
+        </div>`
+      :`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+          <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gym-new-sets" placeholder="3" value="3" style="${inp2}"></div>
+          <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gym-new-reps" placeholder="12" value="12" style="${inp2}"></div>
+        </div>`;
+    html+=`<div class="card fade-in"><div class="sec-hdr"><div class="sec-lbl"><span>➕</span> ${isCardio?'ADICIONAR ATIVIDADE':'ADICIONAR EXERCÍCIO'}</div></div>
+      <input type="text" id="gym-new-name" placeholder="${isCardio?'Ex: Corrida, Bike, Elíptico...':'Nome do exercício'}" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">
+      ${isCardio?'':`<select id="gym-new-group" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>`}
+      ${addFormFields}
       <div style="display:flex;gap:8px">
         <button onclick="gymConfirmAdd()" style="flex:1;padding:12px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Adicionar</button>
         <button onclick="gymCancelAdd()" style="padding:12px 16px;background:#F0EFED;border-radius:10px;color:#78716C;font-size:14px">Cancelar</button>
@@ -831,13 +1007,13 @@ function renderGym(){
     </div>`;
   } else if(session.length===0){
     html=`<div class="card fade-in" style="text-align:center;padding:28px 16px">
-      <div style="font-size:36px;margin-bottom:10px">🏋️</div>
-      <div style="font-size:14px;font-weight:700;color:#1C1917;margin-bottom:6px">Nenhum exercício ainda</div>
-      <div style="font-size:12px;color:#78716C;margin-bottom:16px">Adicione os exercícios da sessão de hoje.<br>Serão salvos como modelo para <b>${trObj.name}</b>.</div>
-      <button onclick="gymOpenAdd()" style="padding:12px 24px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ Primeiro exercício</button>
+      <div style="font-size:36px;margin-bottom:10px">${isCardio?'🏃':'🏋️'}</div>
+      <div style="font-size:14px;font-weight:700;color:#1C1917;margin-bottom:6px">Nenhuma atividade ainda</div>
+      <div style="font-size:12px;color:#78716C;margin-bottom:16px">Adicione as atividades da sessão de hoje.<br>Serão salvas como modelo para <b>${trObj.name}</b>.</div>
+      <button onclick="gymOpenAdd()" style="padding:12px 24px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ ${isCardio?'Primeira atividade':'Primeiro exercício'}</button>
     </div>`;
   } else {
-    html+=`<button onclick="gymOpenAdd()" style="width:100%;padding:12px;background:#fff;border:1.5px dashed #D4D0CE;border-radius:12px;color:#78716C;font-size:13px;font-weight:600;margin-bottom:4px">+ Adicionar exercício</button>`;
+    html+=`<button onclick="gymOpenAdd()" style="width:100%;padding:12px;background:#fff;border:1.5px dashed #D4D0CE;border-radius:12px;color:#78716C;font-size:13px;font-weight:600;margin-bottom:4px">+ ${isCardio?'Adicionar atividade':'Adicionar exercício'}</button>`;
   }
   gymBody.innerHTML=html;
 }
@@ -876,12 +1052,13 @@ function gymCancelAdd(){_gymAddOpen=false;renderGym();}
 function gymConfirmAdd(){
   const name=(document.getElementById('gym-new-name')?.value||'').trim();
   if(!name){const el=document.getElementById('gym-new-name');if(el)el.style.borderColor='#f87171';return;}
-  const group=document.getElementById('gym-new-group')?.value||'Outro';
+  const tr=loadDay(currentDate).tr;
+  const isCardioAdd=getWorkoutById(tr)?.type==='aerobico';
+  const group=document.getElementById('gym-new-group')?.value||(isCardioAdd?'Cardio':'Outro');
   const nSets=parseInt(document.getElementById('gym-new-sets')?.value)||1;
   const repsVal=(document.getElementById('gym-new-reps')?.value||'').trim();
   const id='ex_'+Date.now();
   const newEx={id,name,group,sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))};
-  const tr=loadDay(currentDate).tr;
   const s=loadGymSession(currentDate,tr)||[];s.push(newEx);saveGymSession(currentDate,tr,s);
   if(!gymPlan[tr]) gymPlan[tr]=[];
   gymPlan[tr].push({id,name,group,defaultSets:nSets,defaultReps:repsVal,obs:''});saveGymPlan();
