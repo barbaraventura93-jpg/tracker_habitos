@@ -121,7 +121,7 @@ Resources:
           RAPIDAPI_KEY: !Ref RapidApiKey
       Code:
         ZipFile: |
-          import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime
+          import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime,unicodedata
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
           cache_table=dynamo.Table(os.environ.get('CACHE_TABLE_NAME','exercise-cache'))
@@ -220,7 +220,6 @@ Resources:
           }
           def translate_pt(name):
             k=name.lower().strip()
-            import unicodedata
             norm=''.join(c for c in unicodedata.normalize('NFD',k) if unicodedata.category(c)!='Mn')
             for pt,en in PT_EN.items():
               pt_norm=''.join(c for c in unicodedata.normalize('NFD',pt) if unicodedata.category(c)!='Mn')

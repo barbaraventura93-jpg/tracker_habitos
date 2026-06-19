@@ -1206,9 +1206,10 @@ function gymPlanManualConfirm(wId){
   const nSets=parseInt(document.getElementById('gpa-sets')?.value)||3;
   const reps=(document.getElementById('gpa-reps')?.value||'').trim();
   const obs=(document.getElementById('gpa-obs')?.value||'').trim();
+  const extra=(_gymIdInfo&&_gymIdInfo.found)?{gifUrl:_gymIdInfo.gifUrl,targetMuscle:_gymIdInfo.targetMuscle,secondaryMuscles:_gymIdInfo.secondaryMuscles,instructions:_gymIdInfo.instructions}:{};
   if(!gymPlan[wId]) gymPlan[wId]=[];
-  gymPlan[wId].push({id:'ex_'+Date.now(),name,group,defaultSets:nSets,defaultReps:reps,obs});
-  saveGymPlan();_gymPlanAddOpen=null;renderGym();
+  gymPlan[wId].push(Object.assign({id:'ex_'+Date.now(),name,group,defaultSets:nSets,defaultReps:reps,obs},extra));
+  saveGymPlan();_gymPlanAddOpen=null;_gymIdInfo=null;renderGym();
 }
 let _gymWkCreate=false;
 function renderGymPlan(gymBody){
@@ -1238,7 +1239,8 @@ function renderGymPlan(gymBody){
           ${exList}
           ${_gymPlanAddOpen===w.id?`
           <div style="background:#FAFAF9;border:1px solid #D4D0CE;border-radius:10px;padding:12px;margin-top:8px" class="fade-in">
-            <input type="text" id="gpa-name" placeholder="Nome do exercício" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none;margin-bottom:8px">
+            <input type="text" id="gpa-name" oninput="gymTriggerIdentify(this.value)" placeholder="Nome do exercício" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none;margin-bottom:6px">
+            <div id="gym-id-status" style="margin-bottom:6px;min-height:14px"></div>
             <select id="gpa-group" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
               <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gpa-sets" value="3" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:8px 4px;color:#1C1917;font-size:15px;font-weight:700;text-align:center;outline:none"></div>
