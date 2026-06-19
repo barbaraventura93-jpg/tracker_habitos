@@ -1082,7 +1082,7 @@ function renderGym(){
       }
       return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
         <div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;width:22px;text-align:center;flex-shrink:0">${si+1}</div>
-        <input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;${inp}">
+        <input type="text" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;${inp}">
         <span style="color:#A8A29E;font-size:13px;font-weight:700">×</span>
         <input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'kg'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;${inp}">
         <span style="color:#A8A29E;font-size:11px">kg</span>
