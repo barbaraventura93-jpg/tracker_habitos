@@ -1,8 +1,8 @@
-# 📋 Rotina Diária
+# Rotina Diária
 
 App de acompanhamento de rotina diária — refeições, água, suplementos, sono, treino e metas personalizadas — com sincronização entre dispositivos e histórico de 60 dias.
 
-🌐 **[Acessar o app](https://d1o1gejacy6m9o.cloudfront.net)**
+**[Acessar o app](https://d1o1gejacy6m9o.cloudfront.net)**
 
 ---
 
@@ -28,13 +28,16 @@ App de acompanhamento de rotina diária — refeições, água, suplementos, son
 - Comparação automática com a última sessão do mesmo treino
 - % de sucesso do dia sobe automaticamente ao concluir séries
 - Plano de treino por tipo (A/B/C) salvo como modelo, sessões isoladas por tipo
-- **Identificação automática de exercícios** — ao digitar o nome (≥ 3 letras), busca na ExerciseDB via RapidAPI, preenche o grupo muscular automaticamente e exibe GIF de demonstração + badge do músculo principal; resultado cacheado em DynamoDB para não repetir chamadas de API
-- **Edição no plano** — botão ✏️ nos exercícios do plano abre painel com edição de nome, grupo, séries e reps padrão, músculos principais / secundários e observação; alterações salvas direto no plano (permanente)
+- Sessões de treino persistidas no DynamoDB — histórico seguro mesmo se o cache do browser for limpo
+- **Identificação automática de exercícios via Bedrock** — ao digitar o nome (≥ 3 letras), classifica o grupo muscular (Peito · Costas · Ombro · Bíceps · Tríceps · Perna · Glúteo · Core · Cardio) com emoji de representação; resultado cacheado em DynamoDB para não repetir chamadas
+- **Card de identificação dinâmico** — exibe estado de loading → card confirmado com emoji + grupo → grade de seleção rápida se não identificado; botão "Trocar" para correção manual
+- **Rever grupos** — botão no Plano reidentifica todos os exercícios cadastrados via Bedrock e atualiza os grupos em lote
+- **Edição no plano** — botão ✏️ nos exercícios abre painel com nome, grupo muscular, séries/reps padrão e observação; alterações salvas permanentemente no plano
 - **Edição de sessão** — mesmo botão na tela de log edita só aquela sessão, com aviso visual de escopo
 
 **Cardio / Aeróbico**
 - Log de atividades com duração (min) e distância (km) por intervalo
-- `gymDurMin` calculado automaticamente ao marcar atividade concluída — sem entrada manual
+- `gymDurMin` calculado automaticamente ao marcar atividade concluída
 - Suporte a múltiplos intervalos (ex: 5 tiros de 400m)
 
 **Geral**
@@ -74,13 +77,13 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 - Confetti ao atingir 100%
 - Alerta de risco quando prazo próximo e progresso abaixo de 70%
 
-**Registro de progresso (Metas e Objetivos)**
-- Toque no card abre painel inline (desktop) ou bottom sheet (mobile) para registrar progresso
-- Botões rápidos gerados automaticamente pela unidade da meta (livros → +1/+2/+5 · horas → +30min/+1h/+2h · R$ → +50/+100/+500 · km, ml, páginas, etc.)
-- Campo de anotação opcional por registro (ex: "Atomic Habits", "Depósito junho")
-- Botão `···` abre histórico completo de registros com data, valor e nota
-- Previsão de conclusão calculada pelo ritmo atual ("No ritmo atual, termina em dez 2026 ✅")
-- Remoção de registro individual em caso de erro de digitação
+**Registro de progresso**
+- Toque no card abre painel inline (desktop) ou bottom sheet (mobile)
+- Botões rápidos gerados automaticamente pela unidade da meta (livros → +1/+2/+5 · horas → +30min/+1h/+2h · R$ → +50/+100/+500)
+- Campo de anotação opcional por registro
+- Botão `···` abre histórico completo com data, valor e nota
+- Previsão de conclusão calculada pelo ritmo atual
+- Remoção de registro individual em caso de erro
 
 **Gestão:** criar, editar, arquivar e excluir metas. Ícone e unidade livres.
 
@@ -107,8 +110,7 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 - Hospedagem: **AWS S3 + CloudFront**
 - Autenticação: **AWS Cognito**
 - Backend: **AWS Lambda (Python 3.12) + DynamoDB**
-- IA: **AWS Bedrock** (Amazon Nova Lite) — análise de PDF/imagem + sugestão semanal
-- Identificação de exercícios: **ExerciseDB via RapidAPI** — GIF + músculo principal + instruções
+- IA: **AWS Bedrock** (Amazon Nova Lite) — análise de PDF/imagem · identificação de exercícios · sugestão semanal
 - Infraestrutura como código: **AWS CloudFormation**
 - CI/CD: **GitHub Actions**
 
@@ -121,11 +123,10 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 | S3 | Hospedagem do arquivo estático | Free Tier |
 | CloudFront | CDN + HTTPS + invalidação automática | Free Tier |
 | Cognito | Autenticação de usuários | Free Tier (50k MAU) |
-| DynamoDB `tracker-habitos-data` | Dados diários por usuário (PK: userId, SK: date) | Free Tier |
-| DynamoDB `exercise-cache` | Cache global de exercícios ExerciseDB (PK: exerciseName) | Free Tier |
+| DynamoDB `tracker-habitos-data` | Dados diários por usuário + sessões de treino (PK: userId, SK: date) | Free Tier |
+| DynamoDB `exercise-cache` | Cache global de identificação de exercícios via Bedrock (PK: exerciseName) | Free Tier |
 | Lambda | API REST + IA + identificação de exercícios + sugestão semanal | Free Tier |
-| Bedrock | Extração de planos via PDF/imagem · sugestão semanal | Pay per use |
-| ExerciseDB (RapidAPI) | GIF + músculo + instruções por exercício | Free Tier (100 req/dia) |
+| Bedrock (Nova Lite) | Extração de planos · identificação de exercícios · sugestão semanal | ~$0,00002/exercício identificado |
 | GitHub Actions | CI/CD automático no push | Gratuito |
 
 **Bucket:** `tracker-habitos` · **Região:** `sa-east-1` (São Paulo) · **URL:** `https://d1o1gejacy6m9o.cloudfront.net`
@@ -136,10 +137,10 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 
 | Action | Método | Descrição |
 |---|---|---|
-| *(sem action)* | GET | Lê dados de uma data (`?date=YYYY-MM-DD`) |
+| *(sem action)* | GET | Lê dados de uma data (`?date=YYYY-MM-DD` ou `gym:YYYY-MM-DD:trId`) |
 | *(sem action)* | PUT | Salva dados de uma data |
 | `analyze` | POST | Extrai exercícios ou suplementos de PDF/imagem via Bedrock |
-| `identify_exercise` | GET | Identifica exercício pelo nome — cache DynamoDB → ExerciseDB |
+| `identify_exercise` | GET | Identifica exercício pelo nome — cache DynamoDB → Bedrock Nova Lite |
 | `week_suggestion` | POST | Gera sugestão semanal personalizada via Bedrock |
 
 ---
@@ -149,7 +150,7 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 Qualquer `push` na branch `main` dispara o workflow que:
 
 1. Cria/atualiza a infraestrutura via CloudFormation (Cognito + Lambda + DynamoDB)
-2. Atualiza as variáveis de ambiente do Lambda (incluindo `RAPIDAPI_KEY`)
+2. Garante permissão pública na Function URL do Lambda
 3. Injeta a URL da API e o Client ID do Cognito no HTML
 4. Sincroniza os arquivos com o S3
 5. Invalida o cache do CloudFront
@@ -160,7 +161,6 @@ Qualquer `push` na branch `main` dispara o workflow que:
 |---|---|
 | `AWS_ACCESS_KEY_ID` | Access Key do usuário IAM |
 | `AWS_SECRET_ACCESS_KEY` | Secret Key do usuário IAM |
-| `RAPIDAPI_KEY` | Chave da ExerciseDB via RapidAPI (plano Free — 100 req/dia) |
 
 ---
 
@@ -178,8 +178,6 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 - [x] Cardio: atividades com min e km, duração calculada automaticamente
 - [x] Upload de plano de treino via PDF/imagem — extração por IA
 - [x] Tela Semana — mapa muscular SVG com heatmap, timeline, equilíbrio e sugestão IA
-- [x] Identificação automática de exercícios — ExerciseDB + cache DynamoDB
-- [x] Edição de exercício no plano — séries/reps padrão, músculos, propagação permanente
 - [x] Metas e objetivos — 12 categorias, 5 frequências, logs, confetti
 - [x] Vínculo de meta com tipo de treino — duração ou sessões automáticas
 - [x] % de sucesso do dia alimentado pelo treino concluído
@@ -187,3 +185,9 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 - [x] Persistência em nuvem com DynamoDB + Lambda
 - [x] Autenticação com AWS Cognito
 - [x] Registro de progresso em metas de longo prazo — painel inline, bottom sheet, botões rápidos, histórico e previsão
+- [x] Edição de exercício no plano e na sessão — nome, grupo, séries/reps, observação
+- [x] Identificação automática de exercícios via Bedrock — sem dependência de API externa
+- [x] Card de identificação dinâmico — loading / confirmado com emoji / grade de seleção manual
+- [x] Formulário de adição simplificado — grupo preenchido automaticamente, sem select manual
+- [x] Botão "Rever grupos" no Plano — reidentifica todos os exercícios em lote via Bedrock
+- [x] Sessões de treino persistidas no DynamoDB — histórico seguro mesmo após limpeza de cache
