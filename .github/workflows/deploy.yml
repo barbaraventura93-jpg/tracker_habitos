@@ -45,11 +45,14 @@ jobs:
             --parameter-overrides "RapidApiKey=${{ secrets.RAPIDAPI_KEY }}"
 
       - name: Atualizar RAPIDAPI_KEY no Lambda
+        env:
+          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
         run: |
+          echo "RAPIDAPI_KEY definida: $([ -n "$RAPIDAPI_KEY" ] && echo 'SIM' || echo 'NAO')"
           aws lambda update-function-configuration \
             --function-name tracker-habitos-api \
             --region sa-east-1 \
-            --environment "Variables={TABLE_NAME=tracker-habitos-data,CACHE_TABLE_NAME=exercise-cache,RAPIDAPI_KEY=${{ secrets.RAPIDAPI_KEY }}}"
+            --environment "Variables={TABLE_NAME=tracker-habitos-data,CACHE_TABLE_NAME=exercise-cache,RAPIDAPI_KEY=$RAPIDAPI_KEY}"
           aws lambda wait function-updated \
             --function-name tracker-habitos-api \
             --region sa-east-1
