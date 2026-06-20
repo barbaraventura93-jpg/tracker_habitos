@@ -682,7 +682,7 @@ let _gymViewPlan=false;
 let _gymPlanTr=null;
 let _gymPlanPreview=[];
 let _gymView='hoje';
-let _gymIdInfo=null;let _gymIdTimer=null;
+let _gymIdInfo=null;let _gymIdTimer=null;let _gymAddIdState='idle';
 let _gymDragSrc=null,_gymDragOverIdx=null;
 let _gymReorderMode=false;
 let _gymLongPressTimer=null;
@@ -719,37 +719,86 @@ let _gymGifModal=null;
 function gymTriggerIdentify(name){
   if(!USE_API||!authToken) return;
   clearTimeout(_gymIdTimer);
+  _gymIdInfo=null;_gymAddIdState='idle';
   const s=document.getElementById('gym-id-status');
   if(s) s.innerHTML='';
-  _gymIdInfo=null;
   if(!name||name.length<3) return;
   _gymIdTimer=setTimeout(function(){gymIdentifyExercise(name);},450);
 }
 async function gymIdentifyExercise(name){
-  const s=document.getElementById('gym-id-status');
-  if(s) s.innerHTML='<div style="font-size:11px;color:#A8A29E;padding:4px 0">Identificando...</div>';
+  _gymAddIdState='loading';
+  gymRenderIdBlock();
   try{
     const r=await fetch(API_URL+'?action=identify_exercise&name='+encodeURIComponent(name),{headers:{authorization:'Bearer '+authToken}});
     if(!r.ok) throw new Error('err');
     const d=await r.json();
     console.log('[identify]',JSON.stringify(d));
     _gymIdInfo=d;
-    if(!s) return;
     if(d.found){
-      const groupEl=document.getElementById('gym-new-group')||document.getElementById('gpa-group');
+      _gymAddIdState='found';
+      const groupEl=document.getElementById('gpa-group');
       if(groupEl&&d.group){
-        const opt=[...groupEl.options].find(function(o){return o.value===d.group;});
+        const normalized=d.group.normalize('NFC');
+        const opt=[...groupEl.options].find(function(o){return o.value.normalize('NFC')===normalized;});
         if(opt) groupEl.value=opt.value;
       }
-      const sec=d.secondaryMuscles&&d.secondaryMuscles.length?' +'+d.secondaryMuscles.slice(0,2).join(', '):'';
-      s.innerHTML='<div style="display:flex;align-items:center;gap:8px;padding:6px 0">'
-        +(d.gifUrl?'<img src="'+d.gifUrl+'" style="width:40px;height:40px;border-radius:6px;object-fit:cover;flex-shrink:0" loading="lazy">':'')
-        +'<div><div style="font-size:11px;font-weight:600;color:#6C63FF">'+(d.targetMuscle||d.group||'')+sec+'</div>'
-        +'<div style="font-size:10px;color:#A8A29E">Identificado via ExerciseDB</div></div></div>';
     } else {
-      s.innerHTML='<div style="font-size:11px;color:#A8A29E;padding:4px 0">Nao encontrado — selecione o grupo manualmente.</div>';
+      _gymAddIdState='not_found';
     }
-  } catch(e){_gymIdInfo=null;if(s) s.innerHTML='';}
+    gymRenderIdBlock();
+  } catch(e){_gymIdInfo=null;_gymAddIdState='idle';const s=document.getElementById('gym-id-status');if(s)s.innerHTML='';}
+}
+function gymRenderIdBlock(){
+  const container=document.getElementById('gym-id-status');
+  if(!container) return;
+  const isPlanForm=!!document.getElementById('gpa-group');
+  if(_gymAddIdState==='loading'){
+    container.innerHTML='<div style="font-size:11px;color:#A8A29E;padding:4px 0">Identificando...</div>';
+    return;
+  }
+  if(_gymAddIdState==='found'&&_gymIdInfo&&_gymIdInfo.found){
+    const info=_gymIdInfo;
+    const secArr=(info.secondaryMuscles||[]).slice(0,2).filter(Boolean);
+    const muscles=[info.targetMuscle].concat(secArr).filter(Boolean).join(' · ');
+    container.innerHTML='<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:#EDE9FF;border:1px solid #C4BFFF;border-radius:10px;margin-bottom:4px">'
+      +(info.gifUrl?'<img src="'+info.gifUrl+'" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0" loading="lazy">':'')
+      +'<div style="flex:1;min-width:0">'
+      +'<div style="font-size:12px;font-weight:700;color:#6C63FF">'+(info.group||'')
+      +(muscles?'<span style="font-weight:400;color:#78716C"> · '+muscles+'</span>':'')
+      +'</div><div style="font-size:10px;color:#A8A29E;margin-top:2px">Identificado via ExerciseDB</div></div>'
+      +(!isPlanForm?'<button onclick="gymOverrideGroup()" style="background:none;color:#A8A29E;font-size:11px;text-decoration:underline;padding:0;flex-shrink:0;border:none;cursor:pointer">Trocar</button>':'')
+      +'</div>';
+    return;
+  }
+  if(_gymAddIdState==='not_found'){
+    if(!isPlanForm){
+      const groups=[
+        {v:'Peito',e:'🫁'},{v:'Costas',e:'🔙'},{v:'Ombro',e:'🏋️'},
+        {v:'Bíceps',e:'💪'},{v:'Tríceps',e:'💪'},{v:'Perna',e:'🦵'},
+        {v:'Glúteo',e:'🍑'},{v:'Core',e:'⚡'},{v:'Cardio',e:'🏃'},
+      ];
+      const cur=(_gymIdInfo&&_gymIdInfo.selectedGroup)||'';
+      container.innerHTML='<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:10px 12px;margin-bottom:4px">'
+        +'<div style="font-size:11px;color:#92400E;margin-bottom:8px">Não encontrado — selecione o tipo:</div>'
+        +'<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px">'
+        +groups.map(function(g){return'<button onclick="gymSelectGroup(\''+g.v+'\')" style="padding:8px 4px;border-radius:8px;font-size:11px;font-weight:600;background:'+(cur===g.v?'#6C63FF':'#FAFAF9')+';color:'+(cur===g.v?'#fff':'#78716C')+';border:1px solid '+(cur===g.v?'#6C63FF':'#E7E5E4')+';cursor:pointer">'+g.e+' '+g.v+'</button>';}).join('')
+        +'</div></div>';
+    } else {
+      container.innerHTML='<div style="font-size:11px;color:#A8A29E;padding:4px 0">Não encontrado — selecione o grupo abaixo.</div>';
+    }
+    return;
+  }
+  container.innerHTML='';
+}
+function gymSelectGroup(group){
+  if(!_gymIdInfo) _gymIdInfo={};
+  _gymIdInfo.selectedGroup=group;
+  gymRenderIdBlock();
+}
+function gymOverrideGroup(){
+  _gymAddIdState='not_found';
+  if(_gymIdInfo) _gymIdInfo.selectedGroup=_gymIdInfo.group||'';
+  gymRenderIdBlock();
 }
 function gymShowGif(ei){
   const tr=loadDay(currentDate).tr;
@@ -1173,7 +1222,6 @@ function renderGym(){
     html+=`<div class="card fade-in"><div class="sec-hdr"><div class="sec-lbl"><span>➕</span> ${isCardio?'ADICIONAR ATIVIDADE':'ADICIONAR EXERCÍCIO'}</div></div>
       <input type="text" id="gym-new-name" oninput="gymTriggerIdentify(this.value)" placeholder="${isCardio?'Ex: Corrida, Bike, Elíptico...':'Nome do exercício'}" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">
       <div id="gym-id-status" style="margin-bottom:4px"></div>
-      ${isCardio?'':`<select id="gym-new-group" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">${GYM_GROUPS.map(g=>`<option value="${g}">${g}</option>`).join('')}</select>`}
       ${addFormFields}
       <div style="display:flex;gap:8px">
         <button onclick="gymConfirmAdd()" style="flex:1;padding:12px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Adicionar</button>
@@ -1365,20 +1413,25 @@ function gymDoUpdatePlan(exId,name,group){
 
 function setGymDur(v){dayData.gymDurMin=Math.max(0,+v||0);save();renderUI();}
 function gymOpenAdd(){_gymAddOpen=true;renderGym();setTimeout(()=>document.getElementById('gym-new-name')?.focus(),50);}
-function gymCancelAdd(){_gymAddOpen=false;renderGym();}
+function gymCancelAdd(){_gymAddOpen=false;_gymIdInfo=null;_gymAddIdState='idle';renderGym();}
 function gymConfirmAdd(){
   const name=(document.getElementById('gym-new-name')?.value||'').trim();
   if(!name){const el=document.getElementById('gym-new-name');if(el)el.style.borderColor='#f87171';return;}
   const tr=loadDay(currentDate).tr;
   const isCardioAdd=getWorkoutById(tr)?.type==='aerobico';
-  const group=document.getElementById('gym-new-group')?.value||(isCardioAdd?'Cardio':'Outro');
+  const group=(function(){
+    if(isCardioAdd) return 'Cardio';
+    if(_gymIdInfo&&_gymIdInfo.selectedGroup) return _gymIdInfo.selectedGroup;
+    if(_gymIdInfo&&_gymIdInfo.found&&_gymIdInfo.group) return _gymIdInfo.group;
+    return 'Outro';
+  })();
   const nSets=parseInt(document.getElementById('gym-new-sets')?.value)||1;
   const repsVal=(document.getElementById('gym-new-reps')?.value||'').trim();
   const id='ex_'+Date.now();
   const extra=(_gymIdInfo&&_gymIdInfo.found)?{gifUrl:_gymIdInfo.gifUrl,targetMuscle:_gymIdInfo.targetMuscle,targetMuscles:_gymIdInfo.targetMuscle?[_gymIdInfo.targetMuscle]:[],secondaryMuscles:_gymIdInfo.secondaryMuscles,instructions:_gymIdInfo.instructions}:{};
   const newEx=Object.assign({id,name,group,sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))},extra);
   const s=loadGymSession(currentDate,tr)||[];s.push(newEx);saveGymSession(currentDate,tr,s);
-  _gymAddOpen=false;_gymIdInfo=null;renderGym();
+  _gymAddOpen=false;_gymIdInfo=null;_gymAddIdState='idle';renderGym();
   const wkName=getWorkoutById(tr)?.name||tr;
   _gymAskSaveToPlan(id,name,group,nSets,repsVal,tr,wkName);
 }
@@ -1409,18 +1462,19 @@ function gymCreateFilePick(inp){
 }
 let _gymPlanAddOpen=null;
 function gymPlanManualAdd(wId){_gymPlanAddOpen=wId;renderGym();setTimeout(()=>document.getElementById('gpa-name')?.focus(),50);}
-function gymPlanManualCancel(){_gymPlanAddOpen=null;renderGym();}
+function gymPlanManualCancel(){_gymPlanAddOpen=null;_gymIdInfo=null;_gymAddIdState='idle';renderGym();}
 function gymPlanManualConfirm(wId){
   const name=(document.getElementById('gpa-name')?.value||'').trim();
   if(!name){const el=document.getElementById('gpa-name');if(el)el.style.borderColor='#f87171';return;}
-  const group=document.getElementById('gpa-group')?.value||'Outro';
+  const selGroup=document.getElementById('gpa-group')?.value||'Outro';
+  const group=(selGroup==='Outro'&&_gymIdInfo&&_gymIdInfo.found&&_gymIdInfo.group)?_gymIdInfo.group:selGroup;
   const nSets=parseInt(document.getElementById('gpa-sets')?.value)||3;
   const reps=(document.getElementById('gpa-reps')?.value||'').trim();
   const obs=(document.getElementById('gpa-obs')?.value||'').trim();
   const extra=(_gymIdInfo&&_gymIdInfo.found)?{gifUrl:_gymIdInfo.gifUrl,targetMuscle:_gymIdInfo.targetMuscle,targetMuscles:_gymIdInfo.targetMuscle?[_gymIdInfo.targetMuscle]:[],secondaryMuscles:_gymIdInfo.secondaryMuscles,instructions:_gymIdInfo.instructions}:{};
   if(!gymPlan[wId]) gymPlan[wId]=[];
   gymPlan[wId].push(Object.assign({id:'ex_'+Date.now(),name,group,defaultSets:nSets,defaultReps:reps,obs},extra));
-  saveGymPlan();_gymPlanAddOpen=null;_gymIdInfo=null;renderGym();
+  saveGymPlan();_gymPlanAddOpen=null;_gymIdInfo=null;_gymAddIdState='idle';renderGym();
 }
 let _gymWkCreate=false;
 function renderGymPlan(gymBody){

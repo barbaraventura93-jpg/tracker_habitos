@@ -130,13 +130,13 @@ Resources:
           MODEL='us.amazon.nova-lite-v1:0'
           RAPIDAPI_KEY=os.environ.get('RAPIDAPI_KEY','')
           TARGET_MAP={
-            'pectorals':'Peito','serratus anterior':'Peito',
-            'lats':'Costas','traps':'Costas','rhomboids':'Costas','spine':'Costas','upper back':'Costas',
-            'delts':'Ombro','rotator cuff':'Ombro',
-            'biceps':'Bíceps','brachialis':'Bíceps','forearms':'Bíceps',
-            'triceps':'Tríceps',
-            'quads':'Perna','hamstrings':'Perna','calves':'Perna','adductors':'Perna','abductors':'Perna',
-            'glutes':'Glúteo',
+            'pectorals':'Peito','pectoralis major':'Peito','serratus anterior':'Peito',
+            'lats':'Costas','latissimus dorsi':'Costas','traps':'Costas','trapezius':'Costas','rhomboids':'Costas','spine':'Costas','upper back':'Costas','levator scapulae':'Costas',
+            'delts':'Ombro','deltoid':'Ombro','deltoids':'Ombro','rotator cuff':'Ombro',
+            'biceps':'Bíceps','biceps brachii':'Bíceps','brachialis':'Bíceps','brachioradialis':'Bíceps','forearms':'Bíceps',
+            'triceps':'Tríceps','triceps brachii':'Tríceps',
+            'quads':'Perna','quadriceps':'Perna','hamstrings':'Perna','calves':'Perna','adductors':'Perna','abductors':'Perna','hip flexors':'Perna',
+            'glutes':'Glúteo','gluteus maximus':'Glúteo','gluteus medius':'Glúteo',
             'abs':'Core','obliques':'Core','cardiovascular system':'Cardio',
           }
           BODY_PART_MAP={
