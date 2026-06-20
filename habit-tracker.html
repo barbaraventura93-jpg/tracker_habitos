@@ -706,7 +706,22 @@ async function syncGymPlan(){
   }catch{}
 }
 function loadGymSession(date,tr){try{return JSON.parse(localStorage.getItem('ht:gym:'+date+':'+(tr||''))||'null');}catch{return null;}}
-function saveGymSession(date,tr,data){try{localStorage.setItem('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}}
+function saveGymSession(date,tr,data){
+  try{localStorage.setItem('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}
+  if(!USE_API||!authToken) return;
+  fetch(API_URL+'?date='+encodeURIComponent('gym:'+date+':'+(tr||'')),{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(data)}).catch(()=>{});
+}
+async function fetchGymSession(date,tr){
+  if(!USE_API||!authToken||!tr||!isGymType(tr)) return;
+  try{
+    const r=await fetch(API_URL+'?date='+encodeURIComponent('gym:'+date+':'+(tr||'')),{headers:{authorization:'Bearer '+authToken}});
+    if(!r.ok) return;
+    const data=await r.json();
+    if(Array.isArray(data)&&data.length>0){
+      try{localStorage.setItem('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}
+    }
+  }catch{}
+}
 function getLastGymSession(tr,beforeDate){
   for(let i=1;i<=90;i++){
     const d=addDays(beforeDate,-i);
@@ -2352,6 +2367,15 @@ async function render(syncG=false){
       }
     }else if(JSON.stringify(dayData)!==JSON.stringify(makeEmpty(currentDate))){
       saveDay(currentDate,dayData);
+    }
+    const tr=dayData.tr;
+    if(tr&&isGymType(tr)){
+      const before=JSON.stringify(loadGymSession(currentDate,tr));
+      await fetchGymSession(currentDate,tr);
+      if(JSON.stringify(loadGymSession(currentDate,tr))!==before){
+        const gb=document.getElementById('gym-body');
+        if(gb) renderGym();
+      }
     }
   }
 }
