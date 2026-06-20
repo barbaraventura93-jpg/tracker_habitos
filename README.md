@@ -28,9 +28,9 @@ App de acompanhamento de rotina diária — refeições, água, suplementos, son
 - Comparação automática com a última sessão do mesmo treino
 - % de sucesso do dia sobe automaticamente ao concluir séries
 - Plano de treino por tipo (A/B/C) salvo como modelo, sessões isoladas por tipo
-- **Reordenação de exercícios** — drag & drop no desktop (handle ⠿), botões ↑ ↓ no mobile via long press
-- **Bi-set e Tri-set** — botão entre exercícios consecutivos agrupa com colchete visual e badge BI-SET / TRI-SET; sugestão automática de super-set quando músculos são antagonistas
-- **Edição inline** — botão ✏️ ou long press no nome abre painel com edição de nome, músculos principais (até 3), músculos secundários, grupo e observação; pergunta se deve propagar para o plano
+- **Identificação automática de exercícios** — ao digitar o nome (≥ 3 letras), busca na ExerciseDB via RapidAPI, preenche o grupo muscular automaticamente e exibe GIF de demonstração + badge do músculo principal; resultado cacheado em DynamoDB para não repetir chamadas de API
+- **Edição no plano** — botão ✏️ nos exercícios do plano abre painel com edição de nome, grupo, séries e reps padrão, músculos principais / secundários e observação; alterações salvas direto no plano (permanente)
+- **Edição de sessão** — mesmo botão na tela de log edita só aquela sessão, com aviso visual de escopo
 
 **Cardio / Aeróbico**
 - Log de atividades com duração (min) e distância (km) por intervalo
@@ -39,8 +39,15 @@ App de acompanhamento de rotina diária — refeições, água, suplementos, son
 
 **Geral**
 - Upload de plano via PDF ou imagem — IA extrai exercícios automaticamente
-- Visualização semanal com mapa muscular (intensidade por grupo) e timeline de dias
-- Sugestão de grupos não treinados na semana
+
+### Semana
+
+Tela dedicada na navegação inferior com visão consolidada da semana de treino:
+
+- **Mapa muscular SVG** — silhueta humana frente/costas com heatmap por grupo; 4 intensidades: cinza (sem treino) → roxo claro (leve) → roxo (moderado) → laranja (intenso); fórmula: 15 séries/semana = 100%
+- **Timeline semanal** — 7 cards Seg–Dom com tipo de treino, grupos trabalhados, duração e marcação de concluído/falhado
+- **Equilíbrio muscular** — tabela com sets e intensidade por grupo (Peito · Costas · Ombro · Bíceps · Tríceps · Perna · Core · Glúteo)
+- **Sugestão IA** — após renderizar a tela, busca sugestão personalizada no Bedrock (Amazon Nova Lite) com contexto da semana; exibe 1–2 mensagens motivadoras em português sobre o que falta treinar; fallback para regra estática se a IA não responder
 
 ### Nutrição
 - Controle de macros por refeição
@@ -100,7 +107,8 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 - Hospedagem: **AWS S3 + CloudFront**
 - Autenticação: **AWS Cognito**
 - Backend: **AWS Lambda (Python 3.12) + DynamoDB**
-- IA: **AWS Bedrock** (Amazon Nova Lite) — análise de PDF/imagem
+- IA: **AWS Bedrock** (Amazon Nova Lite) — análise de PDF/imagem + sugestão semanal
+- Identificação de exercícios: **ExerciseDB via RapidAPI** — GIF + músculo principal + instruções
 - Infraestrutura como código: **AWS CloudFormation**
 - CI/CD: **GitHub Actions**
 
@@ -113,12 +121,26 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 | S3 | Hospedagem do arquivo estático | Free Tier |
 | CloudFront | CDN + HTTPS + invalidação automática | Free Tier |
 | Cognito | Autenticação de usuários | Free Tier (50k MAU) |
-| DynamoDB | Persistência dos dados por usuário | Free Tier |
-| Lambda | API de leitura/escrita + análise de IA | Free Tier |
-| Bedrock | Extração de planos via PDF/imagem | Pay per use |
+| DynamoDB `tracker-habitos-data` | Dados diários por usuário (PK: userId, SK: date) | Free Tier |
+| DynamoDB `exercise-cache` | Cache global de exercícios ExerciseDB (PK: exerciseName) | Free Tier |
+| Lambda | API REST + IA + identificação de exercícios + sugestão semanal | Free Tier |
+| Bedrock | Extração de planos via PDF/imagem · sugestão semanal | Pay per use |
+| ExerciseDB (RapidAPI) | GIF + músculo + instruções por exercício | Free Tier (100 req/dia) |
 | GitHub Actions | CI/CD automático no push | Gratuito |
 
 **Bucket:** `tracker-habitos` · **Região:** `sa-east-1` (São Paulo) · **URL:** `https://d1o1gejacy6m9o.cloudfront.net`
+
+---
+
+## Lambda — actions disponíveis
+
+| Action | Método | Descrição |
+|---|---|---|
+| *(sem action)* | GET | Lê dados de uma data (`?date=YYYY-MM-DD`) |
+| *(sem action)* | PUT | Salva dados de uma data |
+| `analyze` | POST | Extrai exercícios ou suplementos de PDF/imagem via Bedrock |
+| `identify_exercise` | GET | Identifica exercício pelo nome — cache DynamoDB → ExerciseDB |
+| `week_suggestion` | POST | Gera sugestão semanal personalizada via Bedrock |
 
 ---
 
@@ -127,9 +149,10 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 Qualquer `push` na branch `main` dispara o workflow que:
 
 1. Cria/atualiza a infraestrutura via CloudFormation (Cognito + Lambda + DynamoDB)
-2. Injeta a URL da API e o Client ID do Cognito no HTML
-3. Sincroniza os arquivos com o S3
-4. Invalida o cache do CloudFront
+2. Atualiza as variáveis de ambiente do Lambda (incluindo `RAPIDAPI_KEY`)
+3. Injeta a URL da API e o Client ID do Cognito no HTML
+4. Sincroniza os arquivos com o S3
+5. Invalida o cache do CloudFront
 
 ### Secrets no GitHub
 
@@ -137,12 +160,13 @@ Qualquer `push` na branch `main` dispara o workflow que:
 |---|---|
 | `AWS_ACCESS_KEY_ID` | Access Key do usuário IAM |
 | `AWS_SECRET_ACCESS_KEY` | Secret Key do usuário IAM |
+| `RAPIDAPI_KEY` | Chave da ExerciseDB via RapidAPI (plano Free — 100 req/dia) |
 
 ---
 
 ## Rodando localmente
 
-Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o app funciona offline usando `localStorage`.
+Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o app funciona offline usando `localStorage`. As chamadas de API (identificação de exercícios, sugestão semanal) são silenciosamente ignoradas sem conexão.
 
 ---
 
@@ -153,15 +177,13 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 - [x] Musculação: séries com reps e kg, comparação com sessão anterior
 - [x] Cardio: atividades com min e km, duração calculada automaticamente
 - [x] Upload de plano de treino via PDF/imagem — extração por IA
-- [x] Mapa muscular semanal com intensidade por grupo
+- [x] Tela Semana — mapa muscular SVG com heatmap, timeline, equilíbrio e sugestão IA
+- [x] Identificação automática de exercícios — ExerciseDB + cache DynamoDB
+- [x] Edição de exercício no plano — séries/reps padrão, músculos, propagação permanente
 - [x] Metas e objetivos — 12 categorias, 5 frequências, logs, confetti
 - [x] Vínculo de meta com tipo de treino — duração ou sessões automáticas
 - [x] % de sucesso do dia alimentado pelo treino concluído
 - [x] Suplementos personalizados com importação por IA
 - [x] Persistência em nuvem com DynamoDB + Lambda
 - [x] Autenticação com AWS Cognito
-- [x] Registro de progresso em metas de longo prazo — painel inline (desktop), bottom sheet (mobile), botões rápidos por unidade, anotações, histórico e previsão de conclusão
-- [x] Reordenação de exercícios — drag & drop desktop, botões ↑ ↓ mobile (long press)
-- [x] Agrupamento bi-set / tri-set com colchete visual e sugestão de super-set antagonista
-- [x] Edição inline de exercício — nome, músculos principais (array), secundários, grupo, obs; propagação opcional para o plano
-- [ ] Domínio customizado via Route 53
+- [x] Registro de progresso em metas de longo prazo — painel inline, bottom sheet, botões rápidos, histórico e previsão
