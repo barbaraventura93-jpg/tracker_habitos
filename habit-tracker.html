@@ -1310,11 +1310,6 @@ function _gymRenderEditSheet(){
   const bd=document.createElement('div');
   bd.id='gym-edit-bd';bd.className='gym-edit-bd';
   bd.onclick=e=>{if(e.target===bd)gymCloseEdit();};
-  const chipsTgt=_gymEditMusTgt.map((m,i)=>`<span class="gym-chip">${m}<button onclick="gymEditRemMuscle('tgt',${i})">✕</button></span>`).join('');
-  const chipsSec=_gymEditMusSec.map((m,i)=>`<span class="gym-chip" style="background:#F0FFF4;color:#16A34A">${m}<button onclick="gymEditRemMuscle('sec',${i})" style="color:#16A34A">✕</button></span>`).join('');
-  const addTgt=_gymEditMusTgt.length<3?`<button class="gym-chip-add" onclick="gymShowMusclePicker('tgt')">+ add</button>`:'';
-  const addSec=`<button class="gym-chip-add" onclick="gymShowMusclePicker('sec')">+ add</button>`;
-  const picker=_gymMusclePickField?`<div class="gym-muscle-grid">${GYM_MUSCLES.filter((m,i,a)=>a.indexOf(m)===i).map(m=>{const arr=_gymMusclePickField==='tgt'?_gymEditMusTgt:_gymEditMusSec;return`<button class="gym-muscle-opt${arr.includes(m)?' sel':''}" onclick="gymPickMuscle('${m}')">${m}</button>`;}).join('')}</div>`:'';
   const groups=GYM_GROUPS.map(g=>`<option value="${g}"${g===ex.group?' selected':''}>${g}</option>`).join('');
   const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none';
   const titleLabel=_gymEditIsPlan?'🗂️ Editar no Plano':'✏️ Editar (só esta sessão)';
@@ -1332,12 +1327,6 @@ function _gymRenderEditSheet(){
     ${scopeNote}
     <div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">NOME</div>
     <input id="gym-edit-name" type="text" value="${ex.name.replace(/"/g,'&quot;')}" style="${inp};margin-bottom:14px">
-    <div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">MÚSCULOS PRINCIPAIS (até 3)</div>
-    <div style="margin-bottom:${_gymMusclePickField==='tgt'?'4':'14'}px">${chipsTgt}${addTgt}</div>
-    ${_gymMusclePickField==='tgt'?`<div style="margin-bottom:14px">${picker}</div>`:''}
-    <div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">MÚSCULOS SECUNDÁRIOS</div>
-    <div style="margin-bottom:${_gymMusclePickField==='sec'?'4':'14'}px">${chipsSec}${addSec}</div>
-    ${_gymMusclePickField==='sec'?`<div style="margin-bottom:14px">${picker}</div>`:''}
     <div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">GRUPO MUSCULAR</div>
     <select id="gym-edit-group" style="${inp};margin-bottom:14px">${groups}</select>
     ${planFields}
@@ -1608,7 +1597,33 @@ function renderGymPlan(gymBody){
       </div>
     </div>`
     :`<button onclick="_gymWkCreate=true;renderGym()" style="width:100%;padding:10px;background:none;border:1.5px dashed #D4D0CE;border-radius:10px;color:#78716C;font-size:12px;margin-bottom:8px">+ Criar novo treino</button>`;
-  gymBody.innerHTML=workoutCards+createForm+`<button onclick="gymTogglePlan()" style="width:100%;padding:12px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:14px;font-weight:600;margin-bottom:4px">← Voltar ao log de treino</button>`;
+  gymBody.innerHTML=workoutCards+createForm+`<button onclick="gymReidentifyAll()" style="width:100%;padding:12px;background:#F0EFED;border-radius:10px;color:#78716C;font-size:13px;font-weight:600;margin-bottom:8px">🔄 Rever grupos de todos os exercícios</button><button onclick="gymTogglePlan()" style="width:100%;padding:12px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:14px;font-weight:600;margin-bottom:4px">← Voltar ao log de treino</button>`;
+}
+async function gymReidentifyAll(){
+  if(!USE_API||!authToken){showToast('Faça login para usar esta função.');return;}
+  const entries=[];
+  Object.entries(gymPlan).forEach(function([wId,exList]){
+    (exList||[]).forEach(function(ex,idx){entries.push({wId,idx,name:ex.name});});
+  });
+  if(!entries.length){showToast('Nenhum exercício no plano.');return;}
+  showToast('Identificando '+entries.length+' exercício(s)...');
+  let updated=0,failed=0;
+  for(const item of entries){
+    try{
+      const r=await fetch(API_URL+'?action=identify_exercise&name='+encodeURIComponent(item.name),{headers:{authorization:'Bearer '+authToken}});
+      if(!r.ok){failed++;continue;}
+      const d=await r.json();
+      if(d.found&&d.group){
+        gymPlan[item.wId][item.idx].group=d.group;
+        gymPlan[item.wId][item.idx].targetMuscle=d.targetMuscle||'';
+        gymPlan[item.wId][item.idx].targetMuscles=d.targetMuscle?[d.targetMuscle]:[];
+        gymPlan[item.wId][item.idx].secondaryMuscles=d.secondaryMuscles||[];
+        updated++;
+      } else {failed++;}
+    } catch(e){failed++;}
+  }
+  saveGymPlan();renderGym();
+  showToast('✓ '+updated+' atualizados'+(failed?' · '+failed+' não identificados':''));
 }
 
 function renderGymPlanPreviewHtml(){
