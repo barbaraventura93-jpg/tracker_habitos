@@ -158,7 +158,7 @@ textarea,input,select{font-family:inherit;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 /* Gym reorder */
 .gym-drag-handle{color:#D4D0CE;font-size:15px;cursor:grab;padding:0 4px 0 0;-webkit-user-select:none;user-select:none;display:none;line-height:1;align-self:center;flex-shrink:0}
-@media(hover:hover){.gym-card-wrap:hover .gym-drag-handle{display:block}}
+@media(hover:hover){.gym-plan-card:hover .gym-drag-handle{display:block}}
 .gym-reorder-mode .gym-drag-handle{display:block!important}
 .gym-card-lifting{opacity:.45!important;transform:scale(1.01)!important;box-shadow:0 10px 28px rgba(0,0,0,.13)!important}
 .gym-drop-above{border-top:2.5px solid var(--accent)!important;padding-top:6px!important}
@@ -689,6 +689,8 @@ let _gymLongPressTimer=null;
 let _gymEditIdx=null,_gymEditMusTgt=[],_gymEditMusSec=[];
 let _gymMusclePickField=null;
 let _gymEditLongPressTimer=null;
+let _gymEditEx=null,_gymEditIsPlan=false,_gymPlanEditIdx=null;
+let _gymPendingPlanAdd=null;
 function loadGymPlan(){try{return JSON.parse(localStorage.getItem('ht:gymplan')||'{}');}catch{return{};}}
 function saveGymPlan(){
   try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}
@@ -734,7 +736,7 @@ async function gymIdentifyExercise(name){
     _gymIdInfo=d;
     if(!s) return;
     if(d.found){
-      const groupEl=document.getElementById('gym-new-group');
+      const groupEl=document.getElementById('gym-new-group')||document.getElementById('gpa-group');
       if(groupEl&&d.group){
         const opt=[...groupEl.options].find(function(o){return o.value===d.group;});
         if(opt) groupEl.value=opt.value;
@@ -805,7 +807,7 @@ function showGym(){
   showScreen('gym');
 }
 function gymTogglePlan(){
-  _gymViewPlan=!_gymViewPlan;_gymView='hoje';
+  _gymViewPlan=!_gymViewPlan;_gymView='hoje';_gymReorderMode=false;
   const _curTr=loadDay(currentDate).tr;
   _gymPlanTr=_gymPlanTr||(_curTr!=='descanso'?_curTr:(userWorkouts[0]?.id||'descanso'));
   _gymPlanPreview=[];
@@ -1071,8 +1073,14 @@ function renderGym(){
     session=plan.map(ex=>{
       const nSets=ex.defaultSets||1;
       const repsVal=String(ex.defaultReps||'');
-      return{id:ex.id,name:ex.name,group:ex.group,obs:ex.obs||'',
+      const se={id:ex.id,name:ex.name,group:ex.group,obs:ex.obs||'',
              sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))};
+      if(ex.groupId){se.groupId=ex.groupId;se.groupType=ex.groupType;se.groupPosition=ex.groupPosition;}
+      if(ex.targetMuscles)se.targetMuscles=ex.targetMuscles;
+      if(ex.targetMuscle)se.targetMuscle=ex.targetMuscle;
+      if(ex.secondaryMuscles)se.secondaryMuscles=ex.secondaryMuscles;
+      if(ex.gifUrl)se.gifUrl=ex.gifUrl;
+      return se;
     });
     if(session.length>0) saveGymSession(date,tr,session);
   }
@@ -1119,17 +1127,14 @@ function renderGym(){
       if(isCardio){return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;width:22px;text-align:center;flex-shrink:0">${si+1}</div><input type="number" inputmode="decimal" placeholder="${prevSet?.reps||'min'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:62px;${inp}"><span style="color:#A8A29E;font-size:11px">min</span><input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'km'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;${inp}"><span style="color:#A8A29E;font-size:11px">km</span>${doneBtn}${delBtn}</div>`;}
       return`<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px"><div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;width:22px;text-align:center;flex-shrink:0">${si+1}</div><input type="text" inputmode="decimal" placeholder="${prevSet?.reps||'reps'}" value="${set.reps||''}" onchange="gymSetVal(${ei},${si},'reps',this.value)" style="width:54px;${inp}"><span style="color:#A8A29E;font-size:13px;font-weight:700">×</span><input type="number" inputmode="decimal" placeholder="${prevSet?.kg||'kg'}" value="${set.kg||''}" onchange="gymSetVal(${ei},${si},'kg',this.value)" style="width:62px;${inp}"><span style="color:#A8A29E;font-size:11px">kg</span>${doneBtn}${delBtn}</div>`;
     }).join('');
-    const gifThumb=ex.gifUrl?`<img src="${ex.gifUrl}" onclick="gymShowGif(${ei})" style="width:52px;height:52px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:pointer" loading="lazy">`:'';
+    const gifThumb=ex.gifUrl?`<img src="${ex.gifUrl}" onclick="gymShowGif(${ei})" style="width:48px;height:48px;border-radius:8px;object-fit:cover;flex-shrink:0;cursor:pointer" loading="lazy">`:'';
     const tMuscles=ex.targetMuscles||(ex.targetMuscle?[ex.targetMuscle]:[]);
     const muscleBadges=tMuscles.map(m=>`<span style="display:inline-block;background:#EDE9FF;color:#6C63FF;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:600;margin:2px 2px 0 0">${m}</span>`).join('');
-    const handle=`<span class="gym-drag-handle" title="Mover">⠿</span>`;
-    const arrows=_gymReorderMode?`<div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0"><button onclick="gymMoveUp(${ei})" style="background:#F0EFED;color:#6C63FF;padding:2px 8px;border-radius:5px;font-size:12px;line-height:1.4"${ei===0?' disabled':''}>↑</button><button onclick="gymMoveDown(${ei})" style="background:#F0EFED;color:#6C63FF;padding:2px 8px;border-radius:5px;font-size:12px;line-height:1.4"${ei===session.length-1?' disabled':''}>↓</button></div>`:'';
     const editBtn=`<button onclick="gymOpenEdit(${ei})" style="background:#fff;color:#A8A29E;padding:4px 8px;border-radius:6px;font-size:11px;flex-shrink:0;line-height:1">✏️</button>`;
     const delBtn2=`<button onclick="gymDelEx(${ei})" style="background:#fff;color:#78716C;padding:4px 8px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>`;
-    const touchEvts=!_gymReorderMode?`ontouchstart="gymLongPressStart(event,${ei})" ontouchend="gymLongPressCancel()" ontouchmove="gymLongPressCancel()"`:' ';
-    return`<div class="card gym-card-wrap${_gymReorderMode?' gym-reorder-mode':''}" data-ei="${ei}" ${touchEvts} draggable="true" ondragstart="gymDragStart(${ei},event)" ondragover="gymDragOver(event,${ei})" ondrop="gymDrop(${ei})" ondragend="gymDragEnd()" style="margin-bottom:8px;${allDone?'border-color:#BBF7D0;':''}">
+    return`<div class="card gym-card-wrap" data-ei="${ei}" style="margin-bottom:8px;${allDone?'border-color:#BBF7D0;':''}">
       <div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:8px">
-        ${handle}${arrows}${gifThumb}
+        ${gifThumb}
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:700;color:#1C1917" ontouchstart="gymEditLongPressStart(event,${ei})" ontouchend="gymEditLongPressCancel()" ontouchmove="gymEditLongPressCancel()" oncontextmenu="event.preventDefault();gymOpenEdit(${ei})">${ex.name}</div>
           ${ex.group?`<div style="font-size:10px;color:#78716C;margin-top:1px">${ex.group}</div>`:''}${muscleBadges}
@@ -1142,32 +1147,15 @@ function renderGym(){
     </div>`;
   }
 
-  // Reorder mode banner
-  if(_gymReorderMode){
-    html+=`<div style="background:#6C63FF;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:8px;font-size:13px"><span style="flex:1">Use ↑ ↓ para reordenar</span><button onclick="gymExitReorder()" style="background:rgba(255,255,255,.2);color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600">✓ Pronto</button></div>`;
-  }
-
-  // Render blocks + group buttons between them
-  _blocks.forEach((block,bi)=>{
+  // Log: render blocks — grouping visual only, no creation buttons
+  _blocks.forEach((block)=>{
     if(block.type==='group'){
       const tc=trObj.color||'#818cf8';
       html+=`<div class="gym-biset-wrap" style="border-color:${tc}"><span class="gym-biset-badge" style="background:${tc}">${block.groupType==='triset'?'TRI-SET':'BI-SET'}</span>`;
       block.items.forEach(({ei,ex})=>{html+=_gymCard(ei,ex);});
-      html+=`<button class="gym-group-btn" onclick="gymUngroup('${block.groupId}')" style="justify-content:flex-end;padding-right:4px;font-size:10px;margin:0 0 4px">Desagrupar ✕</button></div>`;
+      html+=`</div>`;
     }else{
       html+=_gymCard(block.ei,block.ex);
-    }
-    if(!_gymReorderMode&&bi<_blocks.length-1){
-      const lastEx=block.type==='group'?block.items[block.items.length-1].ex:block.ex;
-      const lastEi=block.type==='group'?block.items[block.items.length-1].ei:block.ei;
-      const nextBlock=_blocks[bi+1];
-      const nextEx=nextBlock.type==='group'?nextBlock.items[0].ex:nextBlock.ex;
-      const nextEi=nextBlock.type==='group'?nextBlock.items[0].ei:nextBlock.ei;
-      const sug=suggestGrouping(lastEx,nextEx);
-      const canExtend=block.type==='group'&&block.items.length<3;
-      const addArgs=canExtend?`${lastEi},${nextEi},'${block.groupId}'`:`${lastEi},${nextEi}`;
-      const btnLabel=canExtend?'⊕ Adicionar ao tri-set':'⟷ Agrupar como bi-set';
-      html+=`<button class="gym-group-btn" onclick="gymGroupPair(${addArgs})">${btnLabel}${sug?` <span style="color:#A8A29E;font-size:9.5px">${sug}</span>`:''}</button>`;
     }
   });
 
@@ -1196,7 +1184,7 @@ function renderGym(){
     html=`<div class="card fade-in" style="text-align:center;padding:28px 16px">
       <div style="font-size:36px;margin-bottom:10px">${isCardio?'🏃':'🏋️'}</div>
       <div style="font-size:14px;font-weight:700;color:#1C1917;margin-bottom:6px">Nenhuma atividade ainda</div>
-      <div style="font-size:12px;color:#78716C;margin-bottom:16px">Adicione as atividades da sessão de hoje.<br>Serão salvas como modelo para <b>${trObj.name}</b>.</div>
+      <div style="font-size:12px;color:#78716C;margin-bottom:16px">Registre o que foi feito hoje. Para montar o treino permanente, use o <b>Plano</b>.</div>
       <button onclick="gymOpenAdd()" style="padding:12px 24px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">+ ${isCardio?'Primeira atividade':'Primeiro exercício'}</button>
     </div>`;
   } else {
@@ -1239,82 +1227,6 @@ function gymDelEx(ei){
   s.splice(ei,1);saveGymSession(currentDate,tr,s);renderGym();
 }
 
-// ── DRAG & DROP (desktop) ────────────────────────────────────────────────────
-function gymDragStart(ei,ev){
-  _gymDragSrc=ei;
-  ev.dataTransfer.effectAllowed='move';
-  ev.dataTransfer.setData('text/plain',String(ei));
-  setTimeout(()=>{const el=document.querySelector('.gym-card-wrap[data-ei="'+ei+'"]');if(el)el.classList.add('gym-card-lifting');},0);
-}
-function gymDragOver(ev,ei){
-  ev.preventDefault();ev.dataTransfer.dropEffect='move';
-  if(_gymDragOverIdx!==ei){
-    _gymDragOverIdx=ei;
-    document.querySelectorAll('.gym-drop-above').forEach(el=>el.classList.remove('gym-drop-above'));
-    const el=document.querySelector('.gym-card-wrap[data-ei="'+ei+'"]');
-    if(el&&ei!==_gymDragSrc)el.classList.add('gym-drop-above');
-  }
-}
-function gymDrop(ei){
-  if(_gymDragSrc===null||_gymDragSrc===ei){gymDragEnd();return;}
-  const tr=loadDay(currentDate).tr;
-  const s=loadGymSession(currentDate,tr)||[];
-  const[moved]=s.splice(_gymDragSrc,1);
-  s.splice(ei,0,moved);
-  s.forEach((ex,i)=>{ex.order=i;});
-  saveGymSession(currentDate,tr,s);
-  gymDragEnd();renderGym();
-}
-function gymDragEnd(){
-  _gymDragSrc=null;_gymDragOverIdx=null;
-  document.querySelectorAll('.gym-card-lifting,.gym-drop-above').forEach(el=>el.classList.remove('gym-card-lifting','gym-drop-above'));
-}
-
-// ── REORDER (mobile long press → ↑↓ buttons) ────────────────────────────────
-function gymLongPressStart(ev,ei){
-  clearTimeout(_gymLongPressTimer);
-  _gymLongPressTimer=setTimeout(()=>{
-    _gymReorderMode=true;renderGym();
-    if(navigator.vibrate)navigator.vibrate(40);
-  },500);
-}
-function gymLongPressCancel(){clearTimeout(_gymLongPressTimer);}
-function gymExitReorder(){_gymReorderMode=false;renderGym();}
-function gymMoveUp(ei){
-  if(ei<=0)return;
-  const tr=loadDay(currentDate).tr;const s=loadGymSession(currentDate,tr)||[];
-  [s[ei-1],s[ei]]=[s[ei],s[ei-1]];
-  s.forEach((ex,i)=>{ex.order=i;});
-  saveGymSession(currentDate,tr,s);renderGym();
-}
-function gymMoveDown(ei){
-  const tr=loadDay(currentDate).tr;const s=loadGymSession(currentDate,tr)||[];
-  if(ei>=s.length-1)return;
-  [s[ei],s[ei+1]]=[s[ei+1],s[ei]];
-  s.forEach((ex,i)=>{ex.order=i;});
-  saveGymSession(currentDate,tr,s);renderGym();
-}
-
-// ── BI-SET / TRI-SET ─────────────────────────────────────────────────────────
-function gymGroupPair(ei1,ei2,existingGroupId){
-  const tr=loadDay(currentDate).tr;const s=loadGymSession(currentDate,tr)||[];
-  if(existingGroupId){
-    const pos=s.filter(ex=>ex.groupId===existingGroupId).length;
-    s[ei2].groupId=existingGroupId;s[ei2].groupType='triset';s[ei2].groupPosition=pos;
-    s.forEach(ex=>{if(ex.groupId===existingGroupId)ex.groupType='triset';});
-  }else{
-    const gid='grp_'+Date.now();
-    s[ei1].groupId=gid;s[ei1].groupType='biset';s[ei1].groupPosition=0;
-    s[ei2].groupId=gid;s[ei2].groupType='biset';s[ei2].groupPosition=1;
-  }
-  saveGymSession(currentDate,tr,s);renderGym();
-}
-function gymUngroup(groupId){
-  const tr=loadDay(currentDate).tr;const s=loadGymSession(currentDate,tr)||[];
-  s.forEach(ex=>{if(ex.groupId===groupId){delete ex.groupId;delete ex.groupType;delete ex.groupPosition;}});
-  saveGymSession(currentDate,tr,s);renderGym();
-}
-
 // ── EXERCISE EDIT ────────────────────────────────────────────────────────────
 function gymEditLongPressStart(ev,ei){
   clearTimeout(_gymEditLongPressTimer);
@@ -1326,17 +1238,27 @@ function gymOpenEdit(ei){
   const tr=loadDay(currentDate).tr;
   const s=loadGymSession(currentDate,tr)||[];
   const ex=s[ei];if(!ex)return;
-  _gymEditIdx=ei;
+  _gymEditIdx=ei;_gymEditEx=ex;_gymEditIsPlan=false;
   _gymEditMusTgt=[...(ex.targetMuscles||(ex.targetMuscle?[ex.targetMuscle]:[])) ];
   _gymEditMusSec=[...(ex.secondaryMuscles||[])];
   _gymMusclePickField=null;
-  _gymRenderEditSheet(ex);
+  _gymRenderEditSheet();
+}
+function gymPlanOpenEdit(idx){
+  const plan=gymPlan[_gymPlanTr];if(!plan?.[idx])return;
+  const ex=plan[idx];
+  _gymEditIdx=idx;_gymEditEx=ex;_gymEditIsPlan=true;_gymPlanEditIdx=idx;
+  _gymEditMusTgt=[...(ex.targetMuscles||(ex.targetMuscle?[ex.targetMuscle]:[])) ];
+  _gymEditMusSec=[...(ex.secondaryMuscles||[])];
+  _gymMusclePickField=null;
+  _gymRenderEditSheet();
 }
 function gymCloseEdit(){
   const bd=document.getElementById('gym-edit-bd');if(bd)bd.remove();
-  _gymEditIdx=null;_gymMusclePickField=null;
+  _gymEditIdx=null;_gymEditEx=null;_gymMusclePickField=null;
 }
-function _gymRenderEditSheet(ex){
+function _gymRenderEditSheet(){
+  const ex=_gymEditEx;if(!ex)return;
   const old=document.getElementById('gym-edit-bd');if(old)old.remove();
   const bd=document.createElement('div');
   bd.id='gym-edit-bd';bd.className='gym-edit-bd';
@@ -1348,9 +1270,19 @@ function _gymRenderEditSheet(ex){
   const picker=_gymMusclePickField?`<div class="gym-muscle-grid">${GYM_MUSCLES.filter((m,i,a)=>a.indexOf(m)===i).map(m=>{const arr=_gymMusclePickField==='tgt'?_gymEditMusTgt:_gymEditMusSec;return`<button class="gym-muscle-opt${arr.includes(m)?' sel':''}" onclick="gymPickMuscle('${m}')">${m}</button>`;}).join('')}</div>`:'';
   const groups=GYM_GROUPS.map(g=>`<option value="${g}"${g===ex.group?' selected':''}>${g}</option>`).join('');
   const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none';
+  const titleLabel=_gymEditIsPlan?'🗂️ Editar no Plano':'✏️ Editar (só esta sessão)';
+  const scopeNote=_gymEditIsPlan?'':`<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:8px;padding:8px 10px;font-size:11px;color:#92400E;margin-bottom:14px">Editando só esta sessão. Para mudar permanentemente, edite no Plano.</div>`;
+  const planFields=_gymEditIsPlan?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
+    <div><div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">SÉRIES PADRÃO</div><input id="gym-edit-sets" type="number" min="1" value="${ex.defaultSets||3}" style="${inp}"></div>
+    <div><div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">REPS PADRÃO</div><input id="gym-edit-reps" type="text" value="${ex.defaultReps||''}" placeholder="12" style="${inp}"></div>
+  </div>`:'';
+  const saveBtn=_gymEditIsPlan
+    ?`<button onclick="gymPlanSaveEdit()" style="flex:1;padding:13px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Salvar no Plano</button>`
+    :`<button onclick="gymSaveEdit()" style="flex:1;padding:13px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Salvar</button>`;
   bd.innerHTML=`<div class="gym-edit-sheet">
     <div style="width:40px;height:4px;background:#E7E5E4;border-radius:2px;margin:0 auto 18px"></div>
-    <div style="font-size:15px;font-weight:700;color:#1C1917;margin-bottom:16px">✏️ Editar exercício</div>
+    <div style="font-size:15px;font-weight:700;color:#1C1917;margin-bottom:16px">${titleLabel}</div>
+    ${scopeNote}
     <div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">NOME</div>
     <input id="gym-edit-name" type="text" value="${ex.name.replace(/"/g,'&quot;')}" style="${inp};margin-bottom:14px">
     <div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">MÚSCULOS PRINCIPAIS (até 3)</div>
@@ -1361,10 +1293,11 @@ function _gymRenderEditSheet(ex){
     ${_gymMusclePickField==='sec'?`<div style="margin-bottom:14px">${picker}</div>`:''}
     <div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">GRUPO MUSCULAR</div>
     <select id="gym-edit-group" style="${inp};margin-bottom:14px">${groups}</select>
+    ${planFields}
     <div style="font-size:11px;color:#78716C;margin-bottom:4px;font-weight:600">OBSERVAÇÃO</div>
     <input id="gym-edit-obs" type="text" value="${(ex.obs||'').replace(/"/g,'&quot;')}" placeholder="Ex: pegada fechada, corrente..." style="${inp};margin-bottom:20px">
     <div style="display:flex;gap:8px">
-      <button onclick="gymSaveEdit()" style="flex:1;padding:13px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Salvar</button>
+      ${saveBtn}
       <button onclick="gymCloseEdit()" style="padding:13px 18px;background:#F0EFED;border-radius:10px;color:#78716C;font-size:14px">Cancelar</button>
     </div>
   </div>`;
@@ -1372,21 +1305,18 @@ function _gymRenderEditSheet(ex){
 }
 function gymEditRemMuscle(field,idx){
   if(field==='tgt')_gymEditMusTgt.splice(idx,1);else _gymEditMusSec.splice(idx,1);
-  const tr=loadDay(currentDate).tr;const s=loadGymSession(currentDate,tr)||[];
-  _gymRenderEditSheet(s[_gymEditIdx]);
+  _gymRenderEditSheet();
 }
 function gymShowMusclePicker(field){
   _gymMusclePickField=_gymMusclePickField===field?null:field;
-  const tr=loadDay(currentDate).tr;const s=loadGymSession(currentDate,tr)||[];
-  _gymRenderEditSheet(s[_gymEditIdx]);
+  _gymRenderEditSheet();
 }
 function gymPickMuscle(muscle){
   const arr=_gymMusclePickField==='tgt'?_gymEditMusTgt:_gymEditMusSec;
   if(_gymMusclePickField==='tgt'&&arr.length>=3)return;
   const idx=arr.indexOf(muscle);
   if(idx>=0)arr.splice(idx,1);else arr.push(muscle);
-  const tr=loadDay(currentDate).tr;const s=loadGymSession(currentDate,tr)||[];
-  _gymRenderEditSheet(s[_gymEditIdx]);
+  _gymRenderEditSheet();
 }
 function gymSaveEdit(){
   const name=(document.getElementById('gym-edit-name')?.value||'').trim();
@@ -1404,6 +1334,22 @@ function gymSaveEdit(){
   saveGymSession(currentDate,tr,s);
   gymCloseEdit();renderGym();
   if(hadChange)_gymAskUpdatePlan(ex.id,name,group);
+}
+function gymPlanSaveEdit(){
+  const name=(document.getElementById('gym-edit-name')?.value||'').trim();
+  if(!name)return;
+  const group=document.getElementById('gym-edit-group')?.value||'Outro';
+  const obs=(document.getElementById('gym-edit-obs')?.value||'').trim();
+  const sets=parseInt(document.getElementById('gym-edit-sets')?.value)||3;
+  const reps=(document.getElementById('gym-edit-reps')?.value||'').trim();
+  const plan=gymPlan[_gymPlanTr];if(!plan?.[_gymPlanEditIdx]){gymCloseEdit();return;}
+  const ex=plan[_gymPlanEditIdx];
+  ex.name=name;ex.group=group;ex.obs=obs;ex.defaultSets=sets;ex.defaultReps=reps;
+  ex.targetMuscles=[..._gymEditMusTgt];
+  ex.targetMuscle=_gymEditMusTgt[0]||ex.targetMuscle||'';
+  ex.secondaryMuscles=[..._gymEditMusSec];
+  ex.userOverride=true;
+  saveGymPlan();gymCloseEdit();renderGym();showToast('Exercício atualizado no plano!');
 }
 function _gymAskUpdatePlan(exId,name,group){
   const el=document.createElement('div');
@@ -1432,9 +1378,27 @@ function gymConfirmAdd(){
   const extra=(_gymIdInfo&&_gymIdInfo.found)?{gifUrl:_gymIdInfo.gifUrl,targetMuscle:_gymIdInfo.targetMuscle,targetMuscles:_gymIdInfo.targetMuscle?[_gymIdInfo.targetMuscle]:[],secondaryMuscles:_gymIdInfo.secondaryMuscles,instructions:_gymIdInfo.instructions}:{};
   const newEx=Object.assign({id,name,group,sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))},extra);
   const s=loadGymSession(currentDate,tr)||[];s.push(newEx);saveGymSession(currentDate,tr,s);
-  if(!gymPlan[tr]) gymPlan[tr]=[];
-  gymPlan[tr].push({id,name,group,defaultSets:nSets,defaultReps:repsVal,obs:''});saveGymPlan();
   _gymAddOpen=false;_gymIdInfo=null;renderGym();
+  const wkName=getWorkoutById(tr)?.name||tr;
+  _gymAskSaveToPlan(id,name,group,nSets,repsVal,tr,wkName);
+}
+function _gymAskSaveToPlan(id,name,group,nSets,repsVal,tr,wkName){
+  _gymPendingPlanAdd={id,name,group,nSets,repsVal,tr};
+  const old=document.getElementById('gym-ask-plan');if(old)old.remove();
+  const el=document.createElement('div');
+  el.id='gym-ask-plan';
+  el.style.cssText='position:fixed;bottom:80px;left:50%;transform:translateX(-50%);background:#1C1917;color:#fff;padding:12px 16px;border-radius:12px;z-index:500;display:flex;align-items:center;gap:10px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.3);max-width:calc(100vw - 32px)';
+  el.innerHTML=`<span style="flex:1">Salvar em <b>${wkName}</b> também?</span><button onclick="gymDoAddToPlan();document.getElementById('gym-ask-plan')?.remove()" style="background:#fff;color:#1C1917;padding:5px 10px;border-radius:6px;font-size:12px;font-weight:600;flex-shrink:0">Sim</button><button onclick="_gymPendingPlanAdd=null;document.getElementById('gym-ask-plan')?.remove()" style="background:rgba(255,255,255,.15);color:#fff;padding:5px 10px;border-radius:6px;font-size:12px;flex-shrink:0">Não</button>`;
+  document.body.appendChild(el);
+  setTimeout(()=>{el.remove();_gymPendingPlanAdd=null;},8000);
+}
+function gymDoAddToPlan(){
+  if(!_gymPendingPlanAdd)return;
+  const{id,name,group,nSets,repsVal,tr}=_gymPendingPlanAdd;
+  if(!gymPlan[tr])gymPlan[tr]=[];
+  gymPlan[tr].push({id,name,group,defaultSets:nSets,defaultReps:repsVal,obs:''});
+  saveGymPlan();showToast('Adicionado ao plano!');
+  _gymPendingPlanAdd=null;
 }
 
 let _gymCreateFile=null;
@@ -1461,6 +1425,28 @@ function gymPlanManualConfirm(wId){
 let _gymWkCreate=false;
 function renderGymPlan(gymBody){
   const inp2='background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none';
+
+  // Build a rich exercise card for the Plan view
+  function _planCard(w,plan,idx,ex){
+    const tMuscles=ex.targetMuscles||(ex.targetMuscle?[ex.targetMuscle]:[]);
+    const muscleBadges=tMuscles.slice(0,2).map(m=>`<span style="display:inline-block;background:#EDE9FF;color:#6C63FF;border-radius:4px;padding:1px 6px;font-size:9px;font-weight:600;margin-right:3px">${m}</span>`).join('');
+    const handle=`<span class="gym-drag-handle" title="Segurar para mover">⠿</span>`;
+    const arrows=_gymReorderMode?`<div style="display:flex;flex-direction:column;gap:2px;flex-shrink:0"><button onclick="gymMoveUp(${idx})" style="background:#F0EFED;color:#6C63FF;padding:2px 8px;border-radius:5px;font-size:12px;line-height:1.4"${idx===0?' disabled':''}>↑</button><button onclick="gymMoveDown(${idx})" style="background:#F0EFED;color:#6C63FF;padding:2px 8px;border-radius:5px;font-size:12px;line-height:1.4"${idx===plan.length-1?' disabled':''}>↓</button></div>`:'';
+    const touchEvts=!_gymReorderMode?`ontouchstart="gymLongPressStart(event,${idx})" ontouchend="gymLongPressCancel()" ontouchmove="gymLongPressCancel()"`:' ';
+    return`<div class="card gym-plan-card${_gymReorderMode?' gym-reorder-mode':''}" data-pi="${idx}" ${touchEvts} draggable="true" ondragstart="gymDragStart(${idx},event)" ondragover="gymDragOver(event,${idx})" ondrop="gymDrop(${idx})" ondragend="gymDragEnd()" style="margin-bottom:6px;padding:9px 11px">
+      <div style="display:flex;align-items:center;gap:7px">
+        ${handle}${arrows}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#1C1917">${ex.name}</div>
+          <div style="font-size:11px;color:#78716C;margin-top:1px">${ex.group||''}${ex.defaultSets?' · <b>'+ex.defaultSets+'×'+(ex.defaultReps||'?')+'</b>':''}${ex.obs?' · <i>'+ex.obs+'</i>':''}</div>
+          ${muscleBadges?`<div style="margin-top:3px">${muscleBadges}</div>`:''}
+        </div>
+        <button onclick="gymPlanOpenEdit(${idx})" style="background:#F0EFED;color:#A8A29E;padding:5px 8px;border-radius:6px;font-size:11px;flex-shrink:0;line-height:1">✏️</button>
+        <button onclick="gymPlanDelEx('${w.id}',${idx})" style="background:#F0EFED;color:#f87171;padding:5px 8px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
+      </div>
+    </div>`;
+  }
+
   const workoutCards=userWorkouts.map(w=>{
     const isExp=_gymPlanTr===w.id;
     const plan=gymPlan[w.id]||[];
@@ -1468,22 +1454,53 @@ function renderGymPlan(gymBody){
     let expContent='';
     if(isExp){
       const previewHtml=_gymPlanPreview.length?renderGymPlanPreviewHtml():'';
-      const exList=plan.length>0?plan.map((ex,i)=>`
-        <div style="display:flex;align-items:center;gap:8px;padding:9px 11px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;margin-bottom:6px">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:700;color:#1C1917">${ex.name}</div>
-            <div style="font-size:11px;color:#78716C;margin-top:1px">${ex.group||''}${ex.defaultSets?' · '+ex.defaultSets+'×'+(ex.defaultReps||'?'):''}${ex.obs?' · '+ex.obs:''}</div>
-          </div>
-          <button onclick="gymPlanDelEx('${w.id}',${i})" style="background:#F0EFED;color:#f87171;padding:5px 9px;border-radius:6px;font-size:11px;flex-shrink:0">✕</button>
-        </div>`).join('')
-        :'<div style="text-align:center;color:#78716C;padding:16px 0;font-size:12px;line-height:1.6">Nenhum exercício. Importe um PDF ou realize o treino para preencher.</div>';
+
+      // Build grouped exercise list with drag, bi-set buttons
+      let exListHtml='';
+      if(plan.length>0){
+        const seenGrps={};const blocks=[];
+        plan.forEach((ex,i)=>{
+          if(!ex.groupId){blocks.push({type:'single',i,ex});}
+          else if(!seenGrps[ex.groupId]){const b={type:'group',groupId:ex.groupId,groupType:ex.groupType||'biset',items:[{i,ex}]};seenGrps[ex.groupId]=b;blocks.push(b);}
+          else{seenGrps[ex.groupId].items.push({i,ex});}
+        });
+
+        if(_gymReorderMode){
+          exListHtml+=`<div style="background:#6C63FF;color:#fff;border-radius:10px;padding:10px 14px;margin-bottom:10px;display:flex;align-items:center;gap:8px;font-size:13px"><span style="flex:1">Use ↑↓ para reordenar</span><button onclick="gymExitReorder()" style="background:rgba(255,255,255,.2);color:#fff;padding:6px 12px;border-radius:6px;font-size:12px;font-weight:600">✓ Pronto</button></div>`;
+        }
+
+        blocks.forEach((block,bi)=>{
+          if(block.type==='group'){
+            exListHtml+=`<div class="gym-biset-wrap"><span class="gym-biset-badge">${block.groupType==='triset'?'TRI-SET':'BI-SET'}</span>`;
+            block.items.forEach(({i,ex})=>{exListHtml+=_planCard(w,plan,i,ex);});
+            exListHtml+=`<button class="gym-group-btn" onclick="gymUngroup('${block.groupId}')" style="justify-content:flex-end;padding-right:4px;font-size:10px;margin:0 0 4px">Desagrupar ✕</button></div>`;
+          }else{
+            exListHtml+=_planCard(w,plan,block.i,block.ex);
+          }
+          if(!_gymReorderMode&&bi<blocks.length-1){
+            const lastEx=block.type==='group'?block.items[block.items.length-1].ex:block.ex;
+            const lastI=block.type==='group'?block.items[block.items.length-1].i:block.i;
+            const nextBlock=blocks[bi+1];
+            const nextEx=nextBlock.type==='group'?nextBlock.items[0].ex:nextBlock.ex;
+            const nextI=nextBlock.type==='group'?nextBlock.items[0].i:nextBlock.i;
+            const sug=suggestGrouping(lastEx,nextEx);
+            const canExtend=block.type==='group'&&block.items.length<3;
+            const addArgs=canExtend?`${lastI},${nextI},'${block.groupId}'`:`${lastI},${nextI}`;
+            const btnLabel=canExtend?'⊕ Adicionar ao tri-set':'⟷ Agrupar como bi-set';
+            exListHtml+=`<button class="gym-group-btn" onclick="gymGroupPair(${addArgs})">${btnLabel}${sug?` <span style="color:#A8A29E;font-size:9.5px">${sug}</span>`:''}</button>`;
+          }
+        });
+      } else {
+        exListHtml='<div style="text-align:center;color:#78716C;padding:16px 0;font-size:12px;line-height:1.6">Nenhum exercício. Importe um PDF ou adicione manualmente.</div>';
+      }
+
       expContent=`
         <div style="border-top:1px solid #E7E5E4;margin-top:10px;padding-top:12px">
           <input type="file" id="gym-plan-file-${w.id}" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleGymPlanFile(this,'${w.id}')">
           <button type="button" onclick="document.getElementById('gym-plan-file-${w.id}').click()" style="width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:12px;text-align:center;color:#78716C;font-size:12px;cursor:pointer;margin-bottom:8px">📄 Importar plano de PDF ou imagem</button>
           <div id="gym-import-status" style="font-size:12px;min-height:14px;margin-bottom:4px"></div>
           <div id="gym-import-preview">${previewHtml}</div>
-          ${exList}
+          ${exListHtml}
           ${_gymPlanAddOpen===w.id?`
           <div style="background:#FAFAF9;border:1px solid #D4D0CE;border-radius:10px;padding:12px;margin-top:8px" class="fade-in">
             <input type="text" id="gpa-name" oninput="gymTriggerIdentify(this.value)" placeholder="Nome do exercício" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none;margin-bottom:6px">
@@ -1495,11 +1512,11 @@ function renderGymPlan(gymBody){
             </div>
             <input type="text" id="gpa-obs" placeholder="Observação (opcional)" style="width:100%;background:#fff;border:1px solid #E7E5E4;border-radius:8px;padding:9px 12px;color:#1C1917;font-size:13px;outline:none;margin-bottom:10px">
             <div style="display:flex;gap:8px">
-              <button onclick="gymPlanManualConfirm('${w.id}')" style="flex:1;padding:10px;background:#6C63FF;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Adicionar</button>
+              <button onclick="gymPlanManualConfirm('${w.id}')" style="flex:1;padding:10px;background:#6C63FF;border-radius:8px;color:#fff;font-size:13px;font-weight:700">Adicionar ao Plano</button>
               <button onclick="gymPlanManualCancel()" style="padding:10px 14px;background:#F0EFED;border-radius:8px;color:#78716C;font-size:13px">Cancelar</button>
             </div>
           </div>`
-          :`<button onclick="gymPlanManualAdd('${w.id}')" style="width:100%;padding:9px;background:none;border:1.5px dashed #D4D0CE;border-radius:9px;color:#78716C;font-size:12px;margin-top:8px">+ Adicionar exercício manualmente</button>`}
+          :`<button onclick="gymPlanManualAdd('${w.id}')" style="width:100%;padding:9px;background:none;border:1.5px dashed #D4D0CE;border-radius:9px;color:#78716C;font-size:12px;margin-top:8px">+ Adicionar exercício</button>`}
           ${plan.length>0?`<button onclick="gymPlanClearAll('${w.id}')" style="width:100%;padding:8px;background:none;border:1px solid #E7E5E4;border-radius:8px;color:#78716C;font-size:12px;margin-top:6px">🗑️ Limpar plano</button>`:''}
         </div>`;
     }
@@ -1585,6 +1602,80 @@ async function handleGymPlanFile(input,tr){
   }catch(e){
     statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
   }
+}
+
+// ─── PLAN: DRAG & DROP (desktop) ────────────────────────────────────────────
+function gymDragStart(ei,ev){
+  _gymDragSrc=ei;
+  ev.dataTransfer.effectAllowed='move';
+  ev.dataTransfer.setData('text/plain',String(ei));
+  setTimeout(()=>{const el=document.querySelector('.gym-plan-card[data-pi="'+ei+'"]');if(el)el.classList.add('gym-card-lifting');},0);
+}
+function gymDragOver(ev,ei){
+  ev.preventDefault();ev.dataTransfer.dropEffect='move';
+  if(_gymDragOverIdx!==ei){
+    _gymDragOverIdx=ei;
+    document.querySelectorAll('.gym-drop-above').forEach(el=>el.classList.remove('gym-drop-above'));
+    const el=document.querySelector('.gym-plan-card[data-pi="'+ei+'"]');
+    if(el&&ei!==_gymDragSrc)el.classList.add('gym-drop-above');
+  }
+}
+function gymDrop(ei){
+  if(_gymDragSrc===null||_gymDragSrc===ei){gymDragEnd();return;}
+  const plan=gymPlan[_gymPlanTr];if(!plan){gymDragEnd();return;}
+  const[moved]=plan.splice(_gymDragSrc,1);
+  plan.splice(ei,0,moved);
+  plan.forEach((ex,i)=>{ex.order=i;});
+  saveGymPlan();gymDragEnd();renderGym();
+}
+function gymDragEnd(){
+  _gymDragSrc=null;_gymDragOverIdx=null;
+  document.querySelectorAll('.gym-card-lifting,.gym-drop-above').forEach(el=>el.classList.remove('gym-card-lifting','gym-drop-above'));
+}
+
+// ── PLAN: REORDER (mobile long press → ↑↓ buttons) ───────────────────────────
+function gymLongPressStart(ev,ei){
+  clearTimeout(_gymLongPressTimer);
+  _gymLongPressTimer=setTimeout(()=>{
+    _gymReorderMode=true;renderGym();
+    if(navigator.vibrate)navigator.vibrate(40);
+  },500);
+}
+function gymLongPressCancel(){clearTimeout(_gymLongPressTimer);}
+function gymExitReorder(){_gymReorderMode=false;renderGym();}
+function gymMoveUp(ei){
+  if(ei<=0)return;
+  const plan=gymPlan[_gymPlanTr];if(!plan)return;
+  [plan[ei-1],plan[ei]]=[plan[ei],plan[ei-1]];
+  plan.forEach((ex,i)=>{ex.order=i;});
+  saveGymPlan();renderGym();
+}
+function gymMoveDown(ei){
+  const plan=gymPlan[_gymPlanTr];if(!plan)return;
+  if(ei>=plan.length-1)return;
+  [plan[ei],plan[ei+1]]=[plan[ei+1],plan[ei]];
+  plan.forEach((ex,i)=>{ex.order=i;});
+  saveGymPlan();renderGym();
+}
+
+// ── PLAN: BI-SET / TRI-SET ────────────────────────────────────────────────────
+function gymGroupPair(ei1,ei2,existingGroupId){
+  const plan=gymPlan[_gymPlanTr];if(!plan)return;
+  if(existingGroupId){
+    const pos=plan.filter(ex=>ex.groupId===existingGroupId).length;
+    plan[ei2].groupId=existingGroupId;plan[ei2].groupType='triset';plan[ei2].groupPosition=pos;
+    plan.forEach(ex=>{if(ex.groupId===existingGroupId)ex.groupType='triset';});
+  }else{
+    const gid='grp_'+Date.now();
+    plan[ei1].groupId=gid;plan[ei1].groupType='biset';plan[ei1].groupPosition=0;
+    plan[ei2].groupId=gid;plan[ei2].groupType='biset';plan[ei2].groupPosition=1;
+  }
+  saveGymPlan();renderGym();
+}
+function gymUngroup(groupId){
+  const plan=gymPlan[_gymPlanTr];if(!plan)return;
+  plan.forEach(ex=>{if(ex.groupId===groupId){delete ex.groupId;delete ex.groupType;delete ex.groupPosition;}});
+  saveGymPlan();renderGym();
 }
 
 // ─── BODY COMPOSITION ────────────────────────────────────────────────────────
