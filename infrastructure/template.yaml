@@ -129,22 +129,6 @@ Resources:
           REGION=os.environ.get('AWS_REGION','sa-east-1')
           MODEL='us.amazon.nova-lite-v1:0'
           RAPIDAPI_KEY=os.environ.get('RAPIDAPI_KEY','')
-          TARGET_MAP={
-            'pectorals':'Peito','pectoralis major':'Peito','serratus anterior':'Peito',
-            'lats':'Costas','latissimus dorsi':'Costas','traps':'Costas','trapezius':'Costas','rhomboids':'Costas','spine':'Costas','upper back':'Costas','levator scapulae':'Costas',
-            'delts':'Ombro','deltoid':'Ombro','deltoids':'Ombro','rotator cuff':'Ombro',
-            'biceps':'Bíceps','biceps brachii':'Bíceps','brachialis':'Bíceps','brachioradialis':'Bíceps','forearms':'Bíceps',
-            'triceps':'Tríceps','triceps brachii':'Tríceps',
-            'quads':'Perna','quadriceps':'Perna','hamstrings':'Perna','calves':'Perna','adductors':'Perna','abductors':'Perna','hip flexors':'Perna',
-            'glutes':'Glúteo','gluteus maximus':'Glúteo','gluteus medius':'Glúteo',
-            'abs':'Core','obliques':'Core','cardiovascular system':'Cardio',
-          }
-          BODY_PART_MAP={
-            'chest':'Peito','back':'Costas','shoulders':'Ombro',
-            'upper arms':'Bíceps','lower arms':'Bíceps',
-            'upper legs':'Perna','lower legs':'Perna',
-            'waist':'Core','cardio':'Cardio',
-          }
           class Dec(json.JSONEncoder):
             def default(self,o):
               if isinstance(o,decimal.Decimal):
@@ -175,97 +159,44 @@ Resources:
             if not m:
               raise Exception('Nenhum item identificado no arquivo')
             return json.loads(m.group())
-          def map_group(body_part,target):
-            t=TARGET_MAP.get(target.lower(),'')
-            if t: return t
-            return BODY_PART_MAP.get(body_part.lower(),'Outro')
-          PT_EN={
-            'supino':'bench press','supino reto':'bench press','supino plano':'bench press',
-            'supino inclinado':'incline bench press','supino declinado':'decline bench press',
-            'supino com halter':'dumbbell bench press','supino halteres':'dumbbell bench press',
-            'crucifixo':'dumbbell fly','crucifixo inclinado':'incline dumbbell fly',
-            'peck deck':'pec deck fly','voador':'pec deck fly',
-            'remada':'bent over row','remada curvada':'bent over row','remada baixa':'seated cable row',
-            'remada alta':'upright row','remada unilateral':'one arm dumbbell row',
-            'pulldown':'lat pulldown','puxada':'lat pulldown','puxada frontal':'lat pulldown',
-            'puxada por tras':'behind neck pulldown','puxada neutra':'cable close grip pulldown',
-            'barra fixa':'pull up','barra':'pull up',
-            'desenvolvimento':'overhead press','desenvolvimento frontal':'overhead press',
-            'desenvolvimento com halter':'dumbbell shoulder press','desenvolvimento halteres':'dumbbell shoulder press',
-            'elevacao lateral':'lateral raise','elevacao frontal':'front raise',
-            'elevacao posterior':'rear delt fly','crucifixo invertido':'rear delt fly',
-            'encolhimento':'shrug','encolhimento com halter':'dumbbell shrug',
-            'rosca direta':'barbell curl','rosca biceps':'barbell curl',
-            'rosca alternada':'dumbbell curl','rosca martelo':'hammer curl',
-            'rosca concentrada':'concentration curl','rosca scott':'preacher curl',
-            'rosca punho':'wrist curl',
-            'triceps pulley':'triceps pushdown','triceps corda':'rope triceps pushdown',
-            'triceps testa':'skull crusher','triceps tronco':'triceps pushdown',
-            'triceps banco':'bench dips','mergulho':'dips','paralela':'dips',
-            'agachamento':'squat','agachamento livre':'squat','agachamento sumô':'sumo squat',
-            'agachamento hack':'hack squat','agachamento goblet':'goblet squat',
-            'leg press':'leg press','leg press 45':'leg press 45',
-            'cadeira extensora':'leg extension','extensora':'leg extension',
-            'mesa flexora':'lying leg curl','flexora':'lying leg curl','leg curl':'leg curl',
-            'stiff':'romanian deadlift','levantamento terra':'deadlift','terra':'deadlift',
-            'afundo':'lunge','passada':'lunge','bulgaro':'bulgarian split squat',
-            'panturrilha':'calf raise','elevacao calcanhares':'calf raise',
-            'abdominal':'crunch','abdominais':'crunch','sit up':'sit-up',
-            'prancha':'plank','abdominal bicicleta':'bicycle crunch',
-            'hiperextensao':'back extension','lombar':'back extension',
-            'gluteo':'hip thrust','elevacao de quadril':'hip thrust','ponte':'glute bridge',
-            'abdutora':'hip abduction','adutora':'hip adduction',
-            'corrida':'run','esteira':'treadmill','bike':'stationary bike',
-            'bicicleta':'stationary bike','eliptico':'elliptical','remo ergometro':'rowing',
-          }
-          def translate_pt(name):
-            k=name.lower().strip()
-            norm=''.join(c for c in unicodedata.normalize('NFD',k) if unicodedata.category(c)!='Mn')
-            for pt,en in PT_EN.items():
-              pt_norm=''.join(c for c in unicodedata.normalize('NFD',pt) if unicodedata.category(c)!='Mn')
-              if pt_norm==norm or pt_norm in norm or norm in pt_norm:
-                return en
-            return k
-          def fetch_exercisedb(search_term):
-            encoded=urllib.parse.quote(search_term)
-            req=urllib.request.Request(
-              'https://exercisedb.p.rapidapi.com/exercises/name/'+encoded+'?limit=3',
-              headers={'X-RapidAPI-Key':RAPIDAPI_KEY,'X-RapidAPI-Host':'exercisedb.p.rapidapi.com'}
-            )
-            with urllib.request.urlopen(req,timeout=6) as r:
-              return json.loads(r.read())
           def identify_exercise(name):
             key=name.lower().strip()
-            cached=cache_table.get_item(Key={'exerciseName':key}).get('Item')
-            if cached: return cached
-            if not RAPIDAPI_KEY:
-              return {'exerciseName':key,'found':False,'fromCache':False}
-            en_term=translate_pt(key)
             try:
-              data=fetch_exercisedb(en_term)
-              if not data and en_term!=key:
-                data=fetch_exercisedb(key)
+              cached=cache_table.get_item(Key={'exerciseName':key}).get('Item')
+              if cached and cached.get('found'): return cached
+            except: pass
+            prompt=(
+              'Identifique o exercicio de musculacao: "'+name+'"\n\n'
+              'Responda APENAS com um JSON valido, sem markdown:\n'
+              '{"group":"Peito|Costas|Ombro|Biceps|Triceps|Perna|Gluteo|Core|Cardio|Outro",'
+              '"targetMuscle":"musculo principal em ingles",'
+              '"secondaryMuscles":["musculo2","musculo3"]}\n\n'
+              'Exemplos:\n'
+              '"Supino reto"->{"group":"Peito","targetMuscle":"pectorals","secondaryMuscles":["triceps","delts"]}\n'
+              '"Remada curvada"->{"group":"Costas","targetMuscle":"latissimus dorsi","secondaryMuscles":["biceps","rhomboids"]}\n'
+              '"Squat"->{"group":"Perna","targetMuscle":"quadriceps","secondaryMuscles":["hamstrings","glutes"]}'
+            )
+            try:
+              resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':[{'text':prompt}]}],inferenceConfig={'maxTokens':120,'temperature':0})
+              txt=resp['output']['message']['content'][0]['text'].strip()
+              m=re.search(r'\{[\s\S]*\}',txt)
+              if not m: return {'exerciseName':key,'found':False}
+              data=json.loads(m.group())
+              result={
+                'exerciseName':key,
+                'found':True,
+                'group':data.get('group','Outro'),
+                'targetMuscle':data.get('targetMuscle',''),
+                'secondaryMuscles':data.get('secondaryMuscles',[]),
+                'gifUrl':'',
+                'fromBedrock':True,
+                'cachedAt':datetime.datetime.utcnow().isoformat()+'Z',
+              }
+              try: cache_table.put_item(Item=result)
+              except: pass
+              return result
             except:
-              return {'exerciseName':key,'found':False,'fromCache':False}
-            if not data:
-              cache_table.put_item(Item={'exerciseName':key,'found':False,'cachedAt':datetime.datetime.utcnow().isoformat()+'Z'})
               return {'exerciseName':key,'found':False}
-            ex=data[0]
-            grp=map_group(ex.get('bodyPart',''),ex.get('target',''))
-            result={
-              'exerciseName':key,
-              'exerciseId':ex.get('id',''),
-              'bodyPart':ex.get('bodyPart',''),
-              'targetMuscle':ex.get('target',''),
-              'group':grp,
-              'secondaryMuscles':ex.get('secondaryMuscles',[]),
-              'gifUrl':ex.get('gifUrl',''),
-              'instructions':ex.get('instructions',[]),
-              'found':True,
-              'cachedAt':datetime.datetime.utcnow().isoformat()+'Z',
-            }
-            cache_table.put_item(Item=result)
-            return result
           def week_suggestion(week_summary,untrained,remaining_days):
             if remaining_days==0: return []
             untrained_str=', '.join(untrained) if untrained else 'nenhum — semana equilibrada'
