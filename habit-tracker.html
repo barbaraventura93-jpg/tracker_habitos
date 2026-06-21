@@ -798,8 +798,12 @@ async function gymIdentifyExercise(name){
       _gymAddIdState='found';
       const groupEl=document.getElementById('gpa-group');
       if(groupEl&&d.group){
-        const normalized=d.group.normalize('NFC');
-        const opt=[...groupEl.options].find(function(o){return o.value.normalize('NFC')===normalized;});
+        function _stripAccents(s){return s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
+        const opt=[...groupEl.options].find(function(o){
+          return o.value===d.group||
+                 o.value.normalize('NFC')===d.group.normalize('NFC')||
+                 _stripAccents(o.value)===_stripAccents(d.group);
+        });
         if(opt) groupEl.value=opt.value;
       }
     } else {
@@ -1401,6 +1405,17 @@ function gymDone(ei,si){
     save();
   }
   renderGym();
+  _gymUpdateScoreHeader();
+}
+function _gymUpdateScoreHeader(){
+  const sc=calcScore(dayData,currentDate);
+  const pctEl=document.getElementById('hdr-pct');
+  if(pctEl){
+    pctEl.textContent=sc.pct>0?sc.pct+'% do dia':'';
+    pctEl.style.color=sc.pct>=80?'#16A34A':sc.pct>=50?'#D97706':sc.pct>0?'#FB923C':'transparent';
+  }
+  const homeActive=document.getElementById('screen-home')?.classList.contains('active');
+  if(homeActive) renderUI();
 }
 function gymAddSet(ei){
   const tr=loadDay(currentDate).tr;
@@ -2570,6 +2585,7 @@ async function render(syncG=false){
       const before=JSON.stringify(loadGymSession(currentDate,tr));
       await fetchGymSession(currentDate,tr);
       if(JSON.stringify(loadGymSession(currentDate,tr))!==before){
+        renderUI();
         const gb=document.getElementById('gym-body');
         if(gb) renderGym();
       }
