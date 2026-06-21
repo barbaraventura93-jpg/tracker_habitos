@@ -1221,16 +1221,36 @@ function renderGym(){
   });
 
   if(_gymAddOpen){
-    const inp2='background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 8px;color:#1C1917;font-size:14px;font-weight:700;outline:none;text-align:center;width:100%';
+    const inp2='background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 8px;color:#1C1917;font-size:15px;font-weight:700;outline:none;text-align:center;width:100%';
+
+    // Verificar se há exercícios no plano para herdar configuração
+    const planExs=gymPlan[tr]||[];
+    const hasPlan=planExs.length>0;
+
+    // Campos séries/reps só aparecem se isCardio OU se não há plano configurado
+    // Em ambos os casos o usuário é informado do que acontecerá
     const addFormFields=isCardio
       ?`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
           <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Intervalos</div><input type="number" id="gym-new-sets" placeholder="1" value="1" style="${inp2}"></div>
           <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Duração padrão (min)</div><input type="text" id="gym-new-reps" placeholder="30" value="" style="${inp2}"></div>
         </div>`
-      :`<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-          <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gym-new-sets" placeholder="3" value="3" style="${inp2}"></div>
-          <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gym-new-reps" placeholder="12" value="12" style="${inp2}"></div>
-        </div>`;
+      :hasPlan
+        // Há plano: mostrar aviso de que vai herdar (campos ocultos com defaults)
+        ?`<div style="background:#EDE9FF;border:1px solid #C4BFFF;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px;color:#534AB7;line-height:1.5">
+            💡 Séries e reps serão herdadas do Plano automaticamente.<br>
+            <span style="color:#A8A29E;font-size:11px">Se o exercício for novo, serão usados 3×12 como padrão.</span>
+          </div>
+          <input type="hidden" id="gym-new-sets" value="3">
+          <input type="hidden" id="gym-new-reps" value="12">`
+        // Sem plano: mostrar campos normalmente
+        :`<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:8px 12px;margin-bottom:8px;font-size:11px;color:#92400E">
+            Sem plano configurado — defina séries e reps abaixo
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+            <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Séries</div><input type="number" id="gym-new-sets" placeholder="3" value="3" style="${inp2}"></div>
+            <div><div style="font-size:10px;color:#78716C;margin-bottom:4px;text-align:center">Reps</div><input type="text" id="gym-new-reps" placeholder="12" value="12" style="${inp2}"></div>
+          </div>`;
+
     html+=`<div class="card fade-in"><div class="sec-hdr"><div class="sec-lbl"><span>➕</span> ${isCardio?'ADICIONAR ATIVIDADE':'ADICIONAR EXERCÍCIO'}</div></div>
       <input type="text" id="gym-new-name" oninput="gymTriggerIdentify(this.value)" placeholder="${isCardio?'Ex: Corrida, Bike, Elíptico...':'Nome do exercício'}" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px">
       <div id="gym-id-status" style="margin-bottom:4px"></div>
@@ -1426,15 +1446,25 @@ function gymConfirmAdd(){
     if(_gymIdInfo&&_gymIdInfo.found&&_gymIdInfo.group) return _gymIdInfo.group;
     return 'Outro';
   })();
-  const nSets=parseInt(document.getElementById('gym-new-sets')?.value)||1;
-  const repsVal=(document.getElementById('gym-new-reps')?.value||'').trim();
+  // ── Herdar séries/reps do Plano se o exercício já existir lá ──
+  const planEx=(gymPlan[tr]||[]).find(p=>p.name.toLowerCase()===name.toLowerCase());
+  const nSets=planEx
+    ?( parseInt(planEx.defaultSets)||3 )
+    :( parseInt(document.getElementById('gym-new-sets')?.value)||3 );
+  const repsVal=planEx
+    ?( String(planEx.defaultReps||'12') )
+    :( (document.getElementById('gym-new-reps')?.value||'12').trim() );
   const id='ex_'+Date.now();
   const extra=(_gymIdInfo&&_gymIdInfo.found)?{gifUrl:_gymIdInfo.gifUrl,targetMuscle:_gymIdInfo.targetMuscle,targetMuscles:_gymIdInfo.targetMuscle?[_gymIdInfo.targetMuscle]:[],secondaryMuscles:_gymIdInfo.secondaryMuscles,instructions:_gymIdInfo.instructions}:{};
   const newEx=Object.assign({id,name,group,sets:Array.from({length:nSets}).map(()=>({reps:repsVal,kg:'',done:false}))},extra);
   const s=loadGymSession(currentDate,tr)||[];s.push(newEx);saveGymSession(currentDate,tr,s);
   _gymAddOpen=false;_gymIdInfo=null;_gymAddIdState='idle';renderGym();
   const wkName=getWorkoutById(tr)?.name||tr;
-  _gymAskSaveToPlan(id,name,group,nSets,repsVal,tr,wkName);
+  if(planEx){
+    showToast('✓ '+name+' adicionado ('+nSets+'×'+repsVal+' do plano)');
+  } else {
+    _gymAskSaveToPlan(id,name,group,nSets,repsVal,tr,wkName);
+  }
 }
 function _gymAskSaveToPlan(id,name,group,nSets,repsVal,tr,wkName){
   _gymPendingPlanAdd={id,name,group,nSets,repsVal,tr};
