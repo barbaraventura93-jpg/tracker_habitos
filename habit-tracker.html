@@ -2477,12 +2477,43 @@ function renderHoje(body,sc){
 
 function renderNutricao(body,sc){
   let html='';
+
+  // ── Variante do jantar ────────────────────────────────────────────────────
   const jBtns=[{id:'refeicao',l:'🍽️ Refeição'},{id:'rap10',l:'🌯 Rap10'},{id:'hamburguer',l:'🍔 Hambúrguer'}].map(v=>`<button onclick="setJantar('${v.id}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;background:${dayData.jantarV===v.id?'#6C63FF':'#FAFAF9'};color:${dayData.jantarV===v.id?'#fff':'#78716C'};border:1px solid ${dayData.jantarV===v.id?'#6C63FF':'#E7E5E4'}">${v.l}</button>`).join('');
+
+  // ── Checklist de refeições ────────────────────────────────────────────────
   const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#78716C':'#1C1917'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#78716C;font-family:'DM Mono',monospace">${m.time}</span></div><div style="font-size:10px;color:${done?'#3d5040':'#78716C'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#3d5040':'#A8A29E'};line-height:1.45">${det.hint}</div><div class="badge">${det.badge}</div></div></button>`;}).join('');
+
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.meals.d===sc.meals.t?'#fb923c':'#78716C'}">${sc.meals.d}/${sc.meals.t}</span></div>
     <div style="margin-bottom:10px"><div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.08em;margin-bottom:6px">VARIANTE DO JANTAR</div><div style="display:flex;gap:6px">${jBtns}</div></div>
     ${mealCards}
   </div>`;
+
+  // ── Suplementos do dia (seção inline) ────────────────────────────────────
+  const sups=getSups(dayData.tr);
+  if(sups.length){
+    const supRows=sups.map(s=>{
+      const done=!!dayData.sups[s.id];
+      return`<button class="check-row ${done?'done':''}" onclick="toggleSup('${s.id}')">
+        <div class="check-circle ${done?'done':''}" style="${done?'':'border-color:#D4D0CE'}">${done?'✓':''}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">${s.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#78716C':'#1C1917'};text-decoration:${done?'line-through':'none'}">${s.label}</span></div>
+          <div style="font-size:11px;color:${done?'#3d5040':'#A8A29E'};margin-top:3px;line-height:1.4">${s.sub}</div>
+        </div>
+      </button>`;
+    }).join('');
+    const supDone=sups.filter(s=>dayData.sups[s.id]).length;
+    html+=`<div class="card">
+      <div class="sec-hdr">
+        <div class="sec-lbl"><span>💊</span> SUPLEMENTOS DO DIA</div>
+        <span style="font-size:11px;font-family:'DM Mono',monospace;color:${supDone===sups.length?'#D97706':'#78716C'}">${supDone}/${sups.length}</span>
+      </div>
+      ${supRows}
+      ${supDone===sups.length?'<div style="text-align:center;font-size:11px;color:#D97706;font-weight:600;padding-top:4px">⭐ Todos os suplementos tomados!</div>':''}
+      <button onclick="showSups()" style="width:100%;padding:8px;background:none;color:#A8A29E;font-size:11px;text-decoration:underline;margin-top:6px">Gerenciar lista de suplementos →</button>
+    </div>`;
+  }
+
   body.innerHTML=html;
 }
 
