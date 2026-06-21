@@ -190,7 +190,6 @@ textarea,input,select{font-family:inherit;}
   <nav class="sb-nav">
     <button type="button" class="sb-item active" id="snav-hoje" onclick="showBnav('hoje')"><span class="sb-item-icon">📊</span>Hoje</button>
     <button type="button" class="sb-item" id="snav-nutricao" onclick="showBnav('nutricao')"><span class="sb-item-icon">🍽️</span>Nutrição</button>
-    <button type="button" class="sb-item" id="snav-suplday" onclick="showBnav('suplday')"><span class="sb-item-icon">💊</span>Suplementos</button>
     <button type="button" class="sb-item" id="snav-gym" onclick="showBnav('gym')"><span class="sb-item-icon">🏋️</span>Treino</button>
     <button type="button" class="sb-item" id="snav-semana" onclick="showBnav('semana')"><span class="sb-item-icon">📅</span>Semana</button>
     <button type="button" class="sb-item" id="snav-mais" onclick="showBnav('mais')"><span class="sb-item-icon">☰</span>Mais</button>
@@ -377,7 +376,6 @@ textarea,input,select{font-family:inherit;}
   <div class="bnav-inner">
     <button type="button" class="bnav-btn active" id="bnav-hoje" onclick="showBnav('hoje')"><span class="bnav-icon">📊</span>Hoje</button>
     <button type="button" class="bnav-btn" id="bnav-nutricao" onclick="showBnav('nutricao')"><span class="bnav-icon">🍽️</span>Nutrição</button>
-    <button type="button" class="bnav-btn" id="bnav-suplday" onclick="showBnav('suplday')"><span class="bnav-icon">💊</span>Supl.</button>
     <button type="button" class="bnav-btn" id="bnav-gym" onclick="showBnav('gym')"><span class="bnav-icon">🏋️</span>Treino</button>
     <button type="button" class="bnav-btn" id="bnav-semana" onclick="showBnav('semana')"><span class="bnav-icon">📅</span>Semana</button>
     <button type="button" class="bnav-btn" id="bnav-mais" onclick="showBnav('mais')"><span class="bnav-icon">☰</span>Mais</button>
@@ -1953,7 +1951,30 @@ function showGoals(){
   const dias=[1,2,3,4,5,6,7];
   const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#16a34a':'#FAFAF9'};color:${sel?'#fff':'#78716C'};border:1px solid ${sel?'#16a34a':'#E7E5E4'}">${n}d</button>`;}).join('');
   const isMasc=g.sexo==='m';
+  const objAtual=goals.objetivo||'manutencao';
+  const objOpts=[
+    {v:'cutting',  l:'📉 Cutting',   sub:'Perda de gordura · déficit calórico',  c:'#3B82F6'},
+    {v:'manutencao',l:'⚖️ Manutenção',sub:'Manter peso e composição atual',       c:'#16A34A'},
+    {v:'bulking',  l:'📈 Bulking',   sub:'Ganho de massa · superávit calórico',  c:'#D97706'},
+  ];
+  const objCards=objOpts.map(o=>{
+    const sel=objAtual===o.v;
+    return`<button onclick="goalsSelectObj('${o.v}')" id="gobj-${o.v}" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:2px solid ${sel?o.c:'#E7E5E4'};background:${sel?o.c+'0D':'#FAFAF9'};margin-bottom:6px;text-align:left">
+      <div style="font-size:18px;margin-top:1px">${o.l.split(' ')[0]}</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:${sel?o.c:'#1C1917'}">${o.l.slice(3)}</div>
+        <div style="font-size:11px;color:#78716C;margin-top:2px">${o.sub}</div>
+      </div>
+      ${sel?`<div style="margin-left:auto;font-size:14px;color:${o.c}">✓</div>`:''}
+    </button>`;
+  }).join('');
   document.getElementById('goals-body').innerHTML=`
+    <div class="card fade-in">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🎯</span> OBJETIVO ATUAL</div></div>
+      <input type="hidden" id="g-objetivo" value="${objAtual}">
+      ${objCards}
+      <div id="g-obj-prot-preview" style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:8px;padding:10px 12px;margin-top:4px;font-size:11px;color:#78716C;line-height:1.6"></div>
+    </div>
     <div class="card fade-in">
       <div class="sec-hdr"><div class="sec-lbl"><span>👤</span> MEU PERFIL</div></div>
       <div style="font-size:11px;color:#78716C;margin-bottom:6px">Sexo</div>
@@ -2024,6 +2045,22 @@ function goalsSelectTreinos(n){
   document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#16a34a':'#FAFAF9';b.style.color=sel?'#fff':'#78716C';b.style.borderColor=sel?'#16a34a':'#E7E5E4';});
   goalsCalcUpdate();
 }
+function goalsSelectObj(v){
+  goals={...goals,objetivo:v};
+  const colors={cutting:'#3B82F6',manutencao:'#16A34A',bulking:'#D97706'};
+  ['cutting','manutencao','bulking'].forEach(o=>{
+    const b=document.getElementById('gobj-'+o);if(!b)return;
+    const sel=o===v;const c=colors[o];
+    b.style.borderColor=sel?c:'#E7E5E4';
+    b.style.background=sel?c+'0D':'#FAFAF9';
+    b.querySelector('div:first-child+div div:first-child').style.color=sel?c:'#1C1917';
+    const tick=b.querySelector('div[style*="margin-left:auto"]');
+    if(sel&&!tick){const d=document.createElement('div');d.style.cssText=`margin-left:auto;font-size:14px;color:${c}`;d.textContent='✓';b.appendChild(d);}
+    else if(!sel&&tick) tick.remove();
+  });
+  const el=document.getElementById('g-objetivo');if(el)el.value=v;
+  goalsCalcUpdate();
+}
 function goalsCalcUpdate(){
   const peso=parseFloat(document.getElementById('g-peso-atual')?.value)||0;
   const meta=parseFloat(document.getElementById('g-peso-meta')?.value)||0;
@@ -2090,10 +2127,25 @@ function goalsCalcUpdate(){
     if(calFormulaEl) calFormulaEl.innerHTML='Preencha perfil, peso e altura para calcular automaticamente';
     if(calBadgeEl) calBadgeEl.textContent='';
   }
+
+  // ── Proteína meta (ISSN 2017) ─────────────────────────────────────────────
+  const objEl=document.getElementById('g-obj-prot-preview');
+  if(objEl&&peso>0){
+    const obj=goals.objetivo||'manutencao';
+    const factorMap={cutting:2.2,manutencao:1.6,bulking:1.8};
+    const factor=factorMap[obj]||1.6;
+    const protMeta=Math.round(peso*factor);
+    const objLabel={cutting:'cutting (déficit)',manutencao:'manutenção',bulking:'bulking (superávit)'}[obj]||obj;
+    objEl.innerHTML=`🥩 Meta de proteína: <b style="color:#1C1917">${protMeta}g/dia</b> <span style="color:#A8A29E">(${factor}g/kg × ${peso}kg — ${objLabel} · ISSN 2017)</span>`;
+    goals={...goals,protMeta};
+  } else if(objEl){
+    objEl.innerHTML='Preencha o peso atual para calcular a meta de proteína';
+  }
 }
 function saveGoalsForm(){
   const g={
     ...goals,
+    objetivo:document.getElementById('g-objetivo')?.value||'manutencao',
     pesoAtual:document.getElementById('g-peso-atual').value,
     pesoMeta:document.getElementById('g-peso-meta').value,
     altura:document.getElementById('g-altura').value,
@@ -2477,14 +2529,128 @@ function renderHoje(body,sc){
   body.innerHTML=html;
 }
 
+function renderNutricaoResumo(){
+  const peso=parseFloat(goals.pesoAtual)||0;
+  if(!peso) return '';
+
+  const obj=goals.objetivo||'manutencao';
+  const factorMap={cutting:2.2,manutencao:1.6,bulking:1.8};
+  const protMeta=goals.protMeta||Math.round(peso*(factorMap[obj]||1.6));
+  const calMeta=goals.calorias||1800;
+
+  const refeicoesDone=MEALS.filter(m=>dayData.meals[m.id]).length;
+  const det0=getMealDetail(MEALS[0]?.id||'cafe',dayData);
+  const hasRealMacros=det0&&det0.macro&&det0.macro.includes('prot');
+  let protIngerida=0;
+  if(hasRealMacros){
+    MEALS.forEach(m=>{
+      if(!dayData.meals[m.id]) return;
+      const det=getMealDetail(m.id,dayData);
+      const match=det?.macro?.match(/~?(\d+)g prot/);
+      if(match) protIngerida+=parseInt(match[1]);
+    });
+  } else {
+    protIngerida=refeicoesDone*Math.round(protMeta/MEALS.length);
+  }
+
+  let calIngerida=0;
+  MEALS.forEach(m=>{
+    if(!dayData.meals[m.id]) return;
+    const det=getMealDetail(m.id,dayData);
+    const match=det?.macro?.match(/~?(\d+)\s*kcal/);
+    if(match) calIngerida+=parseInt(match[1]);
+  });
+
+  function barHtml(val,meta,unit,color){
+    const pct=meta>0?Math.min(100,Math.round(val/meta*100)):0;
+    return`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;margin-bottom:8px">
+      <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:6px">
+        <span style="font-size:12px;font-weight:700;color:#1C1917">${val}${unit}</span>
+        <span style="font-size:11px;color:#78716C">meta: ${meta}${unit}</span>
+        <span style="font-size:12px;font-weight:700;font-family:'DM Mono',monospace;color:${pct>=100?'#16A34A':pct>=70?color:'#A8A29E'}">${pct}%</span>
+      </div>
+      <div style="height:6px;background:#E7E5E4;border-radius:99px;overflow:hidden">
+        <div style="width:${pct}%;height:100%;background:${pct>=100?'#16A34A':color};border-radius:99px;transition:width .6s ease"></div>
+      </div>
+    </div>`;
+  }
+
+  const protPct=protMeta>0?Math.round(protIngerida/protMeta*100):0;
+  let alerta='';
+  const hora=new Date().getHours();
+  if(hora>=20&&protPct<70&&protMeta>0){
+    alerta=`<div style="background:#FFF7ED;border:1px solid #FED7AA;border-radius:10px;padding:10px 12px;font-size:12px;color:#92400E;line-height:1.5">
+      ⚠️ Proteína em ${protPct}% às ${hora}h — faltam ${protMeta-protIngerida}g para fechar o dia
+    </div>`;
+  }
+
+  const objLabel={cutting:'Cutting · déficit',manutencao:'Manutenção',bulking:'Bulking · superávit'}[obj]||obj;
+  const factorLabel={cutting:'2,2g/kg',manutencao:'1,6g/kg',bulking:'1,8g/kg'}[obj]||'1,6g/kg';
+
+  return`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>📊</span> RESUMO NUTRICIONAL</div><span style="font-size:10px;color:#78716C">${objLabel}</span></div>
+    <div style="font-size:10px;color:#78716C;margin-bottom:8px;padding:6px 10px;background:#FAFAF9;border-radius:8px">
+      🥩 Meta proteína: <b>${protMeta}g</b> (${factorLabel} × ${peso}kg)
+    </div>
+    ${barHtml(protIngerida,protMeta,'g','#818cf8')}
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px">
+      <div>
+        <div style="font-size:10px;color:#78716C;margin-bottom:5px">🥩 Proteína</div>
+        <div style="font-size:17px;font-weight:700;font-family:'DM Mono',monospace;color:${protPct>=100?'#16A34A':'#818cf8'}">${protIngerida}g</div>
+        <div style="font-size:10px;color:#A8A29E">de ${protMeta}g · ${protPct}%</div>
+        <div style="height:4px;background:#E7E5E4;border-radius:99px;margin-top:5px;overflow:hidden"><div style="width:${Math.min(100,protPct)}%;height:100%;background:#818cf8;border-radius:99px"></div></div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:#78716C;margin-bottom:5px">🔥 Calorias</div>
+        <div style="font-size:17px;font-weight:700;font-family:'DM Mono',monospace;color:${calIngerida>=calMeta?'#16A34A':'#fb923c'}">${calIngerida}</div>
+        <div style="font-size:10px;color:#A8A29E">de ${calMeta} kcal · ${calMeta>0?Math.round(calIngerida/calMeta*100):0}%</div>
+        <div style="height:4px;background:#E7E5E4;border-radius:99px;margin-top:5px;overflow:hidden"><div style="width:${Math.min(100,calMeta>0?Math.round(calIngerida/calMeta*100):0)}%;height:100%;background:#fb923c;border-radius:99px"></div></div>
+      </div>
+    </div>
+    ${alerta?`<div style="margin-top:8px">${alerta}</div>`:''}
+  </div>`;
+}
+
 function renderNutricao(body,sc){
   let html='';
+
+  // ── Variante do jantar ────────────────────────────────────────────────────
   const jBtns=[{id:'refeicao',l:'🍽️ Refeição'},{id:'rap10',l:'🌯 Rap10'},{id:'hamburguer',l:'🍔 Hambúrguer'}].map(v=>`<button onclick="setJantar('${v.id}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;background:${dayData.jantarV===v.id?'#6C63FF':'#FAFAF9'};color:${dayData.jantarV===v.id?'#fff':'#78716C'};border:1px solid ${dayData.jantarV===v.id?'#6C63FF':'#E7E5E4'}">${v.l}</button>`).join('');
+
+  // ── Checklist de refeições ────────────────────────────────────────────────
   const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#78716C':'#1C1917'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#78716C;font-family:'DM Mono',monospace">${m.time}</span></div><div style="font-size:10px;color:${done?'#3d5040':'#78716C'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#3d5040':'#A8A29E'};line-height:1.45">${det.hint}</div><div class="badge">${det.badge}</div></div></button>`;}).join('');
+
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.meals.d===sc.meals.t?'#fb923c':'#78716C'}">${sc.meals.d}/${sc.meals.t}</span></div>
     <div style="margin-bottom:10px"><div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.08em;margin-bottom:6px">VARIANTE DO JANTAR</div><div style="display:flex;gap:6px">${jBtns}</div></div>
     ${mealCards}
   </div>`;
+
+  // ── Suplementos do dia (seção inline) ────────────────────────────────────
+  const sups=getSups(dayData.tr);
+  if(sups.length){
+    const supRows=sups.map(s=>{
+      const done=!!dayData.sups[s.id];
+      return`<button class="check-row ${done?'done':''}" onclick="toggleSup('${s.id}')">
+        <div class="check-circle ${done?'done':''}" style="${done?'':'border-color:#D4D0CE'}">${done?'✓':''}</div>
+        <div style="flex:1">
+          <div style="display:flex;align-items:center;gap:6px"><span style="font-size:16px">${s.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#78716C':'#1C1917'};text-decoration:${done?'line-through':'none'}">${s.label}</span></div>
+          <div style="font-size:11px;color:${done?'#3d5040':'#A8A29E'};margin-top:3px;line-height:1.4">${s.sub}</div>
+        </div>
+      </button>`;
+    }).join('');
+    const supDone=sups.filter(s=>dayData.sups[s.id]).length;
+    html+=`<div class="card">
+      <div class="sec-hdr">
+        <div class="sec-lbl"><span>💊</span> SUPLEMENTOS DO DIA</div>
+        <span style="font-size:11px;font-family:'DM Mono',monospace;color:${supDone===sups.length?'#D97706':'#78716C'}">${supDone}/${sups.length}</span>
+      </div>
+      ${supRows}
+      ${supDone===sups.length?'<div style="text-align:center;font-size:11px;color:#D97706;font-weight:600;padding-top:4px">⭐ Todos os suplementos tomados!</div>':''}
+      <button onclick="showSups()" style="width:100%;padding:8px;background:none;color:#A8A29E;font-size:11px;text-decoration:underline;margin-top:6px">Gerenciar lista de suplementos →</button>
+    </div>`;
+  }
+
+  html+=renderNutricaoResumo();
   body.innerHTML=html;
 }
 
@@ -2531,7 +2697,8 @@ function renderSuplDay(body,sc){
 
 // ─── BOTTOM NAV ──────────────────────────────────────────────────────────────
 function showBnav(id){
-  if(id==='hoje'||id==='nutricao'||id==='suplday'){
+  if(id==='suplday') id='nutricao';
+  if(id==='hoje'||id==='nutricao'){
     _homeTab=id;showScreen('home');renderUI();
   } else if(id==='gym'){showGym();}
   else if(id==='semana'){showSemana();}
