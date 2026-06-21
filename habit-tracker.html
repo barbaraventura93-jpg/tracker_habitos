@@ -1951,7 +1951,30 @@ function showGoals(){
   const dias=[1,2,3,4,5,6,7];
   const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?'#16a34a':'#FAFAF9'};color:${sel?'#fff':'#78716C'};border:1px solid ${sel?'#16a34a':'#E7E5E4'}">${n}d</button>`;}).join('');
   const isMasc=g.sexo==='m';
+  const objAtual=goals.objetivo||'manutencao';
+  const objOpts=[
+    {v:'cutting',  l:'📉 Cutting',   sub:'Perda de gordura · déficit calórico',  c:'#3B82F6'},
+    {v:'manutencao',l:'⚖️ Manutenção',sub:'Manter peso e composição atual',       c:'#16A34A'},
+    {v:'bulking',  l:'📈 Bulking',   sub:'Ganho de massa · superávit calórico',  c:'#D97706'},
+  ];
+  const objCards=objOpts.map(o=>{
+    const sel=objAtual===o.v;
+    return`<button onclick="goalsSelectObj('${o.v}')" id="gobj-${o.v}" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:2px solid ${sel?o.c:'#E7E5E4'};background:${sel?o.c+'0D':'#FAFAF9'};margin-bottom:6px;text-align:left">
+      <div style="font-size:18px;margin-top:1px">${o.l.split(' ')[0]}</div>
+      <div>
+        <div style="font-size:13px;font-weight:700;color:${sel?o.c:'#1C1917'}">${o.l.slice(3)}</div>
+        <div style="font-size:11px;color:#78716C;margin-top:2px">${o.sub}</div>
+      </div>
+      ${sel?`<div style="margin-left:auto;font-size:14px;color:${o.c}">✓</div>`:''}
+    </button>`;
+  }).join('');
   document.getElementById('goals-body').innerHTML=`
+    <div class="card fade-in">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🎯</span> OBJETIVO ATUAL</div></div>
+      <input type="hidden" id="g-objetivo" value="${objAtual}">
+      ${objCards}
+      <div id="g-obj-prot-preview" style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:8px;padding:10px 12px;margin-top:4px;font-size:11px;color:#78716C;line-height:1.6"></div>
+    </div>
     <div class="card fade-in">
       <div class="sec-hdr"><div class="sec-lbl"><span>👤</span> MEU PERFIL</div></div>
       <div style="font-size:11px;color:#78716C;margin-bottom:6px">Sexo</div>
@@ -2022,6 +2045,22 @@ function goalsSelectTreinos(n){
   document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#16a34a':'#FAFAF9';b.style.color=sel?'#fff':'#78716C';b.style.borderColor=sel?'#16a34a':'#E7E5E4';});
   goalsCalcUpdate();
 }
+function goalsSelectObj(v){
+  goals={...goals,objetivo:v};
+  const colors={cutting:'#3B82F6',manutencao:'#16A34A',bulking:'#D97706'};
+  ['cutting','manutencao','bulking'].forEach(o=>{
+    const b=document.getElementById('gobj-'+o);if(!b)return;
+    const sel=o===v;const c=colors[o];
+    b.style.borderColor=sel?c:'#E7E5E4';
+    b.style.background=sel?c+'0D':'#FAFAF9';
+    b.querySelector('div:first-child+div div:first-child').style.color=sel?c:'#1C1917';
+    const tick=b.querySelector('div[style*="margin-left:auto"]');
+    if(sel&&!tick){const d=document.createElement('div');d.style.cssText=`margin-left:auto;font-size:14px;color:${c}`;d.textContent='✓';b.appendChild(d);}
+    else if(!sel&&tick) tick.remove();
+  });
+  const el=document.getElementById('g-objetivo');if(el)el.value=v;
+  goalsCalcUpdate();
+}
 function goalsCalcUpdate(){
   const peso=parseFloat(document.getElementById('g-peso-atual')?.value)||0;
   const meta=parseFloat(document.getElementById('g-peso-meta')?.value)||0;
@@ -2088,10 +2127,25 @@ function goalsCalcUpdate(){
     if(calFormulaEl) calFormulaEl.innerHTML='Preencha perfil, peso e altura para calcular automaticamente';
     if(calBadgeEl) calBadgeEl.textContent='';
   }
+
+  // ── Proteína meta (ISSN 2017) ─────────────────────────────────────────────
+  const objEl=document.getElementById('g-obj-prot-preview');
+  if(objEl&&peso>0){
+    const obj=goals.objetivo||'manutencao';
+    const factorMap={cutting:2.2,manutencao:1.6,bulking:1.8};
+    const factor=factorMap[obj]||1.6;
+    const protMeta=Math.round(peso*factor);
+    const objLabel={cutting:'cutting (déficit)',manutencao:'manutenção',bulking:'bulking (superávit)'}[obj]||obj;
+    objEl.innerHTML=`🥩 Meta de proteína: <b style="color:#1C1917">${protMeta}g/dia</b> <span style="color:#A8A29E">(${factor}g/kg × ${peso}kg — ${objLabel} · ISSN 2017)</span>`;
+    goals={...goals,protMeta};
+  } else if(objEl){
+    objEl.innerHTML='Preencha o peso atual para calcular a meta de proteína';
+  }
 }
 function saveGoalsForm(){
   const g={
     ...goals,
+    objetivo:document.getElementById('g-objetivo')?.value||'manutencao',
     pesoAtual:document.getElementById('g-peso-atual').value,
     pesoMeta:document.getElementById('g-peso-meta').value,
     altura:document.getElementById('g-altura').value,
