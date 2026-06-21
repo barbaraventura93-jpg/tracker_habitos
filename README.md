@@ -17,7 +17,6 @@ App de acompanhamento de rotina diária — refeições, água, suplementos, son
 - Score diário com anel de progresso, barras por categoria e pendências
 - Marcação de refeições com detalhes de macros
 - Controle de água com indicador de copos, ml e litros
-- Suplementos com checklist configurável por tipo de dia (treino / descanso)
 - Registro de sono — horas e horário consistente
 - Metas personalizadas com barra de progresso e status em tempo real
 
@@ -53,10 +52,25 @@ Tela dedicada na navegação inferior com visão consolidada da semana de treino
 - **Sugestão IA** — após renderizar a tela, busca sugestão personalizada no Bedrock (Amazon Nova Lite) com contexto da semana; exibe 1–2 mensagens motivadoras em português sobre o que falta treinar; fallback para regra estática se a IA não responder
 
 ### Nutrição
-- Controle de macros por refeição
-- Meta de calorias calculada automaticamente (BMR × TDEE)
 
-### Suplementos
+Tela consolidada com três seções em sequência:
+
+**Refeições**
+- Checklist de 5 refeições com macros estimados por variante (semana / final de semana / low carb / hambúrguer / Rap10)
+- Seletor de variante do jantar inline
+
+**Suplementos do dia**
+- Checklist filtrado por tipo de dia (treino / descanso / sempre)
+- Contador de itens tomados e celebração ao completar todos
+- Atalho para gerenciar a lista completa
+
+**Resumo Nutricional**
+- Barra de progresso de proteína com percentual em tempo real
+- Grid proteína + calorias (ingerido vs. meta)
+- Meta de proteína calculada pelo objetivo atual (ISSN 2017): cutting 2,2 g/kg · bulking 1,8 g/kg · manutenção 1,6 g/kg
+- Alerta às 20h quando proteína < 70% da meta — mostra quanto falta para fechar o dia
+
+**Gerenciamento de suplementos** (via Mais)
 - Cadastro livre com nome, dose, ícone e visibilidade (sempre / treino / descanso)
 - Importação via PDF ou foto — IA extrai os itens
 
@@ -89,14 +103,16 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 
 ### Configurações de Saúde
 
-| Meta | Fórmula | Referência |
+| Campo | Fórmula / Opções | Referência |
 |---|---|---|
+| **Objetivo** | Cutting · Manutenção · Bulking — define fator proteico e ajuste calórico | — |
+| **Meta de proteína** | Cutting 2,2 g/kg · Bulking 1,8 g/kg · Manutenção 1,6 g/kg × peso atual | ISSN 2017 |
 | **Água** | Peso × 35 ml/kg → copos de 250 ml | EFSA & Institute of Medicine |
 | **Calorias** | BMR (Mifflin-St Jeor) × fator de atividade ± ajuste de peso | ISSN / ACSM (2005) |
 
 **Fator de atividade (TDEE):** sedentário ×1,2 · leve ×1,375 · moderado ×1,55 · intenso ×1,725
 
-**Ajuste de peso:** −400 kcal (perda) / +300 kcal (ganho) / sem ajuste (manutenção)
+**Ajuste calórico por objetivo:** −400 kcal (cutting) / +300 kcal (bulking) / sem ajuste (manutenção)
 
 ### Histórico
 - Calendário dos últimos 60 dias com % diário
@@ -191,3 +207,6 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 - [x] Formulário de adição simplificado — grupo preenchido automaticamente, sem select manual
 - [x] Botão "Rever grupos" no Plano — reidentifica todos os exercícios em lote via Bedrock
 - [x] Sessões de treino persistidas no DynamoDB — histórico seguro mesmo após limpeza de cache
+- [x] Tela Nutrição consolidada — Refeições · Suplementos do dia · Resumo Nutricional em sequência
+- [x] Campo Objetivo (cutting / manutenção / bulking) nas Configurações de Saúde — meta de proteína recalcula em tempo real (ISSN 2017)
+- [x] Resumo Nutricional com barra de proteína, grid proteína + calorias e alerta às 20h
