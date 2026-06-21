@@ -190,7 +190,6 @@ textarea,input,select{font-family:inherit;}
   <nav class="sb-nav">
     <button type="button" class="sb-item active" id="snav-hoje" onclick="showBnav('hoje')"><span class="sb-item-icon">📊</span>Hoje</button>
     <button type="button" class="sb-item" id="snav-nutricao" onclick="showBnav('nutricao')"><span class="sb-item-icon">🍽️</span>Nutrição</button>
-    <button type="button" class="sb-item" id="snav-suplday" onclick="showBnav('suplday')"><span class="sb-item-icon">💊</span>Suplementos</button>
     <button type="button" class="sb-item" id="snav-gym" onclick="showBnav('gym')"><span class="sb-item-icon">🏋️</span>Treino</button>
     <button type="button" class="sb-item" id="snav-semana" onclick="showBnav('semana')"><span class="sb-item-icon">📅</span>Semana</button>
     <button type="button" class="sb-item" id="snav-mais" onclick="showBnav('mais')"><span class="sb-item-icon">☰</span>Mais</button>
@@ -377,7 +376,6 @@ textarea,input,select{font-family:inherit;}
   <div class="bnav-inner">
     <button type="button" class="bnav-btn active" id="bnav-hoje" onclick="showBnav('hoje')"><span class="bnav-icon">📊</span>Hoje</button>
     <button type="button" class="bnav-btn" id="bnav-nutricao" onclick="showBnav('nutricao')"><span class="bnav-icon">🍽️</span>Nutrição</button>
-    <button type="button" class="bnav-btn" id="bnav-suplday" onclick="showBnav('suplday')"><span class="bnav-icon">💊</span>Supl.</button>
     <button type="button" class="bnav-btn" id="bnav-gym" onclick="showBnav('gym')"><span class="bnav-icon">🏋️</span>Treino</button>
     <button type="button" class="bnav-btn" id="bnav-semana" onclick="showBnav('semana')"><span class="bnav-icon">📅</span>Semana</button>
     <button type="button" class="bnav-btn" id="bnav-mais" onclick="showBnav('mais')"><span class="bnav-icon">☰</span>Mais</button>
@@ -2531,7 +2529,8 @@ function renderSuplDay(body,sc){
 
 // ─── BOTTOM NAV ──────────────────────────────────────────────────────────────
 function showBnav(id){
-  if(id==='hoje'||id==='nutricao'||id==='suplday'){
+  if(id==='suplday') id='nutricao';
+  if(id==='hoje'||id==='nutricao'){
     _homeTab=id;showScreen('home');renderUI();
   } else if(id==='gym'){showGym();}
   else if(id==='semana'){showSemana();}
