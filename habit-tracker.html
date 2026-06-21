@@ -690,6 +690,52 @@ let _gymMusclePickField=null;
 let _gymEditLongPressTimer=null;
 let _gymEditEx=null,_gymEditIsPlan=false,_gymPlanEditIdx=null;
 let _gymPendingPlanAdd=null;
+// ── Periodização ──────────────────────────────────────────────────────────
+let periodization=loadPeriodization();
+function loadPeriodization(){
+  try{return JSON.parse(localStorage.getItem('ht:periodization')||'null');}
+  catch{return null;}
+}
+function savePeriodization(){
+  try{localStorage.setItem('ht:periodization',JSON.stringify(periodization));}catch{}
+  if(!USE_API||!authToken) return;
+  fetch(`${API_URL}?date=__periodization__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(periodization)}).catch(()=>{});
+}
+async function syncPeriodization(){
+  if(!USE_API||!authToken) return;
+  try{
+    const r=await fetch(`${API_URL}?date=__periodization__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(d&&d.blocks){periodization=d;try{localStorage.setItem('ht:periodization',JSON.stringify(d));}catch{}}}
+  }catch{}
+}
+function getCurrentBlock(){
+  if(!periodization||!periodization.blocks||!periodization.blocks.length) return null;
+  const idx=Math.min(periodization.currentBlock||0,periodization.blocks.length-1);
+  return periodization.blocks[idx];
+}
+function getBlockWeekProgress(){
+  if(!periodization||!periodization.startDate) return{week:1,total:4};
+  const startMs=new Date(periodization.startDate+'T12:00:00').getTime();
+  const nowMs=new Date(currentDate+'T12:00:00').getTime();
+  const weeksElapsed=Math.floor((nowMs-startMs)/(7*86400000));
+  const block=getCurrentBlock();
+  const total=block?.durationWeeks||4;
+  const week=Math.min(weeksElapsed+1,total);
+  return{week,total};
+}
+function advanceToNextBlock(){
+  if(!periodization) return;
+  const next=(periodization.currentBlock||0)+1;
+  if(next>=periodization.blocks.length){
+    periodization.currentBlock=0;
+  } else {
+    periodization.currentBlock=next;
+  }
+  periodization.startDate=currentDate;
+  savePeriodization();
+  showToast('Novo bloco iniciado: '+getCurrentBlock()?.name);
+  renderGym();
+}
 function loadGymPlan(){try{return JSON.parse(localStorage.getItem('ht:gymplan')||'{}');}catch{return{};}}
 function saveGymPlan(){
   try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}
@@ -752,8 +798,12 @@ async function gymIdentifyExercise(name){
       _gymAddIdState='found';
       const groupEl=document.getElementById('gpa-group');
       if(groupEl&&d.group){
-        const normalized=d.group.normalize('NFC');
-        const opt=[...groupEl.options].find(function(o){return o.value.normalize('NFC')===normalized;});
+        function _stripAccents(s){return s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
+        const opt=[...groupEl.options].find(function(o){
+          return o.value===d.group||
+                 o.value.normalize('NFC')===d.group.normalize('NFC')||
+                 _stripAccents(o.value)===_stripAccents(d.group);
+        });
         if(opt) groupEl.value=opt.value;
       }
     } else {
@@ -1200,6 +1250,29 @@ function renderGym(){
 
   const isCardio=trObj.type==='aerobico';
   let html=selectorHtml;
+
+  // Banner do bloco de periodização atual
+  const curBlock=getCurrentBlock();
+  if(curBlock){
+    const {week,total}=getBlockWeekProgress();
+    const focusColor={volume:'#818cf8',intensity:'#F97316',deload:'#34d399'}[curBlock.focus]||'#818cf8';
+    const pctBlock=Math.round((week-1)/total*100);
+    html+=`<div style="background:${focusColor}12;border:1px solid ${focusColor}40;border-radius:10px;padding:10px 13px;margin-bottom:10px;display:flex;align-items:center;gap:10px">
+      <div style="font-size:20px">${curBlock.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:${focusColor}">${curBlock.name}</div>
+        <div style="font-size:10px;color:#78716C;margin-top:1px">Semana ${week}/${total} · Meta: ${curBlock.targetSets}×${curBlock.targetReps}</div>
+        <div style="height:3px;background:#E7E5E4;border-radius:99px;margin-top:5px;overflow:hidden">
+          <div style="width:${pctBlock}%;height:100%;background:${focusColor};border-radius:99px"></div>
+        </div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:4px;flex-shrink:0">
+        <button onclick="showBnav('mais')" style="background:#F0EFED;color:#78716C;padding:4px 8px;border-radius:6px;font-size:10px">⚙️ Blocos</button>
+        ${week===total?`<button onclick="advanceToNextBlock()" style="background:${focusColor};color:#fff;padding:4px 8px;border-radius:6px;font-size:10px;font-weight:700">→ Próximo</button>`:''}
+      </div>
+    </div>`;
+  }
+
   if(prev){
     const pl=dispDate(prev.date);
     html+=`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#78716C">📊 Comparando com: <b style="color:#78716C">${pl.day} ${pl.date}</b></div>`;
@@ -1332,6 +1405,17 @@ function gymDone(ei,si){
     save();
   }
   renderGym();
+  _gymUpdateScoreHeader();
+}
+function _gymUpdateScoreHeader(){
+  const sc=calcScore(dayData,currentDate);
+  const pctEl=document.getElementById('hdr-pct');
+  if(pctEl){
+    pctEl.textContent=sc.pct>0?sc.pct+'% do dia':'';
+    pctEl.style.color=sc.pct>=80?'#16A34A':sc.pct>=50?'#D97706':sc.pct>0?'#FB923C':'transparent';
+  }
+  const homeActive=document.getElementById('screen-home')?.classList.contains('active');
+  if(homeActive) renderUI();
 }
 function gymAddSet(ei){
   const tr=loadDay(currentDate).tr;
@@ -2464,6 +2548,7 @@ async function syncGoals(){
   await syncUserWorkouts();
   await syncGoalsDefs();
   await syncGoalLogs();
+  await syncPeriodization();
 }
 async function syncGoalsDefs(){
   if(!USE_API||!authToken) return;
@@ -2500,6 +2585,7 @@ async function render(syncG=false){
       const before=JSON.stringify(loadGymSession(currentDate,tr));
       await fetchGymSession(currentDate,tr);
       if(JSON.stringify(loadGymSession(currentDate,tr))!==before){
+        renderUI();
         const gb=document.getElementById('gym-body');
         if(gb) renderGym();
       }
@@ -2819,6 +2905,78 @@ function showToast(msg){
   _toastTimer=setTimeout(()=>el.classList.remove('show'),3000);
 }
 function closeBnavMore(){}
+function showPeriodization(){
+  document.getElementById('mais-body').innerHTML=renderPeriodizationHtml();
+  setBnavActive('mais');
+}
+function renderPeriodizationHtml(){
+  const p=periodization||{blocks:[],currentBlock:0,startDate:currentDate};
+  const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;color:#1C1917;font-size:14px;outline:none';
+  const focusOpts=[{v:'volume',l:'📈 Volume (hipertrofia)'},
+                   {v:'intensity',l:'💪 Intensidade (força)'},
+                   {v:'deload',l:'😴 Deload (recuperação)'}];
+  const blockCards=(p.blocks||[]).map((b,i)=>{
+    const isCur=i===(p.currentBlock||0);
+    const fc={volume:'#818cf8',intensity:'#F97316',deload:'#34d399'}[b.focus]||'#818cf8';
+    return`<div style="background:${isCur?fc+'0D':'#FAFAF9'};border:${isCur?'2px':'1px'} solid ${isCur?fc:'#E7E5E4'};border-radius:10px;padding:12px 14px;margin-bottom:8px;display:flex;align-items:flex-start;gap:10px">
+      <div style="font-size:20px;margin-top:2px">${b.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px;font-weight:700;color:${isCur?fc:'#1C1917'}">${b.name}${isCur?' <span style="font-size:10px;background:'+fc+';color:#fff;border-radius:4px;padding:1px 6px">ATUAL</span>':''}</div>
+        <div style="font-size:11px;color:#78716C;margin-top:2px">${b.durationWeeks} semana(s) · ${b.targetSets}×${b.targetReps}</div>
+        ${b.notes?`<div style="font-size:11px;color:#A8A29E;margin-top:2px">${b.notes}</div>`:''}
+      </div>
+      <div style="display:flex;gap:4px;flex-shrink:0">
+        ${!isCur?`<button onclick="periodization.currentBlock=${i};periodization.startDate=currentDate;savePeriodization();showPeriodization();showToast('Bloco ${b.name} iniciado')" style="background:#F0EFED;color:#16A34A;padding:5px 8px;border-radius:6px;font-size:11px">▶</button>`:''}
+        <button onclick="deletePeriodBlock(${i})" style="background:#F0EFED;color:#f87171;padding:5px 8px;border-radius:6px;font-size:11px">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+  return`<div class="card fade-in">
+    <div class="sec-hdr"><div class="sec-lbl"><span>📊</span> PERIODIZAÇÃO POR BLOCOS</div></div>
+    <div style="font-size:12px;color:#78716C;margin-bottom:12px;line-height:1.6">Organize seu treino em ciclos. O banner aparece no Log de treino mostrando a semana e meta atual.</div>
+    ${blockCards}
+    <div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:12px;margin-top:4px">
+      <div style="font-size:11px;color:#78716C;font-weight:700;margin-bottom:10px">+ NOVO BLOCO</div>
+      <div style="display:grid;grid-template-columns:56px 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:10px;color:#78716C;margin-bottom:4px">Ícone</div><input type="text" id="pb-icon" placeholder="📈" maxlength="4" style="${inp};text-align:center;font-size:20px;padding:6px"></div>
+        <div><div style="font-size:10px;color:#78716C;margin-bottom:4px">Nome do bloco</div><input type="text" id="pb-name" placeholder="ex: Hipertrofia" style="${inp}"></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div><div style="font-size:10px;color:#78716C;margin-bottom:4px">Semanas</div><input type="number" id="pb-weeks" value="4" min="1" style="${inp};text-align:center"></div>
+        <div><div style="font-size:10px;color:#78716C;margin-bottom:4px">Reps alvo</div><input type="text" id="pb-reps" value="8-12" placeholder="8-12" style="${inp};text-align:center"></div>
+      </div>
+      <select id="pb-focus" style="width:100%;${inp};margin-bottom:8px">
+        ${focusOpts.map(o=>`<option value="${o.v}">${o.l}</option>`).join('')}
+      </select>
+      <input type="text" id="pb-notes" placeholder="Observações (opcional)" style="${inp};margin-bottom:10px">
+      <button onclick="addPeriodBlock()" style="width:100%;padding:10px;background:#6C63FF;border-radius:10px;color:#fff;font-size:13px;font-weight:700">Adicionar bloco</button>
+    </div>
+    <button onclick="showMais()" style="width:100%;padding:10px;background:none;border:1px solid #E7E5E4;border-radius:10px;color:#78716C;font-size:13px;margin-top:8px">← Voltar</button>
+  </div>`;
+}
+function addPeriodBlock(){
+  const name=(document.getElementById('pb-name')?.value||'').trim();
+  if(!name){const el=document.getElementById('pb-name');if(el)el.style.borderColor='#f87171';return;}
+  if(!periodization)periodization={blocks:[],currentBlock:0,startDate:currentDate};
+  periodization.blocks.push({
+    id:'blk_'+Date.now(),
+    name,
+    icon:(document.getElementById('pb-icon')?.value||'📊').trim()||'📊',
+    durationWeeks:parseInt(document.getElementById('pb-weeks')?.value)||4,
+    targetReps:(document.getElementById('pb-reps')?.value||'8-12').trim(),
+    targetSets:3,
+    focus:document.getElementById('pb-focus')?.value||'volume',
+    notes:(document.getElementById('pb-notes')?.value||'').trim(),
+  });
+  savePeriodization();showPeriodization();showToast('Bloco adicionado!');
+}
+function deletePeriodBlock(i){
+  if(!periodization||!periodization.blocks) return;
+  if(!confirm('Excluir este bloco?')) return;
+  periodization.blocks.splice(i,1);
+  if(periodization.currentBlock>=periodization.blocks.length) periodization.currentBlock=0;
+  savePeriodization();showPeriodization();
+}
 function showMais(){
   renderMais();
   showScreen('mais');
@@ -2833,6 +2991,7 @@ function renderMais(){
     {icon:'🎯',label:'Metas e Objetivos',sub:'Acompanhe todas as suas metas',fn:"showGoalsMgmt()",c:'#34d399'},
     {icon:'⚙️',label:'Configurações de Saúde',sub:'Água, calorias, perfil e peso',fn:"showGoals()",c:'#38bdf8'},
     {icon:'💊',label:'Gerenciar Suplementos',sub:'Cadastrar e editar seus suplementos',fn:"showSups()",c:'#fbbf24'},
+    {icon:'📊',label:'Periodização por Blocos',sub:'Ciclos de treino com variação de volume e intensidade',fn:"showPeriodization()",c:'#818cf8'},
   ];
   const cards=items.map(it=>`
     <button onclick="${it.fn}" style="width:100%;display:flex;align-items:center;gap:14px;padding:15px 14px;background:#fff;border:1px solid #E7E5E4;border-radius:var(--r-md,12px);margin-bottom:8px;text-align:left;transition:box-shadow .15s;">
