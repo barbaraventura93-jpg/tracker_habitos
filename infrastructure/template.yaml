@@ -146,6 +146,17 @@ Resources:
             is_pdf=mime=='application/pdf'
             if ctx=='supplements':
               prompt='Extraia todos os suplementos, vitaminas e medicamentos. Retorne APENAS um array JSON: [{"label":"nome e dose","sub":"horario e instrucao","icon":"emoji","showOn":"always"}]. Use showOn=treino para pre/pos-treino, descanso para descanso, always para os demais. Somente o JSON, sem markdown.'
+            elif ctx=='meal_plan':
+              prompt=(
+                'Extraia o plano alimentar com macros por refeição. Retorne APENAS um array JSON, sem markdown:\n'
+                '[{"id":"cafe","hint":"descrição dos alimentos","kcal":380,"prot":35,"badge":"Semana","trigger":null}]\n'
+                'Ids válidos: cafe, almoco, lanche, jantar, ceia.\n'
+                'Se houver variantes (fim de semana, com carboidrato, versões do jantar), inclua com o campo trigger:\n'
+                '"isFds" para final de semana | "almocoCarb" para almoço com carboidrato\n'
+                '"jantarV=hamburguer" ou "jantarV=rap10" para variantes do jantar.\n'
+                'Para refeições sem variante, trigger deve ser null.\n'
+                'Extraia kcal e prot (proteína em gramas) de cada refeição. Somente o JSON.'
+              )
             else:
               prompt='Extraia todos os exercicios deste plano de treino. Retorne APENAS um array JSON: [{"name":"exercicio","group":"Peito|Costas|Ombro|Biceps|Triceps|Perna|Core|Gluteo|Cardio|Outro","sets":3,"reps":"12","obs":""}]. Somente o JSON, sem markdown.'
             if is_pdf:

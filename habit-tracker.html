@@ -431,7 +431,69 @@ const MEALS=[
   {id:'jantar',label:'Jantar',       icon:'🌙',time:'19:00'},
   {id:'ceia',  label:'Ceia',         icon:'🍓',time:'21:00'},
 ];
-function getMealDetail(id,d){
+// ── Plano Alimentar ──────────────────────────────────────────────────────────
+const DEFAULT_MEAL_PLAN={
+  cafe:{
+    default:{kcal:380,prot:35,hint:'Whey 28g + Banana 100g + Creatina + Leite em pó desnatado',badge:'Semana'},
+    variants:[{trigger:'isFds',kcal:350,prot:28,hint:'Pão francês + 2 ovos + Requeijão light + Whey 14g',badge:'Final de semana'}]
+  },
+  almoco:{
+    default:{kcal:380,prot:36,hint:'Salada à vontade + Frango 100g + Legumes assados 150g + Azeite 8g',badge:'Low carb'},
+    variants:[{trigger:'almocoCarb',kcal:520,prot:38,hint:'Salada à vontade + Frango 100g + Macarrão 110g + Legumes 150g',badge:'Com carboidrato'}]
+  },
+  lanche:{
+    default:{kcal:250,prot:20,hint:'Barrinha de proteína 60g  —  ou  —  3 ovos + Pão grãos + Creme de ricota',badge:'Doce ou salgada'}
+  },
+  jantar:{
+    default:{kcal:380,prot:34,hint:'Salada + Frango 100g + Batata inglesa 120g + Ketchup',badge:'🍽️ Refeição'},
+    variants:[
+      {trigger:'jantarV=rap10',kcal:330,prot:30,hint:'Rap10 fibras + Frango desfiado 80g + Requeijão light 30g',badge:'🌯 Rap10'},
+      {trigger:'jantarV=hamburguer',kcal:480,prot:35,hint:'Pão francês + Hambúrguer patinho 100g + Maionese light + Queijo',badge:'🍔 Hambúrguer'}
+    ]
+  },
+  ceia:{
+    default:{kcal:200,prot:22,hint:'Iogurte grego + cacau em pó + morangos + Whey misturado',badge:'21:00'}
+  }
+};
+let mealPlan=loadMealPlan();
+let _mpEditMealId=null;
+let _mpEditVariantIdx=null;
+let _mpImportPreview=[];
+function loadMealPlan(){
+  try{const s=localStorage.getItem('ht:mealplan');return s?JSON.parse(s):null;}
+  catch{return null;}
+}
+function saveMealPlan(){
+  try{localStorage.setItem('ht:mealplan',JSON.stringify(mealPlan));}catch{}
+  if(!USE_API||!authToken) return;
+  fetch(`${API_URL}?date=__mealplan__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(mealPlan)}).catch(()=>{});
+}
+async function syncMealPlan(){
+  if(!USE_API||!authToken) return;
+  try{
+    const r=await fetch(`${API_URL}?date=__mealplan__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)&&d.cafe){mealPlan=d;try{localStorage.setItem('ht:mealplan',JSON.stringify(d));}catch{}}}
+  }catch{}
+}
+function getMealSlot(mealId,d){
+  const cfg=(mealPlan||DEFAULT_MEAL_PLAN)[mealId];
+  if(!cfg) return null;
+  if(cfg.variants&&cfg.variants.length){
+    for(const v of cfg.variants){
+      if(v.trigger==='isFds'&&d.isFds) return v;
+      if(v.trigger==='almocoCarb'&&d.almocoCarb) return v;
+      if(v.trigger===`jantarV=${d.jantarV}`) return v;
+    }
+  }
+  return cfg.default||null;
+}
+function _getMealSlotRaw(mealId,variantIdx){
+  const cfg=(mealPlan||DEFAULT_MEAL_PLAN)[mealId];
+  if(!cfg) return null;
+  if(variantIdx===null||variantIdx===undefined) return cfg.default;
+  return cfg.variants?.[variantIdx]||null;
+}
+function _getMealDetailHardcoded(id,d){
   if(id==='cafe') return d.isFds
     ?{macro:'~350 kcal · ~28g prot',hint:'Pão francês + 2 ovos + Requeijão light + Whey 14g',badge:'Final de semana'}
     :{macro:'~380 kcal · ~35g prot',hint:'Whey 28g + Banana 100g + Creatina + Leite em pó desnatado',badge:'Semana'};
@@ -445,6 +507,11 @@ function getMealDetail(id,d){
     return{macro:'~380 kcal · ~34g prot',hint:'Salada + Frango 100g + Batata inglesa 120g + Ketchup',badge:'🍽️ Refeição'};
   }
   return{macro:'~200 kcal · ~22g prot',hint:'Iogurte grego + cacau em pó + morangos + Whey misturado',badge:'21:00'};
+}
+function getMealDetail(id,d){
+  const slot=getMealSlot(id,d);
+  if(slot) return{macro:`~${slot.kcal} kcal · ~${slot.prot}g prot`,hint:slot.hint,badge:slot.badge};
+  return _getMealDetailHardcoded(id,d);
 }
 const DEFAULT_SUPS=[
   {id:'pump',  label:'PUMP — pré-treino',     sub:'Cafeína + Ioimbina + Capsaicina + Astaxantina',icon:'⚡',showOn:'treino'},
@@ -2549,6 +2616,7 @@ async function syncGoals(){
   await syncGoalsDefs();
   await syncGoalLogs();
   await syncPeriodization();
+  await syncMealPlan();
 }
 async function syncGoalsDefs(){
   if(!USE_API||!authToken) return;
@@ -2982,6 +3050,197 @@ function showMais(){
   showScreen('mais');
   setBnavActive('mais');
 }
+function showMealPlanConfig(){
+  document.getElementById('mais-body').innerHTML=renderMealPlanConfigHtml();
+  setBnavActive('mais');
+}
+function renderMealPlanConfigHtml(){
+  const plan=mealPlan||DEFAULT_MEAL_PLAN;
+  const triggerLabel={
+    'isFds':'Final de semana',
+    'almocoCarb':'Com carboidrato',
+    'jantarV=rap10':'Jantar Rap10',
+    'jantarV=hamburguer':'Jantar Hambúrguer',
+  };
+  const slotCard=(mealId,slot,variantIdx,label)=>{
+    if(!slot) return '';
+    const editArgs=variantIdx===null?`'${mealId}',null`:`'${mealId}',${variantIdx}`;
+    return`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 13px;margin-bottom:7px">
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        <div style="flex:1;min-width:0">
+          ${label?`<div style="font-size:10px;color:#A8A29E;font-weight:600;margin-bottom:3px;letter-spacing:.06em">${label.toUpperCase()}</div>`:''}
+          <div style="font-size:13px;color:#1C1917;line-height:1.5">${slot.hint}</div>
+          <div style="display:flex;gap:10px;margin-top:6px;align-items:center">
+            <span style="font-size:11px;font-weight:700;color:#fb923c;font-family:'DM Mono',monospace">${slot.kcal} kcal</span>
+            <span style="font-size:11px;font-weight:700;color:#818cf8;font-family:'DM Mono',monospace">${slot.prot}g prot</span>
+            <span style="font-size:10px;color:#A8A29E;background:#F0EFED;border-radius:4px;padding:1px 6px">${slot.badge}</span>
+          </div>
+        </div>
+        <button onclick="mpOpenEdit(${editArgs})" style="background:#F0EFED;color:#78716C;padding:6px 10px;border-radius:7px;font-size:12px;flex-shrink:0">✏️</button>
+      </div>
+    </div>`;
+  };
+  const mealBlocks=MEALS.map(m=>{
+    const cfg=plan[m.id]||{};
+    const defSlot=cfg.default||null;
+    const variants=cfg.variants||[];
+    return`<div class="card" style="margin-bottom:8px">
+      <div class="sec-hdr" style="margin-bottom:8px">
+        <div class="sec-lbl"><span>${m.icon}</span> ${m.label.toUpperCase()}</div>
+        <span style="font-size:11px;color:#A8A29E">${m.time}</span>
+      </div>
+      ${slotCard(m.id,defSlot,null,'Padrão')}
+      ${variants.map((v,i)=>slotCard(m.id,v,i,triggerLabel[v.trigger]||v.trigger)).join('')}
+      <button onclick="mpAddVariant('${m.id}')" style="width:100%;padding:6px;background:none;border:1px dashed #D4D0CE;border-radius:8px;color:#A8A29E;font-size:11px;margin-top:2px">+ Adicionar variante</button>
+    </div>`;
+  }).join('');
+  const prevHtml=_mpImportPreview.length?_mpRenderImportPreview():'';
+  return`<div class="card fade-in">
+    <div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> PLANO ALIMENTAR</div></div>
+    <div style="font-size:12px;color:#78716C;margin-bottom:10px;line-height:1.6">Configure as refeições e macros do seu plano. Os valores de proteína e calorias serão usados no Resumo Nutricional.</div>
+    <input type="file" id="mp-file-input" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="mpHandleFile(this)">
+    <button onclick="document.getElementById('mp-file-input').click()" style="display:block;width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:14px;text-align:center;color:#78716C;font-size:13px;margin-bottom:8px">📄 Importar plano da nutricionista (PDF ou foto)</button>
+    <div id="mp-import-status" style="font-size:12px;min-height:14px;margin-bottom:4px"></div>
+    <div id="mp-import-preview">${prevHtml}</div>
+  </div>
+  ${mealBlocks}
+  <div style="display:flex;gap:8px;margin-bottom:8px">
+    <button onclick="mpResetToDefault()" style="flex:1;padding:10px;background:#F0EFED;border-radius:10px;color:#78716C;font-size:13px">↩ Restaurar padrão</button>
+    <button onclick="showMais()" style="flex:1;padding:10px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:13px;font-weight:500">← Voltar</button>
+  </div>`;
+}
+function mpOpenEdit(mealId,variantIdx){
+  _mpEditMealId=mealId;_mpEditVariantIdx=variantIdx;
+  const m=MEALS.find(x=>x.id===mealId);
+  const slot=_getMealSlotRaw(mealId,variantIdx)||(variantIdx===null?{kcal:0,prot:0,hint:'',badge:''}:{kcal:0,prot:0,hint:'',badge:'',trigger:''});
+  const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;color:#1C1917;font-size:14px;outline:none';
+  const isVariant=variantIdx!==null;
+  const triggerOpts=[
+    {v:'isFds',l:'Final de semana (isFds)'},
+    {v:'almocoCarb',l:'Almoço com carboidrato'},
+    {v:'jantarV=rap10',l:'Jantar Rap10'},
+    {v:'jantarV=hamburguer',l:'Jantar Hambúrguer'},
+  ];
+  const bd=document.createElement('div');
+  bd.style.cssText='position:fixed;inset:0;z-index:300;background:rgba(28,25,23,.5);display:flex;align-items:flex-end;justify-content:center';
+  bd.id='mp-edit-bd';
+  bd.onclick=e=>{if(e.target===bd)mpCloseEdit();};
+  bd.innerHTML=`<div style="width:100%;max-width:480px;background:#fff;border-radius:20px 20px 0 0;padding:20px 16px 32px;max-height:88vh;overflow-y:auto">
+    <div style="width:40px;height:4px;background:#E7E5E4;border-radius:2px;margin:0 auto 16px"></div>
+    <div style="font-size:14px;font-weight:700;color:#1C1917;margin-bottom:14px">✏️ ${m?m.label:'Refeição'}${isVariant?' — Variante':' — Padrão'}</div>
+    ${isVariant?`<div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">GATILHO</div>
+    <select id="mpe-trigger" style="${inp};margin-bottom:12px">${triggerOpts.map(o=>`<option value="${o.v}"${slot.trigger===o.v?' selected':''}>${o.l}</option>`).join('')}</select>`:''}
+    <div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">DESCRIÇÃO DOS ALIMENTOS</div>
+    <textarea id="mpe-hint" rows="3" style="${inp};resize:none;margin-bottom:12px">${slot.hint||''}</textarea>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <div><div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">CALORIAS (kcal)</div><input type="number" id="mpe-kcal" value="${slot.kcal||''}" placeholder="ex: 380" style="${inp}"></div>
+      <div><div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">PROTEÍNA (g)</div><input type="number" id="mpe-prot" value="${slot.prot||''}" placeholder="ex: 35" style="${inp}"></div>
+    </div>
+    <div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">BADGE (rótulo)</div>
+    <input type="text" id="mpe-badge" value="${slot.badge||''}" placeholder="ex: Semana" style="${inp};margin-bottom:18px">
+    <div style="display:flex;gap:8px">
+      <button onclick="mpSaveEdit()" style="flex:1;padding:12px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">Salvar</button>
+      ${isVariant?`<button onclick="mpDeleteVariant()" style="padding:12px 14px;background:#FCEBEB;border-radius:10px;color:#f87171;font-size:13px">Excluir</button>`:''}
+      <button onclick="mpCloseEdit()" style="padding:12px 14px;background:#F0EFED;border-radius:10px;color:#78716C;font-size:14px">Cancelar</button>
+    </div>
+  </div>`;
+  document.body.appendChild(bd);
+}
+function mpCloseEdit(){const bd=document.getElementById('mp-edit-bd');if(bd)bd.remove();}
+function mpSaveEdit(){
+  const hint=(document.getElementById('mpe-hint')?.value||'').trim();
+  const kcal=parseInt(document.getElementById('mpe-kcal')?.value)||0;
+  const prot=parseInt(document.getElementById('mpe-prot')?.value)||0;
+  const badge=(document.getElementById('mpe-badge')?.value||'').trim();
+  if(!hint||!kcal||!prot){showToast('Preencha descrição, calorias e proteína');return;}
+  if(!mealPlan) mealPlan=JSON.parse(JSON.stringify(DEFAULT_MEAL_PLAN));
+  if(!mealPlan[_mpEditMealId]) mealPlan[_mpEditMealId]={};
+  if(_mpEditVariantIdx===null){
+    mealPlan[_mpEditMealId].default={kcal,prot,hint,badge};
+  } else {
+    if(!mealPlan[_mpEditMealId].variants) mealPlan[_mpEditMealId].variants=[];
+    const trigger=document.getElementById('mpe-trigger')?.value||'';
+    mealPlan[_mpEditMealId].variants[_mpEditVariantIdx]={trigger,kcal,prot,hint,badge};
+  }
+  saveMealPlan();mpCloseEdit();showMealPlanConfig();showToast('Refeição salva!');renderUI();
+}
+function mpAddVariant(mealId){
+  if(!mealPlan) mealPlan=JSON.parse(JSON.stringify(DEFAULT_MEAL_PLAN));
+  if(!mealPlan[mealId]) mealPlan[mealId]={};
+  if(!mealPlan[mealId].variants) mealPlan[mealId].variants=[];
+  const newIdx=mealPlan[mealId].variants.length;
+  mealPlan[mealId].variants.push({trigger:'isFds',kcal:0,prot:0,hint:'',badge:''});
+  mpOpenEdit(mealId,newIdx);
+}
+function mpDeleteVariant(){
+  if(_mpEditMealId===null||_mpEditVariantIdx===null) return;
+  if(!confirm('Excluir esta variante?')) return;
+  mealPlan[_mpEditMealId].variants.splice(_mpEditVariantIdx,1);
+  saveMealPlan();mpCloseEdit();showMealPlanConfig();renderUI();
+}
+function mpResetToDefault(){
+  if(!confirm('Restaurar o plano alimentar padrão? As edições serão perdidas.')) return;
+  mealPlan=JSON.parse(JSON.stringify(DEFAULT_MEAL_PLAN));
+  saveMealPlan();showMealPlanConfig();showToast('Plano restaurado.');renderUI();
+}
+async function mpHandleFile(input){
+  const file=input.files[0];if(!file)return;
+  const statusEl=document.getElementById('mp-import-status');
+  if(statusEl)statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando plano com IA — aguarde...</span>';
+  try{
+    const items=await analyzeViaLambda(file,'meal_plan');
+    _mpImportPreview=items.filter(i=>i.id&&MEALS.find(m=>m.id===i.id)).map(i=>({...i,_checked:true}));
+    const prevEl=document.getElementById('mp-import-preview');
+    if(prevEl)prevEl.innerHTML=_mpRenderImportPreview();
+    if(statusEl)statusEl.innerHTML=`<span style="color:#16A34A">✓ ${_mpImportPreview.length} refeição(ões) identificada(s) — selecione as que deseja importar</span>`;
+  }catch(e){
+    if(statusEl)statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
+  }
+}
+function _mpRenderImportPreview(){
+  if(!_mpImportPreview.length) return '';
+  const mealLabel={cafe:'Café da manhã',almoco:'Almoço',lanche:'Lanche',jantar:'Jantar',ceia:'Ceia'};
+  const rows=_mpImportPreview.map((item,i)=>{
+    const m=MEALS.find(x=>x.id===item.id);
+    const isVariant=!!item.trigger;
+    return`<label style="display:flex;align-items:flex-start;gap:10px;padding:10px 12px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:9px;margin-bottom:6px;cursor:pointer">
+      <input type="checkbox" id="mpimp-${i}" ${item._checked?'checked':''} style="margin-top:3px;width:15px;height:15px;accent-color:#6C63FF;flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:#1C1917">${m?m.icon:''} ${mealLabel[item.id]||item.id}${isVariant?` <span style="font-size:10px;color:#A8A29E">(${item.trigger})</span>`:''}</div>
+        <div style="font-size:11px;color:#78716C;margin-top:2px;line-height:1.5">${item.hint||''}</div>
+        <div style="display:flex;gap:10px;margin-top:4px">
+          <span style="font-size:11px;font-weight:700;color:#fb923c;font-family:'DM Mono',monospace">${item.kcal||0} kcal</span>
+          <span style="font-size:11px;font-weight:700;color:#818cf8;font-family:'DM Mono',monospace">${item.prot||0}g prot</span>
+          ${item.badge?`<span style="font-size:10px;color:#A8A29E;background:#F0EFED;border-radius:4px;padding:1px 6px">${item.badge}</span>`:''}
+        </div>
+      </div>
+    </label>`;
+  }).join('');
+  return`<div style="margin-top:10px">${rows}<button onclick="mpConfirmImport()" style="width:100%;padding:12px;background:#16a34a;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-top:4px">Importar selecionados</button></div>`;
+}
+function mpConfirmImport(){
+  if(!mealPlan) mealPlan=JSON.parse(JSON.stringify(DEFAULT_MEAL_PLAN));
+  let count=0;
+  _mpImportPreview.forEach((item,i)=>{
+    if(!document.getElementById('mpimp-'+i)?.checked) return;
+    const{_checked,id,trigger,...slot}=item;
+    if(!mealPlan[id]) mealPlan[id]={};
+    if(trigger){
+      if(!mealPlan[id].variants) mealPlan[id].variants=[];
+      const vi=mealPlan[id].variants.findIndex(v=>v.trigger===trigger);
+      if(vi>=0) mealPlan[id].variants[vi]={trigger,...slot};
+      else mealPlan[id].variants.push({trigger,...slot});
+    } else {
+      mealPlan[id].default=slot;
+    }
+    count++;
+  });
+  if(count){saveMealPlan();renderUI();}
+  _mpImportPreview=[];
+  showMealPlanConfig();
+  const st=document.getElementById('mp-import-status');
+  if(st&&count) st.innerHTML=`<span style="color:#16A34A">✓ ${count} refeição(ões) importada(s) ao plano!</span>`;
+}
 function renderMais(){
   const body=document.getElementById('mais-body');
   if(!body) return;
@@ -2992,6 +3251,7 @@ function renderMais(){
     {icon:'⚙️',label:'Configurações de Saúde',sub:'Água, calorias, perfil e peso',fn:"showGoals()",c:'#38bdf8'},
     {icon:'💊',label:'Gerenciar Suplementos',sub:'Cadastrar e editar seus suplementos',fn:"showSups()",c:'#fbbf24'},
     {icon:'📊',label:'Periodização por Blocos',sub:'Ciclos de treino com variação de volume e intensidade',fn:"showPeriodization()",c:'#818cf8'},
+    {icon:'🥗',label:'Plano Alimentar',sub:'Configure refeições, macros e importe da sua nutricionista',fn:"showMealPlanConfig()",c:'#34d399'},
   ];
   const cards=items.map(it=>`
     <button onclick="${it.fn}" style="width:100%;display:flex;align-items:center;gap:14px;padding:15px 14px;background:#fff;border:1px solid #E7E5E4;border-radius:var(--r-md,12px);margin-bottom:8px;text-align:left;transition:box-shadow .15s;">
