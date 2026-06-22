@@ -42,12 +42,14 @@ App de acompanhamento de rotina diária — refeições, água, suplementos, son
 
 **Geral**
 - Upload de plano via PDF ou imagem — IA extrai exercícios automaticamente
+- **Log herda do Plano** — ao adicionar um exercício no Log, séries e reps são herdadas automaticamente do Plano correspondente; se o exercício não estiver no Plano, mostra campos editáveis com aviso; toast confirma a herança aplicada
+- **Periodização por Blocos** — organização do treino em ciclos (ex: Hipertrofia → Deload → Força) com duração em semanas, meta de séries/reps e foco (volume · intensidade · deload); banner no topo do Log mostra o bloco atual, semana do ciclo, barra de progresso e botão "Próximo" ao atingir a última semana; gerenciado em Mais → Periodização por Blocos; sincronizado via DynamoDB (`__periodization__`)
 
 ### Semana
 
 Tela dedicada na navegação inferior com visão consolidada da semana de treino:
 
-- **Mapa muscular SVG** — silhueta humana frente/costas com heatmap por grupo; 4 intensidades: cinza (sem treino) → roxo claro (leve) → roxo (moderado) → laranja (intenso); fórmula: 15 séries/semana = 100%
+- **Mapa muscular SVG anatômico** — silhueta humana frente/costas com curvas bezier e `<clipPath>` para recorte preciso; músculos posicionados anatomicamente (trapézio em diamante, latíssimo em asa, peitoral em leque, abdômen segmentado); heatmap com 4 intensidades: cinza (sem treino) → roxo claro (leve) → roxo (moderado) → laranja (intenso); fórmula: 15 séries/semana = 100%
 - **Timeline semanal** — 7 cards Seg–Dom com tipo de treino, grupos trabalhados, duração e marcação de concluído/falhado
 - **Equilíbrio muscular** — tabela com sets e intensidade por grupo (Peito · Costas · Ombro · Bíceps · Tríceps · Perna · Core · Glúteo)
 - **Sugestão IA** — após renderizar a tela, busca sugestão personalizada no Bedrock (Amazon Nova Lite) com contexto da semana; exibe 1–2 mensagens motivadoras em português sobre o que falta treinar; fallback para regra estática se a IA não responder
@@ -191,3 +193,6 @@ Abra o arquivo `habit-tracker.html` diretamente no navegador. Sem internet, o ap
 - [x] Formulário de adição simplificado — grupo preenchido automaticamente, sem select manual
 - [x] Botão "Rever grupos" no Plano — reidentifica todos os exercícios em lote via Bedrock
 - [x] Sessões de treino persistidas no DynamoDB — histórico seguro mesmo após limpeza de cache
+- [x] Mapa muscular anatômico — silhueta com bezier + clipPath, posicionamento correto de cada grupo
+- [x] Log herda séries/reps do Plano automaticamente — sem campos redundantes quando exercício já tem modelo
+- [x] Periodização por Blocos — ciclos semanais com banner no Log, barra de progresso e sync em nuvem

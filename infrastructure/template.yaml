@@ -179,7 +179,7 @@ Resources:
             prompt=(
               'Identifique o exercicio de musculacao: "'+name+'"\n\n'
               'Responda APENAS com um JSON valido, sem markdown:\n'
-              '{"group":"Peito|Costas|Ombro|Biceps|Triceps|Perna|Gluteo|Core|Cardio|Outro",'
+              '{"group":"Peito|Costas|Ombro|Bíceps|Tríceps|Perna|Glúteo|Core|Cardio|Outro",'
               '"targetMuscle":"musculo principal em ingles",'
               '"secondaryMuscles":["musculo2","musculo3"]}\n\n'
               'Exemplos:\n'
