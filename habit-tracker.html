@@ -231,12 +231,60 @@ textarea,input,select{font-family:inherit;}
           <input id="auth-password" type="password" placeholder="Senha (mínimo 8 caracteres)" autocomplete="current-password" style="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:14px;margin-bottom:6px;outline:none">
           <div id="auth-error" style="font-size:12px;color:#DC2626;min-height:18px;margin-bottom:8px;text-align:center"></div>
           <button onclick="authSubmit()" id="auth-btn" style="width:100%;padding:14px;background:var(--accent);border-radius:10px;color:#fff;font-size:15px;font-weight:500">Entrar</button>
+          <div id="forgot-link" style="text-align:center;margin-top:12px">
+            <a href="#" onclick="showForgotPassword(event)" style="font-size:13px;color:var(--muted);text-decoration:underline">Esqueci minha senha</a>
+          </div>
         </div>
         <div id="auth-confirm" style="display:none">
           <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:16px;line-height:1.5">Enviamos um código para o seu e-mail.<br>Digite abaixo para confirmar a conta.</div>
           <input id="auth-code" type="text" inputmode="numeric" placeholder="000000" style="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:22px;margin-bottom:6px;outline:none;text-align:center;letter-spacing:8px">
           <div id="auth-confirm-error" style="font-size:12px;color:#DC2626;min-height:18px;margin-bottom:8px;text-align:center"></div>
           <button onclick="confirmCode()" style="width:100%;padding:14px;background:#16A34A;border-radius:10px;color:#fff;font-size:15px;font-weight:500">Confirmar e-mail</button>
+        </div>
+
+        <!-- Recuperação de senha -->
+        <div id="forgot-panel" style="display:none">
+          <div style="text-align:center;margin-bottom:24px">
+            <div style="font-size:28px;margin-bottom:8px">🔑</div>
+            <div style="font-size:20px;font-weight:600;color:var(--txt)" id="forgot-title">Recuperar senha</div>
+            <div style="font-size:13px;color:var(--muted);margin-top:4px" id="forgot-subtitle">Informe o e-mail cadastrado para receber o código</div>
+          </div>
+          <!-- Passo 1: e-mail -->
+          <div id="forgot-step1">
+            <input type="email" id="forgot-email" placeholder="seu@email.com"
+              style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#FAFAF9;color:var(--txt);box-sizing:border-box;margin-bottom:12px;outline:none">
+            <div id="forgot-error-step1" style="color:#DC2626;font-size:12px;margin-bottom:10px;display:none"></div>
+            <button onclick="forgotSendCode()" id="btn-send-code"
+              style="width:100%;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer">
+              Enviar código
+            </button>
+            <div style="text-align:center;margin-top:14px">
+              <a href="#" onclick="showLogin(event)" style="font-size:13px;color:var(--muted);text-decoration:underline">Voltar para o login</a>
+            </div>
+          </div>
+          <!-- Passo 2: código + nova senha -->
+          <div id="forgot-step2" style="display:none">
+            <div style="font-size:12px;color:var(--muted);margin-bottom:14px">
+              Código enviado para <strong id="forgot-email-display"></strong>.<br>Verifique sua caixa de entrada (e spam).
+            </div>
+            <input type="text" id="forgot-code" placeholder="Código de verificação (6 dígitos)"
+              inputmode="numeric" maxlength="6"
+              style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#FAFAF9;color:var(--txt);box-sizing:border-box;margin-bottom:10px;outline:none;letter-spacing:4px;text-align:center">
+            <input type="password" id="forgot-newpass" placeholder="Nova senha"
+              style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#FAFAF9;color:var(--txt);box-sizing:border-box;margin-bottom:10px;outline:none">
+            <input type="password" id="forgot-confirmpass" placeholder="Confirmar nova senha"
+              style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#FAFAF9;color:var(--txt);box-sizing:border-box;margin-bottom:12px;outline:none">
+            <div id="forgot-error-step2" style="color:#DC2626;font-size:12px;margin-bottom:10px;display:none"></div>
+            <button onclick="forgotConfirmCode()" id="btn-confirm-code"
+              style="width:100%;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer">
+              Redefinir senha
+            </button>
+            <div style="text-align:center;margin-top:12px">
+              <a href="#" onclick="forgotResendCode(event)" style="font-size:12px;color:var(--muted);text-decoration:underline">Reenviar código</a>
+              &nbsp;·&nbsp;
+              <a href="#" onclick="showLogin(event)" style="font-size:12px;color:var(--muted);text-decoration:underline">Cancelar</a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -2482,6 +2530,7 @@ function authTab(mode){
   document.getElementById('tab-register').style.cssText=`flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:500;background:${isLogin?'transparent':'#fff'};color:${isLogin?'#78716C':'#1C1917'};border:none`;
   document.getElementById('auth-btn').textContent=isLogin?'Entrar':'Criar conta';
   document.getElementById('auth-error').textContent='';
+  document.getElementById('forgot-link').style.display=isLogin?'block':'none';
 }
 async function authSubmit(){
   const email=document.getElementById('auth-email').value.trim();
@@ -2557,6 +2606,96 @@ function signOut(){
   localStorage.removeItem('ht:token');localStorage.removeItem('ht:refresh');
   showScreen('auth');
 }
+
+// ─── Recuperação de senha ────────────────────────────────────────
+let _forgotEmail=null;
+
+function showForgotPassword(e){
+  e&&e.preventDefault();
+  document.getElementById('auth-tabs').style.display='none';
+  document.getElementById('auth-form').style.display='none';
+  document.getElementById('auth-confirm').style.display='none';
+  document.getElementById('forgot-panel').style.display='block';
+  document.getElementById('forgot-step1').style.display='block';
+  document.getElementById('forgot-step2').style.display='none';
+  document.getElementById('forgot-title').textContent='Recuperar senha';
+  document.getElementById('forgot-subtitle').textContent='Informe o e-mail cadastrado para receber o código';
+  document.getElementById('forgot-error-step1').style.display='none';
+  document.getElementById('forgot-email').value='';
+  _forgotEmail=null;
+}
+
+function showLogin(e){
+  e&&e.preventDefault();
+  document.getElementById('forgot-panel').style.display='none';
+  document.getElementById('auth-tabs').style.display='flex';
+  document.getElementById('auth-form').style.display='block';
+  authTab('login');
+}
+
+async function forgotSendCode(){
+  const email=document.getElementById('forgot-email').value.trim();
+  const errEl=document.getElementById('forgot-error-step1');
+  errEl.style.display='none';
+  if(!email){errEl.textContent='Informe seu e-mail.';errEl.style.display='block';return;}
+  const btn=document.getElementById('btn-send-code');
+  btn.textContent='Enviando...';btn.disabled=true;
+  const res=await cognito('ForgotPassword',{ClientId:COGNITO_CLIENT_ID,Username:email});
+  btn.textContent='Enviar código';btn.disabled=false;
+  if(res.__type){errEl.textContent=forgotMapError(res.__type);errEl.style.display='block';return;}
+  _forgotEmail=email;
+  document.getElementById('forgot-email-display').textContent=email;
+  document.getElementById('forgot-step1').style.display='none';
+  document.getElementById('forgot-step2').style.display='block';
+  document.getElementById('forgot-title').textContent='Verifique seu e-mail';
+  document.getElementById('forgot-subtitle').textContent='';
+  document.getElementById('forgot-code').focus();
+}
+
+async function forgotResendCode(e){
+  e&&e.preventDefault();
+  if(!_forgotEmail) return;
+  document.getElementById('forgot-error-step2').style.display='none';
+  const res=await cognito('ForgotPassword',{ClientId:COGNITO_CLIENT_ID,Username:_forgotEmail});
+  if(res.__type){
+    const errEl=document.getElementById('forgot-error-step2');
+    errEl.textContent='Erro ao reenviar: '+forgotMapError(res.__type);
+    errEl.style.display='block';
+  }else{
+    showToast('Novo código enviado para o seu e-mail.');
+  }
+}
+
+async function forgotConfirmCode(){
+  const code=document.getElementById('forgot-code').value.trim();
+  const newPass=document.getElementById('forgot-newpass').value;
+  const confirmPass=document.getElementById('forgot-confirmpass').value;
+  const errEl=document.getElementById('forgot-error-step2');
+  errEl.style.display='none';
+  if(!code||code.length<6){errEl.textContent='Informe o código de 6 dígitos enviado ao seu e-mail.';errEl.style.display='block';return;}
+  if(newPass.length<8){errEl.textContent='A senha deve ter pelo menos 8 caracteres.';errEl.style.display='block';return;}
+  if(newPass!==confirmPass){errEl.textContent='As senhas não coincidem.';errEl.style.display='block';return;}
+  const btn=document.getElementById('btn-confirm-code');
+  btn.textContent='Redefinindo...';btn.disabled=true;
+  const res=await cognito('ConfirmForgotPassword',{ClientId:COGNITO_CLIENT_ID,Username:_forgotEmail,ConfirmationCode:code,Password:newPass});
+  btn.textContent='Redefinir senha';btn.disabled=false;
+  if(res.__type){errEl.textContent=forgotMapError(res.__type);errEl.style.display='block';return;}
+  showLogin(null);
+  showToast('✅ Senha redefinida com sucesso! Faça login com a nova senha.');
+}
+
+function forgotMapError(type){
+  if(!type) return 'Erro inesperado. Tente novamente.';
+  if(type.includes('UserNotFound')) return 'E-mail não encontrado. Verifique e tente novamente.';
+  if(type.includes('InvalidParameter')) return 'E-mail inválido.';
+  if(type.includes('LimitExceeded')) return 'Muitas tentativas. Aguarde alguns minutos.';
+  if(type.includes('ExpiredCode')) return 'Código expirado. Solicite um novo código.';
+  if(type.includes('CodeMismatch')) return 'Código incorreto. Verifique e tente novamente.';
+  if(type.includes('InvalidPassword')) return 'Senha muito fraca. Use letras maiúsculas, números e caracteres especiais.';
+  if(type.includes('NotAuthorized')) return 'Operação não permitida. Tente novamente ou contate o suporte.';
+  return 'Erro inesperado. Tente novamente.';
+}
+// ─────────────────────────────────────────────────────────────────
 
 // ─── API ─────────────────────────────────────────────────────────────────────
 const API_URL='__API_URL__';
