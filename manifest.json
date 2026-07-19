@@ -1,0 +1,15 @@
+{
+  "name": "Rotina Diária",
+  "short_name": "Rotina",
+  "description": "Acompanhamento de rotina diária — refeições, água, suplementos, sono e treino.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#F7F5F2",
+  "theme_color": "#1C1917",
+  "orientation": "portrait",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

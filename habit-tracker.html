@@ -6,6 +6,9 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#1C1917">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
 <title>Rotina Diária</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -31,6 +34,8 @@ textarea,input,select{font-family:inherit;}
 .fade-in{animation:fadeIn .22s ease;}
 @keyframes fadeIn{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
 @keyframes streakPulse{0%,100%{box-shadow:0 0 0 0 rgba(201,168,76,.4)}70%{box-shadow:0 0 0 6px rgba(201,168,76,0)}}
+@keyframes streakPulseDanger{0%,100%{box-shadow:0 0 0 0 rgba(220,38,38,.45)}70%{box-shadow:0 0 0 6px rgba(220,38,38,0)}}
+.streak-badge.streak-danger{animation:streakPulseDanger 1.4s ease-in-out infinite;}
 @keyframes confetti-fall{0%{opacity:1;transform:translateY(0) rotate(0deg)}100%{opacity:0;transform:translateY(100vh) rotate(720deg)}}
 @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
 .progress-fill{transition:width .6s cubic-bezier(.34,1.56,.64,1);}
@@ -2854,6 +2859,25 @@ function renderUI(){
   else renderHoje(body,sc);
 }
 
+// ─── Colapso de seções concluídas em "Hoje" ─────────────────────────────────
+let _homeForceExpand=new Set();
+function toggleHomeSection(key){
+  const k=key+':'+currentDate;
+  if(_homeForceExpand.has(k)) _homeForceExpand.delete(k);
+  else _homeForceExpand.add(k);
+  renderUI();
+}
+function _isHomeSectionExpanded(key){return _homeForceExpand.has(key+':'+currentDate);}
+function _collapsedRow(key,icon,label,detail){
+  return`<div class="card" style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:#F0FDF4;border-color:#BBF7D0">
+    <div style="font-size:20px;flex-shrink:0">${icon}</div>
+    <div style="flex:1;min-width:0">
+      <div style="font-size:13px;font-weight:700;color:#1C1917">${label} <span style="color:#16A34A">✓</span></div>
+      <div style="font-size:11px;color:#78716C;margin-top:1px">${detail}</div>
+    </div>
+    <button onclick="toggleHomeSection('${key}')" style="font-size:11px;color:#78716C;background:none;text-decoration:underline;flex-shrink:0">editar</button>
+  </div>`;
+}
 function renderHoje(body,sc){
   const pct=sc.pct;
   const rc=pct>=100?'#6C63FF':pct>=90?'#86EFAC':pct>=80?'#4ADE80':pct>=50?'#FCD34D':pct>0?'#FB923C':'#E7E5E4';
@@ -2888,7 +2912,11 @@ function renderHoje(body,sc){
   const wMlCur=dayData.water*250,wMlMeta=goals.aguaCopos*250;
   const wLCur=wMlCur>=1000?(wMlCur/1000).toFixed(1).replace('.',',')+'L':wMlCur+'ml';
   const wLMeta=wMlMeta>=1000?(wMlMeta/1000).toFixed(1).replace('.',',')+'L':wMlMeta+'ml';
-  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=goals.aguaCopos?'#34d399':'#78716C'}">${dayData.water}/${goals.aguaCopos} copos</span></div>
+  const aguaDone=dayData.water>=goals.aguaCopos;
+  if(aguaDone&&!_isHomeSectionExpanded('agua')){
+    html+=_collapsedRow('agua','💧','Água',`${wLCur} de ${wLMeta} — meta batida`);
+  }else{
+  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>💧</span> ÁGUA</div><span style="display:flex;align-items:center;gap:8px;font-size:11px;font-family:'DM Mono',monospace;color:${dayData.water>=goals.aguaCopos?'#34d399':'#78716C'}">${dayData.water}/${goals.aguaCopos} copos${aguaDone?`<button onclick="toggleHomeSection('agua')" style="font-size:10px;color:#78716C;background:none;text-decoration:underline;font-family:'DM Sans',sans-serif">recolher</button>`:''}</span></div>
     <div style="font-size:11px;color:#78716C;margin-bottom:8px">Consumido: <b style="color:${dayData.water>=goals.aguaCopos?'#34d399':'#1C1917'}">${wLCur}</b> · Meta: <b>${wLMeta}/dia</b></div>
     <div style="display:flex;gap:5px;margin-bottom:8px">${wBars}</div>
     <div style="display:flex;gap:8px">
@@ -2896,15 +2924,22 @@ function renderHoje(body,sc){
       <button onclick="addWater(1)" style="flex:1;padding:8px;background:#5A52E8;border:1px solid #6C63FF;color:#fff;border-radius:8px;font-size:12px;font-weight:600">+ 1 copo</button>
     </div>
   </div>`;
+  }
   // SONO
   const sOpts=SLEEPS.map(o=>{const sel=dayData.sleep===o.id;return`<button onclick="setSleep('${o.id}')" style="padding:9px 4px;border-radius:8px;font-size:12px;font-weight:700;background:${sel?(o.ok?'#166534':'#7f1d1d'):'#FAFAF9'};color:${sel?(o.ok?'#86efac':'#fca5a5'):'#78716C'};border:1px solid ${sel?(o.ok?'#16a34a':'#dc2626'):'#E7E5E4'}">${o.l}</button>`;}).join('');
   const sOk=[{v:'true',l:'✓ Sim'},{v:'false',l:'✗ Não'}].map(o=>{const sel=String(dayData.sleepOk)===o.v;return`<button onclick="setSleepOk(${o.v})" style="flex:1;padding:9px;border-radius:8px;font-size:13px;font-weight:700;background:${sel?(o.v==='true'?'#166534':'#7f1d1d'):'#FAFAF9'};color:${sel?(o.v==='true'?'#86efac':'#fca5a5'):'#78716C'};border:1px solid ${sel?(o.v==='true'?'#16a34a':'#dc2626'):'#E7E5E4'}">${o.l}</button>`;}).join('');
-  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>😴</span> SONO</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.sleep.d===sc.sleep.t?'#a78bfa':'#78716C'}">${sc.sleep.d}/${sc.sleep.t}</span></div>
+  const sonoDone=dayData.sleep!=null&&dayData.sleepOk!=null;
+  if(sonoDone&&!_isHomeSectionExpanded('sono')){
+    const sLabel=SLEEPS.find(o=>o.id===dayData.sleep)?.l||dayData.sleep;
+    html+=_collapsedRow('sono','😴','Sono',`${sLabel} · horário ${dayData.sleepOk?'consistente':'inconsistente'}`);
+  }else{
+  html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>😴</span> SONO</div><span style="display:flex;align-items:center;gap:8px;font-size:11px;font-family:'DM Mono',monospace;color:${sc.sleep.d===sc.sleep.t?'#a78bfa':'#78716C'}">${sc.sleep.d}/${sc.sleep.t}${sonoDone?`<button onclick="toggleHomeSection('sono')" style="font-size:10px;color:#78716C;background:none;text-decoration:underline;font-family:'DM Sans',sans-serif">recolher</button>`:''}</span></div>
     <div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORAS DORMIDAS</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:12px">${sOpts}</div>
     <div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.07em;margin-bottom:7px">HORÁRIO CONSISTENTE?</div>
     <div style="display:flex;gap:7px">${sOk}</div>
   </div>`;
+  }
   // OBSERVAÇÕES
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📝</span> OBSERVAÇÕES</div></div>
     <textarea placeholder="Como foi o dia? O que dificultou? O que funcionou bem?" onchange="setNotes(this.value)" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;color:#1C1917;font-size:13px;resize:none;height:72px;outline:none;line-height:1.5">${dayData.notes||''}</textarea>
@@ -3113,9 +3148,9 @@ function setBnavActive(id){
   document.querySelectorAll('.sb-item').forEach(b=>b.classList.remove('active'));
   const sel=document.getElementById('snav-'+id);if(sel) sel.classList.add('active');
 }
-function calcStreak(){
+function calcStreak(uptoYesterday){
   let s=0;
-  const t=today();
+  const t=uptoYesterday?addDays(today(),-1):today();
   for(let i=0;i<365;i++){
     const d=addDays(t,-i);
     const dd=loadDay(d);
@@ -3124,13 +3159,34 @@ function calcStreak(){
   }
   return s;
 }
+const STREAK_MILESTONES=[7,30,100,365];
+function streakMilestoneCheck(s){
+  if(!STREAK_MILESTONES.includes(s)) return;
+  let done=[];
+  try{done=JSON.parse(localStorage.getItem('ht:streak_milestones')||'[]');}catch{}
+  if(done.includes(s)) return;
+  done.push(s);
+  try{localStorage.setItem('ht:streak_milestones',JSON.stringify(done));}catch{}
+  triggerConfetti();
+  showToast(`🔥 ${s} dias seguidos! Marco desbloqueado`);
+}
 function renderStreakBadge(){
-  const s=calcStreak();
-  if(!s) return;
-  const hot=s>=7?'streak-hot':'';
-  const html=`<div class="streak-badge ${hot}">🔥 ${s}</div>`;
+  const todayPct=calcScore(loadDay(today()),today()).pct;
+  const todayDone=todayPct>=80;
+  const s=todayDone?calcStreak(false):calcStreak(true);
   const mh=document.getElementById('mh-streak');
   const sb=document.getElementById('sb-streak');
+  if(!s){if(mh)mh.innerHTML='';if(sb)sb.innerHTML='';return;}
+  if(todayDone) streakMilestoneCheck(s);
+  const hour=new Date().getHours();
+  let bg,border,color,flame='🔥',pulseClass='';
+  if(!todayDone&&hour>=18){bg='rgba(220,38,38,.12)';border='rgba(220,38,38,.4)';color='#DC2626';flame='⚠️';pulseClass='streak-danger';}
+  else if(!todayDone){bg='rgba(217,119,6,.12)';border='rgba(217,119,6,.35)';color='#D97706';}
+  else if(s>=100){bg='rgba(108,99,255,.14)';border='rgba(108,99,255,.4)';color='#6C63FF';flame='💎';pulseClass='streak-hot';}
+  else if(s>=30){bg='rgba(201,168,76,.18)';border='rgba(201,168,76,.45)';color='#C9A84C';pulseClass='streak-hot';}
+  else if(s>=7){bg='rgba(201,168,76,.12)';border='rgba(201,168,76,.3)';color='#C9A84C';pulseClass='streak-hot';}
+  else{bg='rgba(120,113,108,.1)';border='rgba(120,113,108,.25)';color='#78716C';}
+  const html=`<div class="streak-badge ${pulseClass}" style="background:${bg};border-color:${border};color:${color}">${flame} ${s}</div>`;
   if(mh) mh.innerHTML=html;
   if(sb) sb.innerHTML=html;
 }
