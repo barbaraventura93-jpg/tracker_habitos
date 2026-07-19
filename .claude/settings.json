@@ -50,7 +50,15 @@
       "Bash(git -C \"c:/Users/barba/Local/tracker_habitos\" checkout main)",
       "Bash(git -C \"c:/Users/barba/Local/tracker_habitos\" pull)",
       "Bash(git -C \"c:/Users/barba/Local/tracker_habitos\" checkout -b feature/muscle-map)",
-      "Bash(gh pr create --title 'feat\\(nutricao\\): consolidar tela de Nutrição v2' --body ' *)"
+      "Bash(gh pr create --title 'feat\\(nutricao\\): consolidar tela de Nutrição v2' --body ' *)",
+      "Bash(git -C \"c:\\\\Users\\\\barba\\\\Local\\\\tracker_habitos\" branch -a --sort=-committerdate)",
+      "Bash(git -C \"c:\\\\Users\\\\barba\\\\Local\\\\tracker_habitos\" branch -a)",
+      "Bash(git -C \"c:\\\\Users\\\\barba\\\\Local\\\\tracker_habitos\" log --oneline -8 origin/main)",
+      "Bash(git -C \"c:\\\\Users\\\\barba\\\\Local\\\\tracker_habitos\" log --oneline feature/semana)",
+      "Bash(git -C \"c:\\\\Users\\\\barba\\\\Local\\\\tracker_habitos\" diff --stat main...feature/semana)",
+      "Bash(git -C \"c:\\\\Users\\\\barba\\\\Local\\\\tracker_habitos\" branch --show-current)",
+      "Bash(git -C \"c:\\\\Users\\\\barba\\\\Local\\\\tracker_habitos\" status --short)",
+      "Bash(git -C \"c:\\\\Users\\\\barba\\\\Local\\\\tracker_habitos\" diff habit-tracker.html)"
     ]
   }
 }
