@@ -154,7 +154,7 @@ textarea,input,select{font-family:inherit;}
 .screen{display:none;}.screen.active{display:block;}
 
 /* Toast */
-.toast{position:fixed;top:68px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--accent);color:#fff;padding:11px 20px;border-radius:var(--r-lg);font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(108,99,255,.35);z-index:999;opacity:0;transition:all .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none;white-space:nowrap;}
+.toast{position:fixed;top:68px;left:50%;transform:translateX(-50%) translateY(-16px);background:var(--accent);color:#fff;padding:11px 20px;border-radius:var(--r-lg);font-size:13px;font-weight:500;box-shadow:0 8px 24px rgba(108,99,255,.35);z-index:999;opacity:0;transition:all .3s cubic-bezier(.34,1.56,.64,1);pointer-events:none;max-width:88vw;text-align:center;line-height:1.4;}
 .toast.show{opacity:1;transform:translateX(-50%) translateY(0);}
 /* Gym reorder */
 .gym-drag-handle{color:#D4D0CE;font-size:15px;cursor:grab;padding:0 4px 0 0;-webkit-user-select:none;user-select:none;display:none;line-height:1;align-self:center;flex-shrink:0}
@@ -290,6 +290,19 @@ textarea,input,select{font-family:inherit;}
     </div>
   </div>
 
+  <!-- ONBOARDING WELCOME SCREEN -->
+  <div id="screen-onboarding" class="screen">
+    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)">
+      <div style="width:100%;max-width:360px;text-align:center">
+        <div style="font-size:40px;margin-bottom:14px">👋</div>
+        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:400;color:var(--txt);margin-bottom:10px">Bem-vindo(a)!</div>
+        <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:28px">Antes de começar, leva 2 minutinhos para configurar seu perfil — assim suas metas de água, calorias e treino já vêm calculadas certinhas pra você.</div>
+        <button onclick="onboardingStart()" style="width:100%;padding:14px;background:var(--accent);border-radius:10px;color:#fff;font-size:15px;font-weight:500;margin-bottom:12px">Configurar meu perfil</button>
+        <a href="#" onclick="onboardingSkip();return false;" style="font-size:13px;color:var(--muted);text-decoration:underline">Pular por agora</a>
+      </div>
+    </div>
+  </div>
+
   <!-- HOME SCREEN -->
   <div id="screen-home" class="screen">
     <div class="header">
@@ -312,8 +325,8 @@ textarea,input,select{font-family:inherit;}
   <div id="screen-goals" class="screen">
     <div class="header">
       <div class="header-inner">
-        <button class="nav-btn" onclick="showMais()">←</button>
-        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Minhas Metas</div>
+        <button class="nav-btn" onclick="goalsBack()">←</button>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Configurações de Saúde</div>
         <div style="width:44px"></div>
       </div>
     </div>
@@ -1445,7 +1458,7 @@ function renderGym(){
   _blocks.forEach((block)=>{
     if(block.type==='group'){
       const tc=trObj.color||'#818cf8';
-      html+=`<div class="gym-biset-wrap" style="border-color:${tc}"><span class="gym-biset-badge" style="background:${tc}">${block.groupType==='triset'?'TRI-SET':'BI-SET'}</span>`;
+      html+=`<div class="gym-biset-wrap" style="border-color:${tc}"><span class="gym-biset-badge" style="background:${tc};cursor:pointer" onclick="showToast('${block.groupType==='triset'?'Tri-set: 3 exercicios feitos em sequencia, sem descanso entre eles':'Bi-set: 2 exercicios feitos em sequencia, sem descanso entre eles'}')">${block.groupType==='triset'?'TRI-SET':'BI-SET'}</span>`;
       block.items.forEach(({ei,ex})=>{html+=_gymCard(ei,ex);});
       html+=`</div>`;
     }else{
@@ -1800,7 +1813,7 @@ function renderGymPlan(gymBody){
 
         blocks.forEach((block,bi)=>{
           if(block.type==='group'){
-            exListHtml+=`<div class="gym-biset-wrap"><span class="gym-biset-badge">${block.groupType==='triset'?'TRI-SET':'BI-SET'}</span>`;
+            exListHtml+=`<div class="gym-biset-wrap"><span class="gym-biset-badge" style="cursor:pointer" onclick="showToast('${block.groupType==='triset'?'Tri-set: 3 exercicios feitos em sequencia, sem descanso entre eles':'Bi-set: 2 exercicios feitos em sequencia, sem descanso entre eles'}')">${block.groupType==='triset'?'TRI-SET':'BI-SET'}</span>`;
             block.items.forEach(({i,ex})=>{exListHtml+=_planCard(w,plan,i,ex);});
             exListHtml+=`<button class="gym-group-btn" onclick="gymUngroup('${block.groupId}')" style="justify-content:flex-end;padding-right:4px;font-size:10px;margin:0 0 4px">Desagrupar ✕</button></div>`;
           }else{
@@ -1816,7 +1829,8 @@ function renderGymPlan(gymBody){
             const canExtend=block.type==='group'&&block.items.length<3;
             const addArgs=canExtend?`${lastI},${nextI},'${block.groupId}'`:`${lastI},${nextI}`;
             const btnLabel=canExtend?'⊕ Adicionar ao tri-set':'⟷ Agrupar como bi-set';
-            exListHtml+=`<button class="gym-group-btn" onclick="gymGroupPair(${addArgs})">${btnLabel}${sug?` <span style="color:#A8A29E;font-size:9.5px">${sug}</span>`:''}</button>`;
+            const sugExplain=sug&&sug.includes('antagonista')?'Super-set antagonista: une musculos opostos (ex peito e costas), um descansa enquanto o outro trabalha':'Serie composta: mesmo grupo muscular em sequencia, para intensificar o estimulo';
+            exListHtml+=`<button class="gym-group-btn" onclick="gymGroupPair(${addArgs})">${btnLabel}${sug?` <span onclick="event.stopPropagation();showToast('${sugExplain}')" style="color:#A8A29E;font-size:9.5px;text-decoration:underline">${sug}</span>`:''}</button>`;
           }
         });
       } else {
@@ -2393,7 +2407,7 @@ function goalsCalcUpdate(){
       else{adj=300;adjHtml=` <span style="color:#fb923c">+ 300 kcal <span style="color:#A8A29E">(superávit para ganho)</span></span>`;}
     }
     const cal=tdee+adj;
-    if(calFormulaEl) calFormulaEl.innerHTML=`🧮 BMR <b>${Math.round(bmr)}</b> kcal × <b>${fac}</b> <span style="color:#78716C">(treino ${lbl})</span> = <b>${tdee}</b> kcal${adjHtml}<br>→ <span style="color:#fb923c;font-weight:700">${cal} kcal/dia</span><br><span style="color:#A8A29E;font-size:10px">Fórmula Mifflin-St Jeor (2005) — padrão ISSN/ACSM</span>`;
+    if(calFormulaEl) calFormulaEl.innerHTML=`🧮 BMR <span style="color:#A8A29E;font-weight:400">(gasto em repouso)</span> <b>${Math.round(bmr)}</b> kcal × <b>${fac}</b> <span style="color:#78716C">(treino ${lbl})</span> = <b>${tdee}</b> kcal${adjHtml}<br>→ <span style="color:#fb923c;font-weight:700">${cal} kcal/dia</span><br><span style="color:#A8A29E;font-size:10px">Fórmula Mifflin-St Jeor (2005) — padrão ISSN/ACSM</span>`;
     if(calInpEl) calInpEl.value=cal;
     if(calBadgeEl) calBadgeEl.textContent='calculado automaticamente';
   } else {
@@ -2429,7 +2443,14 @@ function saveGoalsForm(){
     treinosSemana:goals.treinosSemana,
   };
   saveGoals(g);
-  showMais();
+  if(_onboarding){
+    _onboarding=false;
+    localStorage.setItem('ht:onboard_done','1');
+    showScreen('home');setBnavActive('hoje');render(true);
+    showToast('Perfil configurado! Suas metas já estão calculadas 🎉');
+  }else{
+    showMais();
+  }
 }
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
@@ -2545,7 +2566,9 @@ async function authSubmit(){
       authRefresh=res.AuthenticationResult.RefreshToken;
       localStorage.setItem('ht:token',authToken);
       localStorage.setItem('ht:refresh',authRefresh);
-      showScreen('home');setBnavActive('hoje');render(true);
+      showScreen('home');setBnavActive('hoje');
+      await render(true);
+      if(needsOnboarding()) showOnboardingWelcome();
     }else{
       const t=res.__type||'';
       if(t.includes('NotAuthorized')) errEl.textContent='E-mail ou senha incorretos.';
@@ -2581,7 +2604,9 @@ async function confirmCode(){
     authRefresh=login.AuthenticationResult.RefreshToken;
     localStorage.setItem('ht:token',authToken);
     localStorage.setItem('ht:refresh',authRefresh);
-    showScreen('home');render(true);
+    showScreen('home');
+    await render(true);
+    if(needsOnboarding()) showOnboardingWelcome();
   }else{
     document.getElementById('auth-form').style.display='block';
     document.getElementById('auth-tabs').style.display='flex';
@@ -2605,6 +2630,14 @@ function signOut(){
   localStorage.removeItem('ht:token');localStorage.removeItem('ht:refresh');
   showScreen('auth');
 }
+
+// ─── ONBOARDING ──────────────────────────────────────────────────────────────
+let _onboarding=false;
+function needsOnboarding(){return !goals.pesoAtual&&!localStorage.getItem('ht:onboard_done');}
+function showOnboardingWelcome(){showScreen('onboarding');}
+function onboardingStart(){_onboarding=true;showGoals();}
+function onboardingSkip(){localStorage.setItem('ht:onboard_done','1');showScreen('home');setBnavActive('hoje');render(true);}
+function goalsBack(){if(_onboarding){showOnboardingWelcome();}else{showMais();}}
 
 // ─── Recuperação de senha ────────────────────────────────────────
 let _forgotEmail=null;
@@ -3382,16 +3415,22 @@ function mpConfirmImport(){
 function renderMais(){
   const body=document.getElementById('mais-body');
   if(!body) return;
-  const items=[
-    {icon:'📈',label:'Composição Corporal',sub:'Peso · % gordura · massa magra',fn:"showBodyComp()",c:'#38bdf8'},
-    {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
-    {icon:'🎯',label:'Metas e Objetivos',sub:'Acompanhe todas as suas metas',fn:"showGoalsMgmt()",c:'#34d399'},
-    {icon:'⚙️',label:'Configurações de Saúde',sub:'Água, calorias, perfil e peso',fn:"showGoals()",c:'#38bdf8'},
-    {icon:'💊',label:'Gerenciar Suplementos',sub:'Cadastrar e editar seus suplementos',fn:"showSups()",c:'#fbbf24'},
-    {icon:'📊',label:'Periodização por Blocos',sub:'Ciclos de treino com variação de volume e intensidade',fn:"showPeriodization()",c:'#818cf8'},
-    {icon:'🥗',label:'Plano Alimentar',sub:'Configure refeições, macros e importe da sua nutricionista',fn:"showMealPlanConfig()",c:'#34d399'},
+  const groups=[
+    {label:'SAÚDE & NUTRIÇÃO',items:[
+      {icon:'⚙️',label:'Configurações de Saúde',sub:'Água, calorias, perfil e peso',fn:"showGoals()",c:'#38bdf8'},
+      {icon:'📈',label:'Composição Corporal',sub:'Peso · % gordura · massa magra',fn:"showBodyComp()",c:'#38bdf8'},
+      {icon:'🥗',label:'Plano Alimentar',sub:'Configure refeições, macros e importe da sua nutricionista',fn:"showMealPlanConfig()",c:'#34d399'},
+      {icon:'💊',label:'Gerenciar Suplementos',sub:'Cadastrar e editar seus suplementos',fn:"showSups()",c:'#fbbf24'},
+    ]},
+    {label:'TREINO',items:[
+      {icon:'📊',label:'Periodização por Blocos',sub:'Ciclos de treino com variação de volume e intensidade',fn:"showPeriodization()",c:'#818cf8'},
+    ]},
+    {label:'METAS & HISTÓRICO',items:[
+      {icon:'🎯',label:'Metas e Objetivos',sub:'Acompanhe todas as suas metas',fn:"showGoalsMgmt()",c:'#34d399'},
+      {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
+    ]},
   ];
-  const cards=items.map(it=>`
+  const renderItem=it=>`
     <button onclick="${it.fn}" style="width:100%;display:flex;align-items:center;gap:14px;padding:15px 14px;background:#fff;border:1px solid #E7E5E4;border-radius:var(--r-md,12px);margin-bottom:8px;text-align:left;transition:box-shadow .15s;">
       <div style="width:42px;height:42px;border-radius:10px;background:${it.c}18;border:1px solid ${it.c}40;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${it.icon}</div>
       <div style="flex:1;min-width:0">
@@ -3399,10 +3438,13 @@ function renderMais(){
         <div style="font-size:12px;color:#78716C;margin-top:2px">${it.sub}</div>
       </div>
       <span style="color:#D4D0CE;font-size:18px">›</span>
-    </button>`).join('');
+    </button>`;
+  const groupsHtml=groups.map((g,gi)=>`
+    <div class="sec-lbl" style="margin:${gi===0?'0':'16px'} 0 8px">${g.label}</div>
+    ${g.items.map(renderItem).join('')}`).join('');
   body.innerHTML=`
     <div class="fade-in">
-      ${cards}
+      ${groupsHtml}
       <div style="height:1px;background:#F0EFED;margin:12px 0"></div>
       <button onclick="signOut()" style="width:100%;display:flex;align-items:center;gap:14px;padding:14px;background:none;border:1px solid #E7E5E4;border-radius:14px;text-align:left">
         <div style="width:44px;height:44px;border-radius:12px;background:#f8717118;border:1px solid #f8717140;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0">🚪</div>
