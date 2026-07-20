@@ -20,6 +20,16 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: sa-east-1
 
+      - name: Empacotar Lambda de notificações push
+        run: |
+          mkdir -p build/push-sender
+          pip install -r infrastructure/push-sender/requirements.txt -t build/push-sender
+          cp infrastructure/push-sender/index.py build/push-sender/
+          cd build/push-sender
+          zip -r ../../push-sender.zip .
+          cd ../..
+          aws s3 cp push-sender.zip s3://tracker-habitos/lambda-builds/push-sender.zip --region sa-east-1
+
       - name: Registrar identidade SES para e-mails do Cognito
         run: |
           aws ses verify-email-identity \
@@ -50,7 +60,18 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --region sa-east-1 \
             --no-fail-on-empty-changeset \
-            --parameter-overrides "RapidApiKey=${{ secrets.RAPIDAPI_KEY }}"
+            --parameter-overrides "RapidApiKey=${{ secrets.RAPIDAPI_KEY }}" "VapidPrivateKey=${{ secrets.VAPID_PRIVATE_KEY }}"
+
+      - name: Atualizar código da Lambda de notificações push
+        run: |
+          aws lambda update-function-code \
+            --function-name tracker-habitos-push-sender \
+            --s3-bucket tracker-habitos \
+            --s3-key lambda-builds/push-sender.zip \
+            --region sa-east-1
+          aws lambda wait function-updated \
+            --function-name tracker-habitos-push-sender \
+            --region sa-east-1
 
       - name: Atualizar RAPIDAPI_KEY no Lambda
         env:
@@ -104,6 +125,9 @@ jobs:
             --exclude ".github/*" \
             --exclude "infrastructure/*" \
             --exclude "README.md" \
+            --exclude "build/*" \
+            --exclude "push-sender.zip" \
+            --exclude "lambda-builds/*" \
             --delete
 
       - name: Invalidar cache do CloudFront

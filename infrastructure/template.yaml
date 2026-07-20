@@ -8,6 +8,12 @@ Parameters:
     Default: ''
     Description: RapidAPI key for ExerciseDB (optional — cache still works without it)
 
+  VapidPrivateKey:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: VAPID private key for Web Push reminder notifications (optional — push sender no-ops without it)
+
 Resources:
 
   # ── Cognito ──────────────────────────────────────────────────────────────────
@@ -71,6 +77,18 @@ Resources:
         - AttributeName: exerciseName
           KeyType: HASH
 
+  PushSubscriptionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: tracker-habitos-push-subscriptions
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: userId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: userId
+          KeyType: HASH
+
   # ── Lambda ───────────────────────────────────────────────────────────────────
   LambdaRole:
     Type: AWS::IAM::Role
@@ -94,9 +112,12 @@ Resources:
                 Action:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
+                  - dynamodb:DeleteItem
+                  - dynamodb:Scan
                 Resource:
                   - !GetAtt TrackerTable.Arn
                   - !GetAtt ExerciseCacheTable.Arn
+                  - !GetAtt PushSubscriptionsTable.Arn
         - PolicyName: BedrockAccess
           PolicyDocument:
             Version: '2012-10-17'
@@ -118,6 +139,7 @@ Resources:
         Variables:
           TABLE_NAME: tracker-habitos-data
           CACHE_TABLE_NAME: exercise-cache
+          SUB_TABLE_NAME: tracker-habitos-push-subscriptions
           RAPIDAPI_KEY: !Ref RapidApiKey
       Code:
         ZipFile: |
@@ -125,6 +147,7 @@ Resources:
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
           cache_table=dynamo.Table(os.environ.get('CACHE_TABLE_NAME','exercise-cache'))
+          sub_table=dynamo.Table(os.environ.get('SUB_TABLE_NAME','tracker-habitos-push-subscriptions'))
           bedrock=boto3.client('bedrock-runtime',region_name='us-east-1')
           REGION=os.environ.get('AWS_REGION','sa-east-1')
           MODEL='us.amazon.nova-lite-v1:0'
@@ -254,6 +277,23 @@ Resources:
                 return{'statusCode':200,'body':json.dumps({'suggestions':suggestions})}
               except Exception as e:
                 return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+            if action=='save_push_subscription' and method=='POST':
+              try:
+                body=json.loads(event.get('body') or '{}')
+                sub=body.get('subscription')
+                hour=int(body.get('reminderHour'))
+                if not sub or not(0<=hour<=23):
+                  return{'statusCode':400,'body':json.dumps({'error':'missing subscription or invalid reminderHour'})}
+                sub_table.put_item(Item={'userId':uid,'subscription':sub,'reminderHour':hour,'enabled':True})
+                return{'statusCode':200,'body':json.dumps({'ok':True})}
+              except Exception as e:
+                return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+            if action=='delete_push_subscription' and method=='POST':
+              try:
+                sub_table.delete_item(Key={'userId':uid})
+                return{'statusCode':200,'body':json.dumps({'ok':True})}
+              except Exception as e:
+                return{'statusCode':500,'body':json.dumps({'error':str(e)})}
             if not date:
               return{'statusCode':400,'body':json.dumps({'error':'missing date'})}
             if method=='GET':
@@ -281,6 +321,44 @@ Resources:
           - content-type
           - authorization
       TargetFunctionArn: !Ref TrackerFunction
+
+  # ── Push notifications (lembretes diários) ──────────────────────────────────
+  PushSenderFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: tracker-habitos-push-sender
+      Runtime: python3.12
+      Handler: index.handler
+      Role: !GetAtt LambdaRole.Arn
+      Timeout: 60
+      MemorySize: 256
+      Environment:
+        Variables:
+          TABLE_NAME: tracker-habitos-data
+          SUB_TABLE_NAME: tracker-habitos-push-subscriptions
+          VAPID_PRIVATE_KEY: !Ref VapidPrivateKey
+          VAPID_SUBJECT: mailto:barbaraventura93@gmail.com
+      Code:
+        S3Bucket: tracker-habitos
+        S3Key: lambda-builds/push-sender.zip
+
+  PushSenderScheduleRule:
+    Type: AWS::Events::Rule
+    Properties:
+      Name: tracker-habitos-push-schedule
+      ScheduleExpression: rate(1 hour)
+      State: ENABLED
+      Targets:
+        - Arn: !GetAtt PushSenderFunction.Arn
+          Id: PushSenderTarget
+
+  PushSenderInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PushSenderFunction
+      Action: lambda:InvokeFunction
+      Principal: events.amazonaws.com
+      SourceArn: !GetAtt PushSenderScheduleRule.Arn
 
 Outputs:
   ApiUrl:
