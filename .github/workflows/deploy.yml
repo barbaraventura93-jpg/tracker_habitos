@@ -62,6 +62,16 @@ jobs:
             --no-fail-on-empty-changeset \
             --parameter-overrides "RapidApiKey=${{ secrets.RAPIDAPI_KEY }}" "VapidPrivateKey=${{ secrets.VAPID_PRIVATE_KEY }}"
 
+      - name: Diagnosticar falha da stack (se houver)
+        if: failure()
+        continue-on-error: true
+        run: |
+          aws cloudformation describe-stack-events \
+            --stack-name tracker-habitos-backend \
+            --region sa-east-1 \
+            --query "StackEvents[?contains(ResourceStatus, 'FAILED')].[LogicalResourceId,ResourceStatusReason]" \
+            --output table
+
       - name: Atualizar código da Lambda de notificações push
         run: |
           aws lambda update-function-code \
