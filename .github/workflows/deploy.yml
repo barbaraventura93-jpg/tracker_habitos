@@ -53,6 +53,8 @@ jobs:
           fi
 
       - name: Deploy infraestrutura (Cognito + DynamoDB + Lambda)
+        id: cfn
+        continue-on-error: true
         run: |
           aws cloudformation deploy \
             --template-file infrastructure/template.yaml \
@@ -63,7 +65,7 @@ jobs:
             --parameter-overrides "RapidApiKey=${{ secrets.RAPIDAPI_KEY }}" "VapidPrivateKey=${{ secrets.VAPID_PRIVATE_KEY }}"
 
       - name: Diagnosticar falha da stack (se houver)
-        if: failure()
+        if: steps.cfn.outcome == 'failure'
         continue-on-error: true
         run: |
           aws cloudformation describe-stack-events \
@@ -73,6 +75,7 @@ jobs:
             --output table
 
       - name: Atualizar código da Lambda de notificações push
+        if: steps.cfn.outcome == 'success'
         run: |
           aws lambda update-function-code \
             --function-name tracker-habitos-push-sender \
@@ -84,6 +87,7 @@ jobs:
             --region sa-east-1
 
       - name: Atualizar RAPIDAPI_KEY no Lambda
+        if: steps.cfn.outcome == 'success'
         env:
           RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
         run: |
@@ -97,6 +101,7 @@ jobs:
             --region sa-east-1
 
       - name: Garantir permissão pública no Lambda URL
+        if: steps.cfn.outcome == 'success'
         run: |
           aws lambda remove-permission \
             --function-name tracker-habitos-api \
@@ -112,23 +117,34 @@ jobs:
 
       - name: Obter outputs do stack
         id: stack
+        continue-on-error: true
         run: |
           OUTPUTS=$(aws cloudformation describe-stacks \
             --stack-name tracker-habitos-backend \
             --query "Stacks[0].Outputs" \
             --output json \
-            --region sa-east-1)
-          API_URL=$(echo $OUTPUTS | python3 -c "import sys,json; o=json.load(sys.stdin); print(next(x['OutputValue'] for x in o if x['OutputKey']=='ApiUrl'))")
-          CLIENT_ID=$(echo $OUTPUTS | python3 -c "import sys,json; o=json.load(sys.stdin); print(next(x['OutputValue'] for x in o if x['OutputKey']=='UserPoolClientId'))")
+            --region sa-east-1 2>/dev/null || echo "[]")
+          API_URL=$(echo "$OUTPUTS" | python3 -c "import sys,json; o=json.load(sys.stdin) or []; print(next((x['OutputValue'] for x in o if x['OutputKey']=='ApiUrl'),''))")
+          CLIENT_ID=$(echo "$OUTPUTS" | python3 -c "import sys,json; o=json.load(sys.stdin) or []; print(next((x['OutputValue'] for x in o if x['OutputKey']=='UserPoolClientId'),''))")
           echo "api_url=$API_URL" >> $GITHUB_OUTPUT
           echo "client_id=$CLIENT_ID" >> $GITHUB_OUTPUT
+          if [[ -z "$API_URL" || -z "$CLIENT_ID" ]]; then
+            echo "::warning::Outputs da stack indisponíveis (api_url/client_id vazios) — deploy do frontend será pulado."
+          fi
 
+      # ── Frontend (S3 + CloudFront) ──────────────────────────────────────────────
+      # Publica somente quando os outputs reais da stack existem, para nunca subir
+      # HTML com placeholders (__API_URL__/__COGNITO_CLIENT_ID__) não substituídos.
+      # Roda independente do backend: se só a parte de EventBridge falhar mas a
+      # stack anterior tiver rollback para um estado válido, o site ainda sobe.
       - name: Injetar configurações no HTML
+        if: steps.stack.outputs.api_url != '' && steps.stack.outputs.client_id != ''
         run: |
           sed -i "s|__API_URL__|${{ steps.stack.outputs.api_url }}|g" habit-tracker.html
           sed -i "s|__COGNITO_CLIENT_ID__|${{ steps.stack.outputs.client_id }}|g" habit-tracker.html
 
       - name: Sincronizar arquivos com o S3
+        if: steps.stack.outputs.api_url != '' && steps.stack.outputs.client_id != ''
         run: |
           aws s3 sync . s3://tracker-habitos \
             --exclude ".git/*" \
@@ -144,7 +160,17 @@ jobs:
             --delete
 
       - name: Invalidar cache do CloudFront
+        if: steps.stack.outputs.api_url != '' && steps.stack.outputs.client_id != ''
         run: |
           aws cloudfront create-invalidation \
             --distribution-id E2ILQ9T2EA1B14 \
             --paths "/*"
+
+      # Mantém o workflow VERMELHO se o backend falhou, mesmo que o frontend tenha
+      # sido publicado — assim a falha de infra (ex.: permissão EventBridge ausente)
+      # continua visível em vez de ser mascarada pelo continue-on-error acima.
+      - name: Sinalizar falha do backend
+        if: steps.cfn.outcome == 'failure'
+        run: |
+          echo "::error::Deploy do backend (CloudFormation) falhou — veja o passo de diagnóstico acima."
+          exit 1
