@@ -133,8 +133,11 @@ jobs:
           aws s3 sync . s3://tracker-habitos \
             --exclude ".git/*" \
             --exclude ".github/*" \
+            --exclude ".claude/*" \
+            --exclude ".gitignore" \
             --exclude "infrastructure/*" \
             --exclude "README.md" \
+            --exclude "*.md" \
             --exclude "build/*" \
             --exclude "push-sender.zip" \
             --exclude "lambda-builds/*" \

@@ -1,0 +1,7 @@
+# Worktrees temporárias de sessões de agente (não devem ser versionadas)
+.claude/worktrees/
+
+# Artefatos de build do deploy
+build/
+push-sender.zip
+lambda-builds/
