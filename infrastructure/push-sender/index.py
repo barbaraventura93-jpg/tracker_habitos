@@ -35,6 +35,8 @@ def has_any_activity(uid, date):
             return True
         if any((d.get('sups') or {}).values()):
             return True
+        if any((d.get('habits') or {}).values()):
+            return True
         return False
     except Exception:
         return False
