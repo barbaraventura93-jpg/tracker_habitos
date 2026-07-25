@@ -418,6 +418,18 @@ textarea,input,select{font-family:inherit;}
     <div class="body" id="goalsmgmt-body"></div>
   </div>
 
+  <!-- HABITS SCREEN -->
+  <div id="screen-habits" class="screen">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="showMais()">←</button>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Meus Hábitos</div>
+        <div style="width:44px"></div>
+      </div>
+    </div>
+    <div class="body" id="habits-body"></div>
+  </div>
+
   <!-- SEMANA SCREEN -->
   <div id="screen-semana" class="screen">
     <div class="header">
@@ -637,6 +649,180 @@ async function syncCustomSups(){
     const r=await fetch(`${API_URL}?date=__csups__`,{headers:{authorization:'Bearer '+authToken}});
     if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){customSups=d;try{localStorage.setItem('ht:csups',JSON.stringify(d));}catch{}}}
   }catch{}
+}
+
+// ─── HÁBITOS CUSTOMIZADOS ────────────────────────────────────────────────────
+// Persistidos em __habits__ (defs) · conclusão diária vive em dayData.habits{id:true}
+const HABIT_ICONS=['🧘','📖','💧','🚶','🌅','💊','🦷','🧴','☀️','🛌','✍️','🎯','🧠','🙏','📵','🥤','🚭','🎸','🌱','🧹'];
+let customHabits=loadHabits();
+let _habitEditId=null;
+function loadHabits(){
+  try{const raw=localStorage.getItem('ht:habits');if(raw!==null){const h=JSON.parse(raw);if(Array.isArray(h))return h;}}catch{}
+  return [];
+}
+function saveHabits(){
+  try{localStorage.setItem('ht:habits',JSON.stringify(customHabits));}catch{}
+  queuePut('__habits__',customHabits);
+}
+async function syncHabits(){
+  if(!USE_API||!authToken) return;
+  try{
+    const r=await fetch(`${API_URL}?date=__habits__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(Array.isArray(d)){customHabits=d;try{localStorage.setItem('ht:habits',JSON.stringify(d));}catch{}}}
+  }catch{}
+}
+// hábitos previstos para uma data (respeita dias da semana e data de criação)
+function habitsDueOn(date){
+  const dow=getDow(date);
+  return customHabits.filter(h=>Array.isArray(h.days)&&h.days.includes(dow)&&(!h.since||date>=h.since));
+}
+function habitDone(date,id){try{return !!(loadDay(date).habits||{})[id];}catch{return false;}}
+// sequência de dias previstos consecutivos concluídos, terminando na data de referência
+function habitStreak(id,refDate){
+  const h=customHabits.find(x=>x.id===id);if(!h)return 0;
+  let streak=0;
+  for(let i=0;i<=365;i++){
+    const d=addDays(refDate,-i);
+    if(h.since&&d<h.since) break;
+    if(!h.days.includes(getDow(d))) continue; // dia não previsto: não conta nem quebra
+    if(habitDone(d,id)) streak++; else break;
+  }
+  return streak;
+}
+function toggleHabit(id){
+  if(!dayData.habits) dayData.habits={};
+  dayData.habits[id]=!dayData.habits[id];
+  save();renderUI();
+}
+
+// Card de hábitos na tela Hoje
+function renderHabitsToday(){
+  const due=habitsDueOn(currentDate);
+  if(customHabits.length===0){
+    return `<button onclick="showHabits()" class="card" style="width:100%;display:flex;align-items:center;gap:12px;padding:14px;text-align:left;border-style:dashed">
+      <div style="font-size:22px">🌱</div>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:700;color:#1C1917">Criar meus hábitos</div>
+      <div style="font-size:11px;color:#78716C;margin-top:1px">Meditar, ler, alongar… acompanhe com streak diário</div></div>
+      <span style="color:#D4D0CE;font-size:18px">›</span></button>`;
+  }
+  if(due.length===0) return '';
+  const done=(dayData.habits||{});
+  const nDone=due.filter(h=>done[h.id]).length;
+  const rows=due.map(h=>{
+    const on=!!done[h.id];
+    const st=habitStreak(h.id,currentDate);
+    const streakBadge=st>0?`<span style="font-size:11px;font-weight:700;color:#D97706;font-family:'DM Mono',monospace">🔥${st}</span>`:'';
+    const timeBadge=h.time?`<span style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace">${h.time}</span>`:'';
+    return `<button onclick="toggleHabit('${h.id}')" style="width:100%;display:flex;align-items:center;gap:11px;padding:10px 12px;background:${on?'#F0FDF4':'#FAFAF9'};border:1px solid ${on?'#BBF7D0':'#E7E5E4'};border-radius:10px;margin-bottom:6px;text-align:left">
+      <div style="width:24px;height:24px;border-radius:7px;border:2px solid ${on?'#16A34A':'#D4D0CE'};background:${on?'#16A34A':'transparent'};display:flex;align-items:center;justify-content:center;flex-shrink:0;color:#fff;font-size:13px">${on?'✓':''}</div>
+      <div style="font-size:18px;flex-shrink:0">${h.icon||'🌱'}</div>
+      <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:#1C1917;${on?'text-decoration:line-through;opacity:.6':''}">${h.name}</div></div>
+      <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;flex-shrink:0">${streakBadge}${timeBadge}</div>
+    </button>`;
+  }).join('');
+  return `<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🌱</span> HÁBITOS</div>
+    <span style="display:flex;align-items:center;gap:8px;font-size:11px;font-family:'DM Mono',monospace;color:${nDone===due.length?'#34d399':'#78716C'}">${nDone}/${due.length}<button onclick="showHabits()" style="font-size:10px;color:#78716C;background:none;text-decoration:underline;font-family:'DM Sans',sans-serif">gerenciar</button></span></div>
+    ${rows}</div>`;
+}
+
+// ─── Tela de gerenciamento de hábitos ────────────────────────────────────────
+function showHabits(){_habitEditId=null;renderHabitsMgmt();showScreen('habits');setBnavActive('mais');}
+const WEEKDAY_LBL=['D','S','T','Q','Q','S','S'];
+const WEEKDAY_FULL=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+function _habitDaysLabel(days){
+  if(!days||days.length===0) return 'Nenhum dia';
+  if(days.length===7) return 'Todos os dias';
+  const sorted=[...days].sort();
+  if(sorted.join()===[1,2,3,4,5].join()) return 'Dias úteis';
+  if(sorted.join()===[0,6].join()) return 'Fim de semana';
+  return sorted.map(d=>WEEKDAY_FULL[d]).join(' · ');
+}
+function renderHabitsMgmt(){
+  const body=document.getElementById('habits-body');
+  if(!body) return;
+  if(_habitEditId!==null){body.innerHTML=renderHabitFormHtml();return;}
+  let html='';
+  if(customHabits.length===0){
+    html=`<div style="text-align:center;padding:40px 20px;color:#78716C">
+      <div style="font-size:40px;margin-bottom:12px">🌱</div>
+      <div style="font-size:14px;font-weight:600;color:#1C1917;margin-bottom:6px">Nenhum hábito ainda</div>
+      <div style="font-size:12px;line-height:1.6;margin-bottom:20px">Crie hábitos como meditar, ler ou beber água ao acordar.<br>Cada um ganha um streak próprio e entra no seu score do dia.</div>
+    </div>`;
+  }else{
+    html=customHabits.map(h=>{
+      const st=habitStreak(h.id,today());
+      return `<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:12px 13px;margin-bottom:7px;display:flex;align-items:center;gap:12px">
+        <div style="font-size:22px;flex-shrink:0">${h.icon||'🌱'}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:700;color:#1C1917;margin-bottom:2px">${h.name}</div>
+          <div style="font-size:11px;color:#78716C">${_habitDaysLabel(h.days)}${h.time?' · '+h.time:''}${st>0?` · 🔥 ${st} dias`:''}</div>
+        </div>
+        <button onclick="editHabit('${h.id}')" style="font-size:16px;background:none;padding:4px;flex-shrink:0">✏️</button>
+      </div>`;
+    }).join('');
+  }
+  html+=`<button onclick="editHabit(null)" style="width:100%;padding:13px;background:var(--accent);color:#fff;border-radius:10px;font-size:14px;font-weight:600;margin-top:10px">+ Novo hábito</button>`;
+  body.innerHTML=html;
+}
+let _habitDraft=null;
+function editHabit(id){
+  if(id===null){_habitDraft={id:'h'+Date.now(),name:'',icon:'🧘',days:[1,2,3,4,5],time:''};}
+  else{const h=customHabits.find(x=>x.id===id);if(!h)return;_habitDraft={...h,days:[...(h.days||[])]};}
+  _habitEditId=id===null?'new':id;
+  renderHabitsMgmt();
+}
+function renderHabitFormHtml(){
+  const d=_habitDraft;
+  const isNew=_habitEditId==='new';
+  const iconGrid=HABIT_ICONS.map(ic=>`<button onclick="_habitDraft.icon='${ic}';renderHabitsMgmt()" style="width:40px;height:40px;border-radius:9px;font-size:20px;border:2px solid ${d.icon===ic?'var(--accent)':'#E7E5E4'};background:${d.icon===ic?'#EDE9FF':'#fff'}">${ic}</button>`).join('');
+  const dayBtns=WEEKDAY_LBL.map((lbl,i)=>{const on=d.days.includes(i);return`<button onclick="_toggleHabitDay(${i})" style="flex:1;padding:10px 0;border-radius:8px;font-size:13px;font-weight:700;border:1px solid ${on?'var(--accent)':'#E7E5E4'};background:${on?'var(--accent)':'#FAFAF9'};color:${on?'#fff':'#78716C'}">${lbl}</button>`;}).join('');
+  return `<div class="fade-in">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:16px">
+      <button onclick="_habitEditId=null;renderHabitsMgmt()" style="font-size:20px;background:none;padding:2px 6px">←</button>
+      <div style="font-family:'Fraunces',serif;font-size:17px;color:#1C1917">${isNew?'Novo hábito':'Editar hábito'}</div>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#78716C;letter-spacing:.06em;margin-bottom:7px">NOME</div>
+    <input id="habit-name" value="${(d.name||'').replace(/"/g,'&quot;')}" oninput="_habitDraft.name=this.value" placeholder="Ex: Meditar 10 min" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;font-size:14px;color:#1C1917;outline:none;margin-bottom:16px">
+    <div style="font-size:11px;font-weight:700;color:#78716C;letter-spacing:.06em;margin-bottom:7px">ÍCONE</div>
+    <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px">${iconGrid}</div>
+    <div style="font-size:11px;font-weight:700;color:#78716C;letter-spacing:.06em;margin-bottom:7px">DIAS DA SEMANA</div>
+    <div style="display:flex;gap:5px;margin-bottom:8px">${dayBtns}</div>
+    <div style="display:flex;gap:6px;margin-bottom:16px">
+      <button onclick="_setHabitDays([1,2,3,4,5])" style="flex:1;padding:7px;font-size:11px;font-weight:600;border:1px solid #E7E5E4;border-radius:7px;background:#fff;color:#78716C">Dias úteis</button>
+      <button onclick="_setHabitDays([0,1,2,3,4,5,6])" style="flex:1;padding:7px;font-size:11px;font-weight:600;border:1px solid #E7E5E4;border-radius:7px;background:#fff;color:#78716C">Todos</button>
+      <button onclick="_setHabitDays([0,6])" style="flex:1;padding:7px;font-size:11px;font-weight:600;border:1px solid #E7E5E4;border-radius:7px;background:#fff;color:#78716C">Fim de semana</button>
+    </div>
+    <div style="font-size:11px;font-weight:700;color:#78716C;letter-spacing:.06em;margin-bottom:7px">HORÁRIO SUGERIDO <span style="font-weight:400;text-transform:none">(opcional)</span></div>
+    <input id="habit-time" type="time" value="${d.time||''}" oninput="_habitDraft.time=this.value" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;font-size:14px;color:#1C1917;outline:none;margin-bottom:20px">
+    <button onclick="saveHabitForm()" style="width:100%;padding:13px;background:var(--accent);color:#fff;border-radius:10px;font-size:14px;font-weight:600;margin-bottom:8px">Salvar</button>
+    ${isNew?'':`<button onclick="deleteHabit()" style="width:100%;padding:12px;background:none;border:1px solid #FCA5A5;color:#DC2626;border-radius:10px;font-size:13px;font-weight:600">Excluir hábito</button>`}
+  </div>`;
+}
+function _toggleHabitDay(i){
+  const d=_habitDraft.days;
+  const idx=d.indexOf(i);
+  if(idx>=0) d.splice(idx,1); else d.push(i);
+  renderHabitsMgmt();
+}
+function _setHabitDays(days){_habitDraft.days=[...days];renderHabitsMgmt();}
+function saveHabitForm(){
+  const d=_habitDraft;
+  if(!d.name||!d.name.trim()){showToast('Dê um nome ao hábito');return;}
+  if(!d.days||d.days.length===0){showToast('Escolha ao menos um dia');return;}
+  d.name=d.name.trim();
+  if(_habitEditId==='new'){d.since=today();customHabits.push(d);}
+  else{const i=customHabits.findIndex(x=>x.id===d.id);if(i>=0)customHabits[i]={...customHabits[i],...d};}
+  saveHabits();
+  _habitEditId=null;_habitDraft=null;
+  renderHabitsMgmt();renderUI();
+  showToast('✓ Hábito salvo');
+}
+function deleteHabit(){
+  if(!confirm('Excluir este hábito? O histórico de conclusões nos dias fica preservado.')) return;
+  customHabits=customHabits.filter(x=>x.id!==_habitDraft.id);
+  saveHabits();
+  _habitEditId=null;_habitDraft=null;
+  renderHabitsMgmt();renderUI();
 }
 
 function showSups(){_importPreview=[];renderSupsList();showScreen('sups');setBnavActive('mais');}
@@ -1140,91 +1326,56 @@ function renderSemanaScreen(){
   }
 
   function makeSVG(){
-  const N='#D4D0CE';
+  const BASE='#EAE7E3';
   const ombro=svgFill('Ombro'),peito=svgFill('Peito'),biceps=svgFill('Bíceps'),
         core=svgFill('Core'),perna=svgFill('Perna'),costas=svgFill('Costas'),
         triceps=svgFill('Tríceps'),gluteo=svgFill('Glúteo');
+  const S='stroke="#FFFFFF" stroke-width="1.6" stroke-linejoin="round"';
+  // C = peça central simétrica; M = peça lateral (lado direito + espelho no eixo x)
+  const C=(d,f,st)=>'<path d="'+d+'" fill="'+f+'" '+(st===false?'':S)+'/>';
+  const M=(d,f,st)=>C(d,f,st)+'<path d="'+d+'" fill="'+f+'" '+(st===false?'':S)+' transform="scale(-1,1)"/>';
 
-  return '<svg viewBox="0 0 200 240" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:280px;display:block;margin:0 auto">'
-    +'<defs>'
-    +'<clipPath id="cf-torso"><path d="M22,40 C14,44 10,52 10,64 L10,128 C10,132 14,136 22,138 L20,154 L70,154 L68,138 C76,136 80,132 80,128 L80,64 C80,52 76,44 68,40 C60,37 52,35 45,35 C38,35 30,37 22,40 Z"/></clipPath>'
-    +'<clipPath id="cf-larm"><path d="M6,40 C2,46 0,58 1,70 L2,104 C3,108 6,110 10,110 L16,110 L14,40 Z"/></clipPath>'
-    +'<clipPath id="cf-rarm"><path d="M84,40 C88,46 90,58 89,70 L88,104 C87,108 84,110 80,110 L74,110 L76,40 Z"/></clipPath>'
-    +'<clipPath id="cf-legs"><rect x="16" y="154" width="58" height="76" rx="8"/></clipPath>'
-    +'<clipPath id="cb-torso"><path d="M132,40 C124,44 120,52 120,64 L120,128 C120,132 124,136 132,138 L130,154 L180,154 L178,138 C186,136 190,132 190,128 L190,64 C190,52 186,44 178,40 C170,37 162,35 155,35 C148,35 140,37 132,40 Z"/></clipPath>'
-    +'<clipPath id="cb-larm"><path d="M116,40 C112,46 110,58 111,70 L112,104 C113,108 116,110 120,110 L126,110 L124,40 Z"/></clipPath>'
-    +'<clipPath id="cb-rarm"><path d="M194,40 C198,46 200,58 199,70 L198,104 C197,108 194,110 190,110 L184,110 L186,40 Z"/></clipPath>'
-    +'<clipPath id="cb-legs"><rect x="126" y="154" width="58" height="76" rx="8"/></clipPath>'
-    +'</defs>'
-    // ══ FRENTE — silhueta corporal ══
-    +'<ellipse cx="45" cy="16" rx="11" ry="13" fill="'+N+'"/>'
-    +'<path d="M40,29 L50,29 L52,40 L38,40 Z" fill="'+N+'"/>'
-    +'<path d="M22,40 C14,44 10,52 10,64 L10,128 C10,132 14,136 22,138 L20,154 L70,154 L68,138 C76,136 80,132 80,128 L80,64 C80,52 76,44 68,40 C60,37 52,35 45,35 C38,35 30,37 22,40 Z" fill="'+N+'"/>'
-    +'<path d="M6,40 C2,46 0,58 1,70 L2,104 C3,108 6,110 10,110 L16,110 L14,40 Z" fill="'+N+'"/>'
-    +'<path d="M84,40 C88,46 90,58 89,70 L88,104 C87,108 84,110 80,110 L74,110 L76,40 Z" fill="'+N+'"/>'
-    +'<path d="M3,110 L14,110 L15,144 C15,146 13,147 11,147 L6,147 C4,147 2,146 2,144 Z" fill="'+N+'"/>'
-    +'<path d="M87,110 L76,110 L75,144 C75,146 77,147 79,147 L84,147 C86,147 88,146 88,144 Z" fill="'+N+'"/>'
-    +'<path d="M20,154 C17,158 16,164 16,172 L16,200 C16,203 18,205 22,205 L34,205 C38,205 40,203 40,200 L40,168 C40,162 38,156 34,154 Z" fill="'+N+'"/>'
-    +'<path d="M70,154 C73,158 74,164 74,172 L74,200 C74,203 72,205 68,205 L56,205 C52,205 50,203 50,200 L50,168 C50,162 52,156 56,154 Z" fill="'+N+'"/>'
-    +'<path d="M16,200 L40,200 L38,222 C38,224 36,225 34,225 L22,225 C20,225 18,224 18,222 Z" fill="'+N+'"/>'
-    +'<path d="M74,200 L50,200 L52,222 C52,224 54,225 56,225 L68,225 C70,225 72,224 72,222 Z" fill="'+N+'"/>'
-    // ══ FRENTE — sobreposições musculares (clipped) ══
-    +'<g clip-path="url(#cf-larm)">'
-    +'<ellipse cx="8" cy="64" rx="9" ry="14" fill="'+ombro+'" opacity=".88" transform="rotate(-12 8 64)"/>'
-    +'<ellipse cx="8" cy="82" rx="5" ry="16" fill="'+biceps+'" opacity=".9"/>'
-    +'</g>'
-    +'<g clip-path="url(#cf-rarm)">'
-    +'<ellipse cx="82" cy="64" rx="9" ry="14" fill="'+ombro+'" opacity=".88" transform="rotate(12 82 64)"/>'
-    +'<ellipse cx="82" cy="82" rx="5" ry="16" fill="'+biceps+'" opacity=".9"/>'
-    +'</g>'
-    +'<g clip-path="url(#cf-torso)">'
-    +'<path d="M22,42 C16,50 14,62 18,74 C22,82 32,86 40,82 C44,78 44,68 42,58 C38,48 30,42 22,42 Z" fill="'+peito+'" opacity=".88"/>'
-    +'<path d="M68,42 C74,50 76,62 72,74 C68,82 58,86 50,82 C46,78 46,68 48,58 C52,48 60,42 68,42 Z" fill="'+peito+'" opacity=".88"/>'
-    +'<rect x="37" y="90" width="16" height="10" rx="4" fill="'+core+'" opacity=".85"/>'
-    +'<rect x="37" y="103" width="16" height="10" rx="4" fill="'+core+'" opacity=".85"/>'
-    +'<rect x="37" y="116" width="16" height="9" rx="4" fill="'+core+'" opacity=".85"/>'
-    +'</g>'
-    +'<g clip-path="url(#cf-legs)">'
-    +'<ellipse cx="28" cy="180" rx="10" ry="19" fill="'+perna+'" opacity=".88"/>'
-    +'<ellipse cx="62" cy="180" rx="10" ry="19" fill="'+perna+'" opacity=".88"/>'
-    +'</g>'
-    +'<line x1="100" y1="4" x2="100" y2="232" stroke="#E7E5E4" stroke-width="1"/>'
-    // ══ COSTAS — silhueta corporal ══
-    +'<ellipse cx="155" cy="16" rx="11" ry="13" fill="'+N+'"/>'
-    +'<path d="M150,29 L160,29 L162,40 L148,40 Z" fill="'+N+'"/>'
-    +'<path d="M132,40 C124,44 120,52 120,64 L120,128 C120,132 124,136 132,138 L130,154 L180,154 L178,138 C186,136 190,132 190,128 L190,64 C190,52 186,44 178,40 C170,37 162,35 155,35 C148,35 140,37 132,40 Z" fill="'+N+'"/>'
-    +'<path d="M116,40 C112,46 110,58 111,70 L112,104 C113,108 116,110 120,110 L126,110 L124,40 Z" fill="'+N+'"/>'
-    +'<path d="M194,40 C198,46 200,58 199,70 L198,104 C197,108 194,110 190,110 L184,110 L186,40 Z" fill="'+N+'"/>'
-    +'<path d="M113,110 L124,110 L125,144 C125,146 123,147 121,147 L116,147 C114,147 112,146 112,144 Z" fill="'+N+'"/>'
-    +'<path d="M197,110 L186,110 L185,144 C185,146 187,147 189,147 L194,147 C196,147 198,146 198,144 Z" fill="'+N+'"/>'
-    +'<path d="M130,154 C127,158 126,164 126,172 L126,200 C126,203 128,205 132,205 L144,205 C148,205 150,203 150,200 L150,168 C150,162 148,156 144,154 Z" fill="'+N+'"/>'
-    +'<path d="M180,154 C183,158 184,164 184,172 L184,200 C184,203 182,205 178,205 L166,205 C162,205 160,203 160,200 L160,168 C160,162 162,156 166,154 Z" fill="'+N+'"/>'
-    +'<path d="M126,200 L150,200 L148,222 C148,224 146,225 144,225 L132,225 C130,225 128,224 128,222 Z" fill="'+N+'"/>'
-    +'<path d="M184,200 L160,200 L162,222 C162,224 164,225 166,225 L178,225 C180,225 182,224 182,222 Z" fill="'+N+'"/>'
-    // ══ COSTAS — sobreposições musculares (clipped) ══
-    +'<g clip-path="url(#cb-larm)">'
-    +'<ellipse cx="118" cy="64" rx="9" ry="14" fill="'+ombro+'" opacity=".88" transform="rotate(12 118 64)"/>'
-    +'<ellipse cx="117" cy="84" rx="5" ry="18" fill="'+triceps+'" opacity=".9"/>'
-    +'</g>'
-    +'<g clip-path="url(#cb-rarm)">'
-    +'<ellipse cx="192" cy="64" rx="9" ry="14" fill="'+ombro+'" opacity=".88" transform="rotate(-12 192 64)"/>'
-    +'<ellipse cx="193" cy="84" rx="5" ry="18" fill="'+triceps+'" opacity=".9"/>'
-    +'</g>'
-    +'<g clip-path="url(#cb-torso)">'
-    +'<path d="M155,38 L132,60 L155,92 L178,60 Z" fill="'+costas+'" opacity=".84"/>'
-    +'<path d="M122,66 C118,78 120,96 126,116 C130,126 138,132 144,134 L144,116 C138,110 130,96 128,78 Z" fill="'+costas+'" opacity=".88"/>'
-    +'<path d="M188,66 C192,78 190,96 184,116 C180,126 172,132 166,134 L166,116 C172,110 180,96 182,78 Z" fill="'+costas+'" opacity=".88"/>'
-    +'</g>'
-    +'<g clip-path="url(#cb-legs)">'
-    +'<ellipse cx="140" cy="163" rx="13" ry="12" fill="'+gluteo+'" opacity=".9"/>'
-    +'<ellipse cx="170" cy="163" rx="13" ry="12" fill="'+gluteo+'" opacity=".9"/>'
-    +'<ellipse cx="138" cy="186" rx="10" ry="18" fill="'+perna+'" opacity=".85"/>'
-    +'<ellipse cx="172" cy="186" rx="10" ry="18" fill="'+perna+'" opacity=".85"/>'
-    +'</g>'
-    +'<ellipse cx="138" cy="213" rx="8" ry="9" fill="'+perna+'" opacity=".78"/>'
-    +'<ellipse cx="172" cy="213" rx="8" ry="9" fill="'+perna+'" opacity=".78"/>'
-    +'<text x="45" y="237" text-anchor="middle" font-size="7" fill="#A8A29E" font-family="sans-serif" letter-spacing=".08em">FRENTE</text>'
-    +'<text x="155" y="237" text-anchor="middle" font-size="7" fill="#A8A29E" font-family="sans-serif" letter-spacing=".08em">COSTAS</text>'
+  // ── silhueta base (neutra, sem contorno) ──
+  const head='<ellipse cx="0" cy="30" rx="18" ry="22" fill="'+BASE+'"/>';
+  const neck=C('M-9,46 C-9,56 -11,62 -15,67 L15,67 C11,62 9,56 9,46 C4,49 -4,49 -9,46 Z',BASE,false);
+  const torso=C('M-15,66 C-28,70 -42,74 -48,80 C-52,88 -52,100 -50,114 C-46,138 -39,160 -36,180 C-34,198 -36,212 -39,224 C-41,236 -35,242 -26,244 L26,244 C35,242 41,236 39,224 C36,212 34,198 36,180 C39,160 46,138 50,114 C52,100 52,88 48,80 C42,74 28,70 15,66 Z',BASE,false);
+  const arm=M('M48,78 C60,83 66,93 66,106 C66,124 64,144 61,162 C60,178 58,196 55,212 C53,224 51,232 49,236 C46,241 40,241 38,236 C36,230 37,222 38,212 C39,196 40,178 41,162 C41,144 41,124 42,108 C43,94 44,83 48,78 Z',BASE,false);
+  const hand=M('M39,238 C44,236 48,238 49,244 C50,252 47,258 42,258 C37,258 35,253 36,246 C36,242 37,239 39,238 Z',BASE,false);
+  const leg=M('M4,226 C12,218 28,216 37,224 C42,236 42,258 40,282 C38,302 35,318 32,332 C30,348 29,364 27,380 C26,394 24,404 21,410 C18,415 13,414 12,408 C11,400 11,390 11,380 C10,364 9,348 9,332 C7,312 5,292 4,272 C3,256 3,240 4,226 Z',BASE,false);
+  const foot=M('M13,410 C18,406 24,408 26,414 C28,422 25,428 18,428 C12,428 10,423 11,416 Z',BASE,false);
+  const bodyBase=head+neck+torso+arm+hand+leg+foot;
+
+  // ── FRENTE — músculos ──
+  const trapsF=M('M15,64 C24,68 34,71 44,77 C36,79 27,80 19,80 C17,74 16,69 15,64 Z',costas);
+  const deltF=M('M46,80 C56,84 62,93 63,105 C63,113 60,118 55,117 C49,115 45,107 44,97 C44,90 44,84 46,80 Z',ombro);
+  const pecF=M('M2,84 C15,82 31,83 43,88 C46,96 46,106 42,114 C36,124 22,127 11,123 C4,120 2,113 2,105 C2,98 2,90 2,84 Z',peito);
+  const bicF=M('M49,120 C56,117 62,123 63,135 C63,147 61,159 56,167 C52,172 48,169 47,162 C46,148 47,131 49,120 Z',biceps);
+  const absF='<rect x="-12.5" y="130" width="12" height="19" rx="5" fill="'+core+'" '+S+'/>'
+    +'<rect x="0.5" y="130" width="12" height="19" rx="5" fill="'+core+'" '+S+'/>'
+    +'<rect x="-12.5" y="152" width="12" height="19" rx="5" fill="'+core+'" '+S+'/>'
+    +'<rect x="0.5" y="152" width="12" height="19" rx="5" fill="'+core+'" '+S+'/>'
+    +C('M-12,174 C-12,192 -8,206 0,212 C8,206 12,192 12,174 C4,177 -4,177 -12,174 Z',core);
+  const oblF=M('M16,128 C23,132 27,142 27,154 C27,170 24,186 19,198 C17,202 15,200 15,194 L15,132 C15,130 15,129 16,128 Z',core);
+  const quadF=M('M7,228 C16,222 29,222 36,230 C39,244 38,266 36,288 C33,306 27,318 20,318 C13,318 8,306 7,290 C5,268 5,246 7,228 Z',perna);
+  const calfF=M('M12,336 C19,330 28,332 32,342 C35,356 33,374 29,390 C27,400 23,404 20,403 C16,402 14,394 13,384 C11,368 11,350 12,336 Z',perna);
+  const front=bodyBase+trapsF+deltF+pecF+bicF+absF+oblF+quadF+calfF;
+
+  // ── COSTAS — músculos ──
+  const trapsB=C('M0,64 C6,67 13,71 20,75 C27,79 32,83 34,87 C27,92 19,101 13,113 C8,123 3,132 0,138 C-3,132 -8,123 -13,113 C-19,101 -27,92 -34,87 C-32,83 -27,79 -20,75 C-13,71 -6,67 0,64 Z',costas);
+  const deltB=M('M46,80 C56,84 62,93 63,105 C63,113 60,118 55,117 C49,115 45,107 44,97 C44,90 44,84 46,80 Z',ombro);
+  const latB=M('M40,96 C43,108 42,122 38,136 C32,152 22,162 10,166 C6,167 4,164 5,158 C7,144 11,128 17,112 C21,102 27,96 33,94 C36,94 38,94 40,96 Z',costas);
+  const lowB=C('M-11,168 C-4,172 4,172 11,168 C13,180 11,192 7,200 C3,205 -3,205 -7,200 C-11,192 -13,180 -11,168 Z',costas);
+  const triB=M('M49,118 C55,116 61,122 62,134 C62,146 60,158 55,166 C51,171 47,168 46,161 C45,147 46,130 49,118 Z',triceps);
+  const gluB=M('M3,206 C13,200 28,202 35,210 C39,220 37,234 29,241 C19,247 8,244 4,236 C1,228 1,216 3,206 Z',gluteo);
+  const hamB=M('M7,250 C17,246 31,248 37,256 C40,270 39,290 35,308 C32,318 25,322 19,320 C12,317 8,306 7,292 C5,276 5,262 7,250 Z',perna);
+  const calfB=M('M11,332 C19,326 29,328 33,338 C36,352 34,372 30,388 C28,398 23,403 19,402 C15,400 13,392 12,382 C10,364 10,346 11,332 Z',perna);
+  const back=bodyBase+trapsB+deltB+latB+lowB+triB+gluB+hamB+calfB;
+
+  return '<svg viewBox="0 0 400 466" xmlns="http://www.w3.org/2000/svg" style="width:100%;max-width:340px;display:block;margin:0 auto">'
+    +'<g transform="translate(98,6)">'+front+'</g>'
+    +'<g transform="translate(302,6)">'+back+'</g>'
+    +'<text x="98" y="458" text-anchor="middle" font-size="10" fill="#A8A29E" font-family="sans-serif" letter-spacing=".1em">FRENTE</text>'
+    +'<text x="302" y="458" text-anchor="middle" font-size="10" fill="#A8A29E" font-family="sans-serif" letter-spacing=".1em">COSTAS</text>'
     +'</svg>';
 }
 
@@ -2593,7 +2744,7 @@ function makeEmpty(date){
   const isFds=dow===0||dow===6;
   const suggested=userWorkouts.find(w=>w.weekDays.includes(dow));
   return{tr:suggested?.id||'descanso',isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
-         meals:{},sups:{},water:0,sleep:null,sleepOk:null,notes:'',gymDurMin:0};
+         meals:{},sups:{},habits:{},water:0,sleep:null,sleepOk:null,notes:'',gymDurMin:0};
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -2883,10 +3034,13 @@ function calcScore(d, date){
   let tD=0;
   if(isGym&&date){const sess=loadGymSession(date,d.tr);tD=sess&&sess.some(ex=>ex.sets.some(s=>s.done))?1:0;}
   const tT=isGym?1:0;
-  const total=MEALS.length+1+2+sups.length+tT;
-  const done=mD+wD+slD+coD+spD+tD;
+  const dueHabits=date?habitsDueOn(date):[];
+  const hDone=(d.habits||{});
+  const hD=dueHabits.filter(h=>hDone[h.id]).length;
+  const total=MEALS.length+1+2+sups.length+tT+dueHabits.length;
+  const done=mD+wD+slD+coD+spD+tD+hD;
   return{meals:{d:mD,t:MEALS.length},water:{d:wD,t:1},sleep:{d:slD+coD,t:2},
-         sups:{d:spD,t:sups.length},treino:{d:tD,t:tT},
+         sups:{d:spD,t:sups.length},treino:{d:tD,t:tT},habits:{d:hD,t:dueHabits.length},
          pct:total>0?Math.round(done/total*100):0,done,total};
 }
 
@@ -2908,6 +3062,7 @@ async function syncGoals(){
   await syncGoalLogs();
   await syncPeriodization();
   await syncMealPlan();
+  await syncHabits();
 }
 async function syncGoalsDefs(){
   if(!USE_API||!authToken) return;
@@ -3010,6 +3165,7 @@ function renderHoje(body,sc){
     {l:'Sono',s:sc.sleep,c:'#a78bfa'},
     {l:'Suplementos',s:sc.sups,c:'#fbbf24'},
     ...(sc.treino.t>0?[{l:'Treino',s:sc.treino,c:'#818cf8'}]:[]),
+    ...(sc.habits&&sc.habits.t>0?[{l:'Hábitos',s:sc.habits,c:'#34d399'}]:[]),
   ];
   const barsHtml=bars.map(b=>{const bp=b.s.t>0?Math.round(b.s.d/b.s.t*100):0;return`<div class="score-bar-wrap"><div style="width:80px;font-size:11px;color:#78716C;font-weight:600">${b.l}</div><div class="score-bar-bg"><div class="score-bar-fill" style="width:${bp}%;background:${b.c}"></div></div><div style="font-size:11px;color:#78716C;font-family:'DM Mono',monospace;width:28px;text-align:right">${b.s.d}/${b.s.t}</div></div>`;}).join('');
   let html=`<div class="card fade-in">
@@ -3062,6 +3218,8 @@ function renderHoje(body,sc){
     <div style="display:flex;gap:7px">${sOk}</div>
   </div>`;
   }
+  // HÁBITOS
+  html+=renderHabitsToday();
   // OBSERVAÇÕES
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📝</span> OBSERVAÇÕES</div></div>
     <textarea placeholder="Como foi o dia? O que dificultou? O que funcionou bem?" onchange="setNotes(this.value)" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;color:#1C1917;font-size:13px;resize:none;height:72px;outline:none;line-height:1.5">${dayData.notes||''}</textarea>
@@ -3071,6 +3229,7 @@ function renderHoje(body,sc){
   MEALS.forEach(m=>{if(!dayData.meals[m.id])missing.push(m.icon+' '+m.label);});
   if(dayData.water<goals.aguaCopos) missing.push('💧 Água — '+dayData.water+'/'+goals.aguaCopos+' copos');
   getSups(dayData.tr).forEach(s=>{if(!dayData.sups[s.id])missing.push(s.icon+' '+s.label);});
+  habitsDueOn(currentDate).forEach(h=>{if(!(dayData.habits||{})[h.id])missing.push((h.icon||'🌱')+' '+h.name);});
   if(!dayData.sleep||!SLEEPS.find(o=>o.id===dayData.sleep)?.ok) missing.push('😴 Sono — menos de 7h');
   if(pct>0&&pct<55&&missing.length){
     const SO=['💧','😴','☀️','🥗','🥛','🌙','🍓','🚴'];
@@ -3604,6 +3763,7 @@ function renderMais(){
       {icon:'📊',label:'Periodização por Blocos',sub:'Ciclos de treino com variação de volume e intensidade',fn:"showPeriodization()",c:'#818cf8'},
     ]},
     {label:'METAS & HISTÓRICO',items:[
+      {icon:'🌱',label:'Meus Hábitos',sub:'Hábitos diários com streak — meditar, ler, alongar…',fn:"showHabits()",c:'#34d399'},
       {icon:'🎯',label:'Metas e Objetivos',sub:'Acompanhe todas as suas metas',fn:"showGoalsMgmt()",c:'#34d399'},
       {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
       {icon:'💾',label:'Exportar dados',sub:'Baixar todos os seus registros em JSON',fn:"exportData()",c:'#fbbf24'},
