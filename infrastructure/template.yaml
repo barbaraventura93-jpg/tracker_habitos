@@ -114,6 +114,7 @@ Resources:
                   - dynamodb:PutItem
                   - dynamodb:DeleteItem
                   - dynamodb:Scan
+                  - dynamodb:Query
                 Resource:
                   - !GetAtt TrackerTable.Arn
                   - !GetAtt ExerciseCacheTable.Arn
@@ -144,6 +145,7 @@ Resources:
       Code:
         ZipFile: |
           import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime,unicodedata
+          from boto3.dynamodb.conditions import Key
           dynamo=boto3.resource('dynamodb')
           table=dynamo.Table(os.environ['TABLE_NAME'])
           cache_table=dynamo.Table(os.environ.get('CACHE_TABLE_NAME','exercise-cache'))
@@ -245,6 +247,16 @@ Resources:
             resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':[{'text':prompt}]}],inferenceConfig={'maxTokens':200})
             txt=resp['output']['message']['content'][0]['text']
             return [s.strip() for s in txt.strip().split('\n') if s.strip()]
+          def query_days(uid,cond_key=None):
+            items=[]
+            kwargs={'KeyConditionExpression':Key('userId').eq(uid)&cond_key if cond_key else Key('userId').eq(uid)}
+            while True:
+              resp=table.query(**kwargs)
+              items+=resp.get('Items',[])
+              lek=resp.get('LastEvaluatedKey')
+              if not lek: break
+              kwargs['ExclusiveStartKey']=lek
+            return items
           def handler(event,context):
             method=event.get('requestContext',{}).get('http',{}).get('method','')
             auth=(event.get('headers') or {}).get('authorization','')
@@ -292,6 +304,24 @@ Resources:
               try:
                 sub_table.delete_item(Key={'userId':uid})
                 return{'statusCode':200,'body':json.dumps({'ok':True})}
+              except Exception as e:
+                return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+            if action=='history_range' and method=='GET':
+              start=params.get('start','');end=params.get('end','')
+              if not re.match(r'^\d{4}-\d{2}-\d{2}$',start) or not re.match(r'^\d{4}-\d{2}-\d{2}$',end):
+                return{'statusCode':400,'body':json.dumps({'error':'invalid start/end'})}
+              try:
+                items=query_days(uid,Key('date').between(start,end))
+                items+=query_days(uid,Key('date').between('gym:'+start,'gym:'+end+';'))
+                out=[{'date':i['date'],'data':i.get('data')} for i in items]
+                return{'statusCode':200,'body':json.dumps({'items':out},cls=Dec)}
+              except Exception as e:
+                return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+            if action=='export' and method=='GET':
+              try:
+                items=query_days(uid)
+                out={'exportedAt':datetime.datetime.utcnow().isoformat()+'Z','records':[{'date':i['date'],'data':i.get('data')} for i in items]}
+                return{'statusCode':200,'body':json.dumps(out,cls=Dec)}
               except Exception as e:
                 return{'statusCode':500,'body':json.dumps({'error':str(e)})}
             if not date:

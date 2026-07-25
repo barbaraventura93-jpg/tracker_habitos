@@ -144,6 +144,8 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 | `analyze` | POST | Extrai exercícios ou suplementos de PDF/imagem via Bedrock |
 | `identify_exercise` | GET | Identifica exercício pelo nome — cache DynamoDB → Bedrock Nova Lite |
 | `week_suggestion` | POST | Gera sugestão semanal personalizada via Bedrock |
+| `history_range` | GET | Lista dias e sessões de treino entre `start` e `end` (Query no DynamoDB) — hidrata o histórico em dispositivos novos |
+| `export` | GET | Exporta todos os registros do usuário em JSON |
 
 ---
 
@@ -165,6 +167,15 @@ Qualquer `push` na branch `main` dispara o workflow que:
 | `AWS_SECRET_ACCESS_KEY` | Secret Key do usuário IAM |
 
 ---
+
+## Offline & sincronização
+
+- **PWA offline de verdade** — o service worker guarda o app em cache; o app instalado abre e funciona sem internet (estratégia network-first: com conexão, atualizações chegam na hora)
+- **Fila de sincronização (outbox)** — toda gravação vai para uma fila persistente em `localStorage`; se a rede cair, a fila é reenviada automaticamente ao reconectar, ao abrir o app e a cada 60 s — nada se perde
+- **Merge por timestamp** — cada dia carrega `_ts` da última edição; em conflito, vence a versão mais recente (e edições locais pendentes nunca são sobrescritas pelo servidor)
+- **Indicador de sync** — o header mostra ✓ sincronizado, ↻ sincronizando ou ⚡ offline com o tamanho da fila
+- **Histórico multi-dispositivo** — a tela Histórico busca os últimos 60 dias na nuvem (`action=history_range`) e preenche o cache local em dispositivos novos
+- **Exportação** — Mais → Exportar dados baixa todos os registros do usuário em JSON
 
 ## Rodando localmente
 

@@ -318,6 +318,7 @@ textarea,input,select{font-family:inherit;}
           <div id="hdr-date" style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)"></div>
           <div id="hdr-status" style="font-size:10px;height:14px;color:#16A34A;font-weight:500">● HOJE</div>
           <div id="hdr-pct" style="font-size:11px;font-weight:500;margin-top:2px;height:16px;font-family:'DM Mono',monospace"></div>
+          <div id="sync-status" style="font-size:9px;font-weight:500;height:12px;letter-spacing:.04em"></div>
         </div>
         <button class="nav-btn" id="btn-next" onclick="changeDay(1)">→</button>
       </div>
@@ -478,7 +479,7 @@ let userWorkouts=loadUserWorkouts();
 function saveUserWorkouts(){
   try{localStorage.setItem('ht:workouts',JSON.stringify(userWorkouts));}catch{}
   if(!USE_API||!authToken) return;
-  fetch(`${API_URL}?date=__workouts__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(userWorkouts)}).catch(()=>{});
+  queuePut('__workouts__',userWorkouts);
 }
 async function syncUserWorkouts(){
   if(!USE_API||!authToken) return;
@@ -532,7 +533,7 @@ function loadMealPlan(){
 function saveMealPlan(){
   try{localStorage.setItem('ht:mealplan',JSON.stringify(mealPlan));}catch{}
   if(!USE_API||!authToken) return;
-  fetch(`${API_URL}?date=__mealplan__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(mealPlan)}).catch(()=>{});
+  queuePut('__mealplan__',mealPlan);
 }
 async function syncMealPlan(){
   if(!USE_API||!authToken) return;
@@ -628,7 +629,7 @@ function loadCustomSups(){
 function saveCustomSups(){
   try{localStorage.setItem('ht:csups',JSON.stringify(customSups));}catch{}
   if(!USE_API||!authToken) return;
-  fetch(`${API_URL}?date=__csups__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(customSups)}).catch(()=>{});
+  queuePut('__csups__',customSups);
 }
 async function syncCustomSups(){
   if(!USE_API||!authToken) return;
@@ -832,7 +833,7 @@ function loadPeriodization(){
 function savePeriodization(){
   try{localStorage.setItem('ht:periodization',JSON.stringify(periodization));}catch{}
   if(!USE_API||!authToken) return;
-  fetch(`${API_URL}?date=__periodization__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(periodization)}).catch(()=>{});
+  queuePut('__periodization__',periodization);
 }
 async function syncPeriodization(){
   if(!USE_API||!authToken) return;
@@ -873,7 +874,7 @@ function loadGymPlan(){try{return JSON.parse(localStorage.getItem('ht:gymplan')|
 function saveGymPlan(){
   try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}
   if(!USE_API||!authToken) return;
-  fetch(`${API_URL}?date=__gymplan__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(gymPlan)}).catch(()=>{});
+  queuePut('__gymplan__',gymPlan);
 }
 async function syncGymPlan(){
   if(!USE_API||!authToken) return;
@@ -886,7 +887,7 @@ function loadGymSession(date,tr){try{return JSON.parse(localStorage.getItem('ht:
 function saveGymSession(date,tr,data){
   try{localStorage.setItem('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}
   if(!USE_API||!authToken) return;
-  fetch(API_URL+'?date='+encodeURIComponent('gym:'+date+':'+(tr||'')),{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(data)}).catch(()=>{});
+  queuePut('gym:'+date+':'+(tr||''),data);
 }
 async function fetchGymSession(date,tr){
   if(!USE_API||!authToken||!tr||!isGymType(tr)) return;
@@ -2059,7 +2060,7 @@ function loadBodyEntries(){try{return JSON.parse(localStorage.getItem('ht:body')
 function saveBodyEntries(){
   try{localStorage.setItem('ht:body',JSON.stringify(bodyEntries));}catch{}
   if(!USE_API||!authToken) return;
-  fetch(`${API_URL}?date=__body__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(bodyEntries)}).catch(()=>{});
+  queuePut('__body__',bodyEntries);
 }
 async function syncBodyEntries(){
   if(!USE_API||!authToken) return;
@@ -2225,8 +2226,8 @@ const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calori
 let goals=loadGoals();
 let goalsDefs=(()=>{try{const s=JSON.parse(localStorage.getItem('ht:goalsdefs')||'null');if(Array.isArray(s))return s;}catch{}return[];})();
 let goalLogs=(()=>{try{const s=JSON.parse(localStorage.getItem('ht:goallogs')||'null');if(Array.isArray(s))return s;}catch{}return[];})();
-function saveGoalsDefs(){try{localStorage.setItem('ht:goalsdefs',JSON.stringify(goalsDefs));}catch{}if(!USE_API||!authToken)return;fetch(`${API_URL}?date=__goalsdefs__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(goalsDefs)}).catch(()=>{});}
-function saveGoalLogs(){try{localStorage.setItem('ht:goallogs',JSON.stringify(goalLogs));}catch{}if(!USE_API||!authToken)return;fetch(`${API_URL}?date=__goallogs__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(goalLogs)}).catch(()=>{});}
+function saveGoalsDefs(){try{localStorage.setItem('ht:goalsdefs',JSON.stringify(goalsDefs));}catch{}queuePut('__goalsdefs__',goalsDefs);}
+function saveGoalLogs(){try{localStorage.setItem('ht:goallogs',JSON.stringify(goalLogs));}catch{}queuePut('__goallogs__',goalLogs);}
 function loadGoals(){
   try{const s=localStorage.getItem('ht:goals');return s?{...DEFAULT_GOALS,...JSON.parse(s)}:{...DEFAULT_GOALS};}
   catch{return{...DEFAULT_GOALS};}
@@ -2235,7 +2236,7 @@ function saveGoals(g){
   goals=g;
   try{localStorage.setItem('ht:goals',JSON.stringify(g));}catch{}
   if(!USE_API||!authToken) return;
-  fetch(`${API_URL}?date=__goals__`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(g)}).catch(()=>{});
+  queuePut('__goals__',g);
 }
 function showGoals(){
   const g=goals;
@@ -2797,6 +2798,61 @@ function forgotMapError(type){
 const API_URL='__API_URL__';
 const USE_API=API_URL.startsWith('https://');
 
+// ─── OUTBOX — fila de gravações pendentes (sobrevive a offline/refresh) ──────
+function loadOutbox(){try{return JSON.parse(localStorage.getItem('ht:outbox')||'{}');}catch{return{};}}
+function saveOutbox(ob){try{localStorage.setItem('ht:outbox',JSON.stringify(ob));}catch{}}
+function outboxHas(key){return !!loadOutbox()[key];}
+function queuePut(key,payload){
+  if(!USE_API||!authToken) return;
+  const ob=loadOutbox();
+  ob[key]={body:JSON.stringify(payload),ts:Date.now()};
+  saveOutbox(ob);
+  updateSyncStatus();
+  flushOutbox();
+}
+let _flushing=false;
+async function flushOutbox(){
+  if(_flushing||!USE_API||!authToken||!navigator.onLine) return;
+  _flushing=true;
+  try{
+    for(let guard=0;guard<100;guard++){
+      const ob=loadOutbox();
+      const keys=Object.keys(ob);
+      if(!keys.length) break;
+      const key=keys[0],entry=ob[key];
+      let r;
+      try{
+        r=await fetch(`${API_URL}?date=${encodeURIComponent(key)}`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:entry.body});
+      }catch{break;}
+      if(r.status===401){const ok=await tryRefresh();if(ok)continue;break;}
+      if(!r.ok) break;
+      const cur=loadOutbox();
+      if(cur[key]&&cur[key].ts===entry.ts) delete cur[key];
+      saveOutbox(cur);
+    }
+  }finally{_flushing=false;updateSyncStatus();}
+}
+window.addEventListener('online',()=>{updateSyncStatus();flushOutbox();});
+window.addEventListener('offline',()=>updateSyncStatus());
+setInterval(flushOutbox,60000);
+
+function updateSyncStatus(){
+  const el=document.getElementById('sync-status');
+  if(!el) return;
+  if(!USE_API||!authToken){el.textContent='';return;}
+  const pending=Object.keys(loadOutbox()).length;
+  if(!navigator.onLine){
+    el.textContent=pending?`⚡ offline · ${pending} na fila`:'⚡ offline';
+    el.style.color='#D97706';
+  }else if(pending){
+    el.textContent=`↻ sincronizando ${pending}…`;
+    el.style.color='#D97706';
+  }else{
+    el.textContent='✓ sincronizado';
+    el.style.color='#A8A29E';
+  }
+}
+
 function loadDay(date){
   try{const s=localStorage.getItem('ht:'+date);return s?JSON.parse(s):makeEmpty(date);}
   catch{return makeEmpty(date);}
@@ -2811,9 +2867,9 @@ async function fetchRemote(date){
   return null;
 }
 function saveDay(date,d){
+  d._ts=Date.now();
   try{localStorage.setItem('ht:'+date,JSON.stringify(d));}catch{}
-  if(!USE_API||!authToken) return;
-  fetch(`${API_URL}?date=${date}`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify(d)}).catch(()=>{});
+  queuePut(date,d);
 }
 
 function calcScore(d, date){
@@ -2876,9 +2932,15 @@ async function render(syncG=false){
     const remote=await fetchRemote(currentDate);
     if(remote){
       if(JSON.stringify(remote)!==JSON.stringify(dayData)){
-        dayData=remote;
-        try{localStorage.setItem('ht:'+currentDate,JSON.stringify(dayData));}catch{}
-        renderUI();
+        const localTs=dayData._ts||0,remoteTs=remote._ts||0;
+        // o remoto só vence se for mais novo E não houver gravação local pendente
+        if(remoteTs>=localTs&&!outboxHas(currentDate)){
+          dayData=remote;
+          try{localStorage.setItem('ht:'+currentDate,JSON.stringify(dayData));}catch{}
+          renderUI();
+        }else{
+          saveDay(currentDate,dayData);
+        }
       }
     }else if(JSON.stringify(dayData)!==JSON.stringify(makeEmpty(currentDate))){
       saveDay(currentDate,dayData);
@@ -2897,6 +2959,7 @@ async function render(syncG=false){
 }
 function renderUI(){
   renderStreakBadge();
+  updateSyncStatus();
   const sc=calcScore(dayData,currentDate);
   const{day,date}=dispDate(currentDate);
   const isT=currentDate===today();
@@ -3543,6 +3606,7 @@ function renderMais(){
     {label:'METAS & HISTÓRICO',items:[
       {icon:'🎯',label:'Metas e Objetivos',sub:'Acompanhe todas as suas metas',fn:"showGoalsMgmt()",c:'#34d399'},
       {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
+      {icon:'💾',label:'Exportar dados',sub:'Baixar todos os seus registros em JSON',fn:"exportData()",c:'#fbbf24'},
     ]},
   ];
   const renderItem=it=>`
@@ -3568,8 +3632,57 @@ function renderMais(){
     </div>`;
 }
 
+// ─── EXPORTAÇÃO DE DADOS ─────────────────────────────────────────────────────
+async function exportData(){
+  if(!USE_API||!authToken){showToast('Faça login para exportar');return;}
+  if(!navigator.onLine){showToast('Sem conexão — tente novamente online');return;}
+  showToast('Preparando exportação…');
+  try{
+    const r=await fetch(`${API_URL}?action=export`,{headers:{authorization:'Bearer '+authToken}});
+    if(!r.ok) throw new Error();
+    const data=await r.json();
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='rotina-diaria-export-'+today()+'.json';
+    document.body.appendChild(a);a.click();a.remove();
+    URL.revokeObjectURL(a.href);
+    showToast('✓ Dados exportados');
+  }catch{showToast('Não foi possível exportar agora');}
+}
+
 // ─── HISTORY ─────────────────────────────────────────────────────────────────
+async function hydrateHistory(days){
+  if(!USE_API||!authToken||!navigator.onLine) return false;
+  try{
+    const start=addDays(today(),-(days-1)),end=today();
+    const r=await fetch(`${API_URL}?action=history_range&start=${start}&end=${end}`,{headers:{authorization:'Bearer '+authToken}});
+    if(!r.ok) return false;
+    const {items}=await r.json();
+    let changed=false;
+    for(const it of (items||[])){
+      if(!it||!it.date||!it.data) continue;
+      if(outboxHas(it.date)) continue; // gravação local pendente vence
+      const isGymKey=it.date.startsWith('gym:');
+      const key='ht:'+it.date;
+      const localS=localStorage.getItem(key);
+      const remoteS=JSON.stringify(it.data);
+      if(localS===remoteS) continue;
+      let localTs=0;
+      try{localTs=localS?(JSON.parse(localS)._ts||0):0;}catch{}
+      const remoteTs=(it.data&&it.data._ts)||0;
+      if(!localS||isGymKey||remoteTs>localTs){
+        try{localStorage.setItem(key,remoteS);changed=true;}catch{}
+      }
+    }
+    return changed;
+  }catch{return false;}
+}
 function showHistory(){
+  renderHistory();
+  hydrateHistory(60).then(changed=>{if(changed)renderHistory();});
+}
+function renderHistory(){
   const days=60;
   const hist=[];
   for(let i=0;i<days;i++){
@@ -4037,7 +4150,8 @@ function setNotes(v){dayData.notes=v;save();}
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-if(authToken){showScreen('home');setBnavActive('hoje');render(true);}else{showScreen('auth');}
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')){navigator.serviceWorker.register('sw.js').catch(()=>{});}
+if(authToken){showScreen('home');setBnavActive('hoje');render(true);flushOutbox();}else{showScreen('auth');}
 </script>
 </body>
 </html>
