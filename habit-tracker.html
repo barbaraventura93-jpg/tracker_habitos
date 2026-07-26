@@ -488,6 +488,33 @@ function loadUserWorkouts(){
   ];
 }
 let userWorkouts=loadUserWorkouts();
+// ── Plano semanal (template por dia da semana) — __weekplan__ ────────────────
+// mapa { "0".."6": workoutId | "descanso" }. Vazio = usa weekDays padrão do treino.
+function loadWeekPlan(){
+  try{const s=JSON.parse(localStorage.getItem('ht:weekplan')||'null');if(s&&typeof s==='object'&&!Array.isArray(s))return s;}catch{}
+  return {};
+}
+let weekPlan=loadWeekPlan();
+function saveWeekPlan(){
+  try{localStorage.setItem('ht:weekplan',JSON.stringify(weekPlan));}catch{}
+  queuePut('__weekplan__',weekPlan);
+}
+async function syncWeekPlan(){
+  if(!USE_API||!authToken) return;
+  try{
+    const r=await fetch(`${API_URL}?date=__weekplan__`,{headers:{authorization:'Bearer '+authToken}});
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){weekPlan=d;try{localStorage.setItem('ht:weekplan',JSON.stringify(d));}catch{}}}
+  }catch{}
+}
+// treino previsto para um dia da semana (plano explícito tem prioridade sobre weekDays)
+function plannedTrForDow(dow){
+  const p=weekPlan[String(dow)];
+  if(p!==undefined&&p!==null&&p!==''){
+    if(p==='descanso') return 'descanso';
+    if(userWorkouts.find(w=>w.id===p)) return p;
+  }
+  return (userWorkouts.find(w=>w.weekDays.includes(dow))||{}).id||'descanso';
+}
 function saveUserWorkouts(){
   try{localStorage.setItem('ht:workouts',JSON.stringify(userWorkouts));}catch{}
   if(!USE_API||!authToken) return;
@@ -1495,6 +1522,7 @@ function renderSemanaScreen(){
   }
 
   body.innerHTML='<div class="fade-in">'
+    +renderWeekPlanner()
     +'<div class="card">'
     +'<div class="sec-hdr" style="margin-bottom:10px"><div class="sec-lbl">Mapa Muscular · '+weekLabel+'</div></div>'
     +makeSVG()
@@ -1534,6 +1562,51 @@ function renderSemanaScreen(){
         +(untrained.length>1?'<div style="font-size:11px;color:var(--muted);padding-top:4px">Também sem treino: '+untrained.filter(g=>g!==pri).join(', ')+'.</div>':'');
     });
   }
+}
+// ── Card editável: planejar a semana (template por dia da semana) ────────────
+let _weekPlannerOpen=false;
+function toggleWeekPlanner(){_weekPlannerOpen=!_weekPlannerOpen;renderSemanaScreen();}
+function setWeekPlanDay(dow,val){
+  if(val==='__default__') delete weekPlan[String(dow)];
+  else weekPlan[String(dow)]=val;
+  saveWeekPlan();
+  renderSemanaScreen();
+}
+function renderWeekPlanner(){
+  const DOW_ORDER=[1,2,3,4,5,6,0]; // Seg→Dom
+  const DOW_LBL={0:'Domingo',1:'Segunda',2:'Terça',3:'Quarta',4:'Quinta',5:'Sexta',6:'Sábado'};
+  const opts=getAllDayOptions(); // userWorkouts + DESCANSO
+  const header='<div class="sec-hdr"><div class="sec-lbl"><span>🗓️</span> Planejar a Semana</div>'
+    +'<button onclick="toggleWeekPlanner()" style="font-size:11px;color:var(--muted);background:none;text-decoration:underline">'+(_weekPlannerOpen?'recolher':'editar')+'</button></div>';
+  if(!_weekPlannerOpen){
+    // resumo compacto
+    const summary=DOW_ORDER.map(dow=>{
+      const tr=plannedTrForDow(dow);const o=getWorkoutById(tr);
+      const isDef=weekPlan[String(dow)]===undefined;
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid var(--border)">'
+        +'<span style="font-size:12px;color:var(--txt);font-weight:500">'+DOW_LBL[dow]+'</span>'
+        +'<span style="font-size:12px;color:'+(tr==='descanso'?'var(--dim)':(o&&o.color||'var(--muted)'))+'">'+(o?(o.icon||'')+' '+o.name:'Descanso')+(isDef?'':' •')+'</span>'
+        +'</div>';
+    }).join('');
+    return '<div class="card">'+header
+      +'<div style="font-size:11px;color:var(--muted);margin-bottom:6px">Define o treino sugerido de cada dia. Dias futuros já entram no seu planner "Meu Dia".</div>'
+      +summary+'</div>';
+  }
+  const rows=DOW_ORDER.map(dow=>{
+    const cur=weekPlan[String(dow)];
+    const optionsHtml=['<option value="__default__"'+(cur===undefined?' selected':'')+'>Padrão do treino</option>']
+      .concat(opts.map(o=>{
+        const val=o.id;const sel=cur===val?' selected':'';
+        return '<option value="'+val+'"'+sel+'>'+(o.icon||'')+' '+o.name+'</option>';
+      })).join('');
+    return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">'
+      +'<span style="width:70px;flex-shrink:0;font-size:12px;font-weight:600;color:var(--txt)">'+DOW_LBL[dow]+'</span>'
+      +'<select onchange="setWeekPlanDay('+dow+',this.value)" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--card);color:var(--txt);font-size:12px;font-family:inherit">'+optionsHtml+'</select>'
+      +'</div>';
+  }).join('');
+  return '<div class="card">'+header
+    +'<div style="font-size:11px;color:var(--muted);margin-bottom:8px">Escolha o treino de cada dia da semana. Vale para os próximos dias ainda não registrados.</div>'
+    +rows+'</div>';
 }
 function showSemana(){
   renderSemanaScreen();
@@ -2796,8 +2869,7 @@ function suggestCat(t){
 function makeEmpty(date){
   const dow=getDow(date);
   const isFds=dow===0||dow===6;
-  const suggested=userWorkouts.find(w=>w.weekDays.includes(dow));
-  return{tr:suggested?.id||'descanso',isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
+  return{tr:plannedTrForDow(dow),isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
          meals:{},sups:{},habits:{},water:0,sleep:null,sleepOk:null,notes:'',gymDurMin:0};
 }
 
@@ -3117,6 +3189,7 @@ async function syncGoals(){
   await syncPeriodization();
   await syncMealPlan();
   await syncHabits();
+  await syncWeekPlan();
 }
 async function syncGoalsDefs(){
   if(!USE_API||!authToken) return;
