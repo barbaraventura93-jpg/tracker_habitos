@@ -72,35 +72,37 @@ Os dados são o ativo do app; hoje há risco real de perda (G1).
 - [ ] `action=export` → download JSON/CSV de todos os dados (G6)
 - Sem tela nova; risco baixo; destrava tudo que vem depois.
 
+> **Status (2026-07-26):** Fases A, B, C, D, E entregues e mescladas no `main`. Pendente apenas o item opcional de **lembretes push por hábito/horário**. Detalhes de cada PR na memória do projeto.
+
 ### Fase B — Planner "Meu Dia" + hábitos customizados
 O coração da transformação pedida.
-- [ ] Tela Hoje reorganizada como **timeline do dia** (manhã / tarde / noite): refeições planejadas, treino do dia, suplementos e hábitos no horário de cada um — vira um plano a executar, não só um checklist
-- [ ] **Hábitos customizados** (`__habits__` no DynamoDB): nome, ícone, frequência (dias da semana), horário sugerido; check diário com streak individual — entra no score do dia
-- [ ] **Planejamento semanal**: na tela Semana, montar a próxima semana (qual treino em qual dia, variantes de refeição) — o planner diário lê esse plano
-- [ ] Lembretes push por hábito/horário (P6) — o `push-sender` já roda de hora em hora; basta ler os horários dos hábitos do usuário
+- [ ] Tela Hoje reorganizada como **timeline do dia** (manhã / tarde / noite): refeições planejadas, treino do dia, suplementos e hábitos no horário de cada um — vira um plano a executar, não só um checklist *(parcial: card "Seu Dia" com sugestão proativa entregue na Fase D; timeline por período ainda não)*
+- [x] **Hábitos customizados** (`__habits__`): nome, ícone, frequência (dias da semana), horário sugerido; check diário com streak individual — entra no score do dia — PR #14
+- [x] **Planejamento semanal** (`__weekplan__`): na tela Semana, montar a semana (qual treino em qual dia) — o planner diário lê esse plano — PR #16
+- [ ] Lembretes push por hábito/horário (P6) — o `push-sender` já roda de hora em hora; basta ler os horários dos hábitos do usuário *(opcional, ainda pendente)*
 
-### Fase C — Dieta 2.0
-- [ ] Registro rápido de refeição livre: texto ("2 ovos e uma banana") ou **foto do prato** → Bedrock estima kcal/prot/carb/gordura (mesmo padrão do `action=analyze`)
-- [ ] Macros completos no dia e no resumo semanal (P4)
-- [ ] Aderência à dieta na tela Semana (planejado × realizado)
+### Fase C — Dieta 2.0 ✅ (PR #18)
+- [x] Registro rápido de refeição livre: texto ("2 ovos e uma banana") ou **foto do prato** → Bedrock estima kcal/prot/carb/gordura (`action=estimate_food`)
+- [x] Macros completos no dia e no resumo semanal (P4)
+- [x] Aderência à dieta na tela Semana (card "Macros da Semana")
 
-### Fase D — Relatórios & IA proativa
-- [ ] Relatório mensal: tendência de peso × volume de treino × aderência à dieta (dados já existem em `__body__`, sessões gym e meals)
-- [ ] Sugestão diária no planner (evolução do `week_suggestion`): "hoje é perna + você está 300 kcal abaixo da meta esta semana"
-- [ ] Insight no push matinal: em vez de lembrete genérico, resumo do plano do dia
+### Fase D — Relatórios & IA proativa ✅ (PR desta branch)
+- [x] Relatório mensal: peso × treino × dieta × consistência (tela "Relatório Mensal" em Mais, com navegação por mês)
+- [x] Sugestão diária no planner: card "Seu Dia" na tela Hoje — plano do dia, grupo muscular descansado, proteína da semana (regra-based, offline)
+- [ ] Insight no push matinal: em vez de lembrete genérico, resumo do plano do dia *(pendente — depende de editar o push-sender)*
 
-### Fase E — Agenda & Lembretes externos (caminho leve, decidido em 2026-07-26)
+### Fase E — Agenda & Lembretes externos ✅ (PR #19, caminho leve)
 Levar o planner para a agenda que a pessoa já usa, **sem OAuth e sem backend novo** — 100% no cliente, cada evento aprovado pela própria pessoa no calendário dela.
-- [ ] Geração de arquivos **`.ics` (iCalendar)** — eventos recorrentes por `RRULE` (ex.: `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR`) a partir de hábitos com horário/dias, refeições e do plano semanal de treino (`__weekplan__`)
-- [ ] Botões **"Adicionar à agenda"** — link `calendar.google.com/render?...` (Google) + download `.ics` (Apple/Outlook/qualquer)
-- [ ] Exportar **um item** (um hábito → evento recorrente) ou **a semana toda** (`VEVENT` por bloco do dia)
-- [ ] `VALARM` opcional para lembrete X min antes
-- [ ] Sem mudança no `template.yaml`, sem OAuth, sem tokens. Alternativa futura (não agora): sincronização de mão dupla via Google Calendar API (OAuth) — fica registrada como possível Fase E-2.
+- [x] Geração de arquivos **`.ics` (iCalendar)** — eventos recorrentes por `RRULE` a partir de hábitos, refeições e do plano semanal (`__weekplan__`)
+- [x] Botões **"Adicionar à agenda"** — link `calendar.google.com/render` (Google) + download `.ics` (Apple/Outlook/qualquer)
+- [x] Exportar **um item** ou **a semana toda**
+- [x] `VALARM` opcional para lembrete 10 min antes
+- [x] Sem mudança no `template.yaml`, sem OAuth. Alternativa futura: sincronização de mão dupla via Google Calendar API (OAuth) — possível Fase E-2.
 
-Nota: os **lembretes push por hábito/horário** (item da Fase B, ainda pendente) e esta Fase E são complementares — push é lembrete dentro do app; a agenda é o calendário externo da pessoa. Podem entrar juntos numa branch "lembretes".
+Nota: os **lembretes push por hábito/horário** e o **insight no push matinal** são os dois itens que restam — ambos mexem no `push-sender` e podem entrar juntos numa branch "lembretes".
 
 ### Ordem recomendada
-**A → B → C → D → E**, cada fase numa branch própria (padrão já usado no repo). A Fase E é independente de C/D e pode ser antecipada se a integração com a agenda for prioridade.
+**A → B → C → D → E** — todas entregues. A Fase E foi independente de C/D.
 
 ---
 
