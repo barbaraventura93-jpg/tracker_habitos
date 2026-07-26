@@ -418,6 +418,18 @@ textarea,input,select{font-family:inherit;}
     <div class="body" id="goalsmgmt-body"></div>
   </div>
 
+  <!-- AGENDA SCREEN -->
+  <div id="screen-agenda" class="screen">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="showMais()">←</button>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Adicionar à Agenda</div>
+        <div style="width:44px"></div>
+      </div>
+    </div>
+    <div class="body" id="agenda-body"></div>
+  </div>
+
   <!-- HABITS SCREEN -->
   <div id="screen-habits" class="screen">
     <div class="header">
@@ -4018,6 +4030,7 @@ function renderMais(){
       {icon:'🌱',label:'Meus Hábitos',sub:'Hábitos diários com streak — meditar, ler, alongar…',fn:"showHabits()",c:'#34d399'},
       {icon:'🎯',label:'Metas e Objetivos',sub:'Acompanhe todas as suas metas',fn:"showGoalsMgmt()",c:'#34d399'},
       {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
+      {icon:'📅',label:'Adicionar à Agenda',sub:'Levar hábitos, refeições e treinos para o seu calendário',fn:"showAgenda()",c:'#818cf8'},
       {icon:'💾',label:'Exportar dados',sub:'Baixar todos os seus registros em JSON',fn:"exportData()",c:'#fbbf24'},
     ]},
   ];
@@ -4061,6 +4074,140 @@ async function exportData(){
     URL.revokeObjectURL(a.href);
     showToast('✓ Dados exportados');
   }catch{showToast('Não foi possível exportar agora');}
+}
+
+// ─── FASE E — AGENDA (ICS + Google Calendar) ─────────────────────────────────
+// 100% client-side: gera arquivos .ics (eventos recorrentes) e links de calendário.
+// Cada evento é aprovado pela própria pessoa na agenda dela — o app não escreve no calendário.
+const ICS_BYDAY=['SU','MO','TU','WE','TH','FR','SA'];
+let _icsAlarm=true; // lembrete 10 min antes por padrão
+function toggleIcsAlarm(){_icsAlarm=!_icsAlarm;renderAgenda();}
+let _agendaWorkoutTime='18:00';
+function setAgendaWorkoutTime(v){_agendaWorkoutTime=v||'18:00';}
+function _p2(n){return String(n).padStart(2,'0');}
+function _icsEscape(s){return String(s==null?'':s).replace(/\\/g,'\\\\').replace(/;/g,'\\;').replace(/,/g,'\\,').replace(/\n/g,'\\n');}
+function _icsFold(line){
+  if(line.length<=73) return line;
+  let out=line.slice(0,73),rest=line.slice(73);
+  while(rest.length){out+='\r\n '+rest.slice(0,72);rest=rest.slice(72);}
+  return out;
+}
+// primeira ocorrência (a partir de hoje) que cai num dos dias, no horário dado
+function _firstOccur(days,timeStr){
+  const [hh,mm]=String(timeStr||'08:00').split(':').map(Number);
+  for(let i=0;i<7;i++){
+    const d=addDays(today(),i);
+    if(days.includes(getDow(d))){const[y,mo,da]=d.split('-').map(Number);return{y,mo,da,hh:hh||0,mm:mm||0};}
+  }
+  const[y,mo,da]=today().split('-').map(Number);return{y,mo,da,hh:hh||0,mm:mm||0};
+}
+// datetime local flutuante (sem TZ) — mantém o horário de parede em qualquer fuso
+function _dtLocal(o,addMin){
+  const d=new Date(o.y,o.mo-1,o.da,o.hh,o.mm+(addMin||0),0);
+  return d.getFullYear()+_p2(d.getMonth()+1)+_p2(d.getDate())+'T'+_p2(d.getHours())+_p2(d.getMinutes())+'00';
+}
+function _nowStampUTC(){const d=new Date();return d.getUTCFullYear()+_p2(d.getUTCMonth()+1)+_p2(d.getUTCDate())+'T'+_p2(d.getUTCHours())+_p2(d.getUTCMinutes())+_p2(d.getUTCSeconds())+'Z';}
+let _icsSeq=0;
+function _icsUid(){_icsSeq++;return 'ht-'+Date.now().toString(36)+'-'+_icsSeq+'@rotina-diaria';}
+// ev: {title, days:[0..6], time:'HH:MM', durationMin, desc}
+function _buildVEvent(ev){
+  const start=_firstOccur(ev.days,ev.time);
+  const byday=ev.days.slice().sort().map(d=>ICS_BYDAY[d]).join(',');
+  const L=['BEGIN:VEVENT','UID:'+_icsUid(),'DTSTAMP:'+_nowStampUTC(),
+    'DTSTART:'+_dtLocal(start,0),'DTEND:'+_dtLocal(start,ev.durationMin||30),
+    'RRULE:FREQ=WEEKLY;BYDAY='+byday,'SUMMARY:'+_icsEscape(ev.title)];
+  if(ev.desc) L.push('DESCRIPTION:'+_icsEscape(ev.desc));
+  if(_icsAlarm){L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+_icsEscape(ev.title),'TRIGGER:-PT10M','END:VALARM');}
+  L.push('END:VEVENT');
+  return L;
+}
+function _buildICS(events){
+  let L=['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//Rotina Diaria//PT-BR//','CALSCALE:GREGORIAN','METHOD:PUBLISH'];
+  events.forEach(ev=>{L=L.concat(_buildVEvent(ev));});
+  L.push('END:VCALENDAR');
+  return L.map(_icsFold).join('\r\n');
+}
+function _downloadICS(filename,events){
+  if(!events.length){showToast('Nada para exportar');return;}
+  const blob=new Blob([_buildICS(events)],{type:'text/calendar;charset=utf-8'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob);a.download=filename;
+  document.body.appendChild(a);a.click();a.remove();URL.revokeObjectURL(a.href);
+  showToast('✓ Arquivo .ics gerado — abra para adicionar à agenda');
+}
+function _googleLink(ev){
+  const start=_firstOccur(ev.days,ev.time);
+  const byday=ev.days.slice().sort().map(d=>ICS_BYDAY[d]).join(',');
+  const params=new URLSearchParams({action:'TEMPLATE',text:ev.title,
+    dates:_dtLocal(start,0)+'/'+_dtLocal(start,ev.durationMin||30),
+    details:ev.desc||'',recur:'RRULE:FREQ=WEEKLY;BYDAY='+byday});
+  return 'https://calendar.google.com/calendar/render?'+params.toString();
+}
+// ── fontes de eventos ──
+function _habitEvents(){
+  return customHabits.filter(h=>Array.isArray(h.days)&&h.days.length).map(h=>({
+    title:(h.icon||'🌱')+' '+h.name,days:h.days,time:h.time||'08:00',durationMin:15,desc:'Hábito · Rotina Diária'}));
+}
+function _mealEvents(){
+  return MEALS.map(m=>({title:(m.icon||'🍽️')+' '+m.label,days:[0,1,2,3,4,5,6],time:m.time,durationMin:30,desc:'Refeição · Rotina Diária'}));
+}
+function _workoutEvents(){
+  // agrupa dias por treino planejado
+  const byTr={};
+  for(let dow=0;dow<7;dow++){
+    const tr=plannedTrForDow(dow);
+    if(tr==='descanso') continue;
+    (byTr[tr]=byTr[tr]||[]).push(dow);
+  }
+  return Object.keys(byTr).map(tr=>{const w=getWorkoutById(tr);return{
+    title:(w&&w.icon||'🏋️')+' '+(w&&w.name||'Treino'),days:byTr[tr],time:_agendaWorkoutTime,durationMin:60,desc:'Treino · Rotina Diária'};});
+}
+function _allAgendaEvents(){return [].concat(_habitEvents(),_mealEvents(),_workoutEvents());}
+function openGoogle(ev){window.open(_googleLink(ev),'_blank','noopener');}
+// wrappers chamados pela UI (evento reconstruído por índice para não serializar no HTML)
+let _agendaCache={habits:[],meals:[],workouts:[]};
+function agendaGoogle(cat,i){const ev=_agendaCache[cat][i];if(ev)openGoogle(ev);}
+function agendaIcs(cat,i){const ev=_agendaCache[cat][i];if(ev)_downloadICS('rotina-'+cat+'-'+i+'.ics',[ev]);}
+function exportAgendaAll(){_downloadICS('rotina-diaria-agenda-'+today()+'.ics',_allAgendaEvents());}
+function showAgenda(){renderAgenda();showScreen('agenda');setBnavActive('mais');}
+function renderAgenda(){
+  const body=document.getElementById('agenda-body');
+  if(!body) return;
+  _agendaCache={habits:_habitEvents(),meals:_mealEvents(),workouts:_workoutEvents()};
+  const row=(ev,cat,i)=>`<div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--border)">
+    <div style="flex:1;min-width:0"><div style="font-size:13px;font-weight:600;color:var(--txt)">${ev.title}</div>
+    <div style="font-size:10px;color:var(--muted);font-family:'DM Mono',monospace;margin-top:1px">${ev.time} · ${_daysShort(ev.days)}</div></div>
+    <button onclick="agendaGoogle('${cat}',${i})" style="padding:6px 9px;background:#EDE9FF;border:1px solid #C7BFFF;color:#5A52E8;border-radius:7px;font-size:11px;font-weight:600;flex-shrink:0">Google</button>
+    <button onclick="agendaIcs('${cat}',${i})" style="padding:6px 9px;background:var(--bg);border:1px solid var(--border);color:var(--muted);border-radius:7px;font-size:11px;font-weight:600;flex-shrink:0">.ics</button>
+  </div>`;
+  function section(title,cat,list,emptyMsg){
+    if(!list.length) return `<div class="card"><div class="sec-hdr"><div class="sec-lbl">${title}</div></div><div style="font-size:12px;color:var(--muted);padding:6px 0">${emptyMsg}</div></div>`;
+    return `<div class="card"><div class="sec-hdr"><div class="sec-lbl">${title}</div></div>${list.map((ev,i)=>row(ev,cat,i)).join('')}</div>`;
+  }
+  body.innerHTML=`<div class="fade-in">
+    <div class="card">
+      <div style="font-size:12px;color:var(--muted);line-height:1.6;margin-bottom:12px">Leve sua rotina para a agenda que você já usa. Os eventos são <b>recorrentes</b> (repetem toda semana). Nada é escrito automaticamente — você confirma cada um no seu calendário.</div>
+      <button onclick="exportAgendaAll()" style="width:100%;padding:12px;background:var(--accent);color:#fff;border-radius:10px;font-size:14px;font-weight:600;margin-bottom:10px">📅 Exportar semana toda (.ics)</button>
+      <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:var(--txt);cursor:pointer">
+        <input type="checkbox" ${_icsAlarm?'checked':''} onchange="toggleIcsAlarm()" style="width:15px;height:15px;accent-color:#6C63FF"> Incluir lembrete 10 min antes
+      </label>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:10px">
+        <span style="font-size:12px;color:var(--muted)">Horário dos treinos:</span>
+        <input type="time" value="${_agendaWorkoutTime}" onchange="setAgendaWorkoutTime(this.value);renderAgenda()" style="padding:6px 8px;border:1px solid var(--border);border-radius:7px;background:var(--card);color:var(--txt);font-size:12px">
+      </div>
+    </div>
+    ${section('🌱 Hábitos','habits',_agendaCache.habits,'Nenhum hábito com dia definido — crie em Mais → Meus Hábitos.')}
+    ${section('🍽️ Refeições','meals',_agendaCache.meals,'')}
+    ${section('🏋️ Treinos da semana','workouts',_agendaCache.workouts,'Nenhum treino no plano — monte a semana na tela Semana.')}
+  </div>`;
+}
+function _daysShort(days){
+  const L=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+  const s=days.slice().sort();
+  if(s.length===7) return 'Todos os dias';
+  if(s.join()===[1,2,3,4,5].join()) return 'Seg–Sex';
+  if(s.join()===[0,6].join()) return 'Fim de semana';
+  return s.map(d=>L[d]).join(' · ');
 }
 
 // ─── HISTORY ─────────────────────────────────────────────────────────────────
