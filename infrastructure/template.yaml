@@ -386,6 +386,17 @@ Resources:
           - authorization
       TargetFunctionArn: !Ref TrackerFunction
 
+  # Acesso público ao Function URL declarado como recurso (idempotente).
+  # Substitui o antigo passo CLI remove/add do workflow, que criava janela de
+  # outage e quebrava sob deploys concorrentes.
+  TrackerFunctionUrlPublicPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TrackerFunction
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
   # ── Push notifications (lembretes diários) ──────────────────────────────────
   PushSenderFunction:
     Type: AWS::Lambda::Function

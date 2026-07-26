@@ -2657,8 +2657,8 @@ function renderPushCard(){
   const hourOpts=Array.from({length:24},(_,h)=>`<option value="${h}" ${String(h)===hour?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('');
   return`<div class="card">
     <div class="sec-hdr"><div class="sec-lbl"><span>🔔</span> LEMBRETES</div><span style="font-size:10px;color:${enabled?'#16A34A':'#78716C'}">${enabled?'ativado':'desativado'}</span></div>
-    <div style="font-size:12px;color:#78716C;margin-bottom:10px;line-height:1.6">Receba um lembrete se ainda não tiver registrado nada no dia até o horário escolhido.</div>
-    <div style="font-size:11px;color:#78716C;margin-bottom:5px">Horário do lembrete</div>
+    <div style="font-size:12px;color:#78716C;margin-bottom:10px;line-height:1.6">Dois tipos de lembrete:<br>• <b>Diário</b> — no horário escolhido, com o resumo do seu dia (treino e hábitos), se ainda não tiver registrado nada.<br>• <b>Por hábito</b> — automático, na hora de cada hábito que tenha horário definido (configure em Meus Hábitos).</div>
+    <div style="font-size:11px;color:#78716C;margin-bottom:5px">Horário do lembrete diário</div>
     <select id="push-hour-select" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:10px">${hourOpts}</select>
     <button onclick="${enabled?'disablePushReminders()':'enablePushReminders()'}" style="width:100%;padding:12px;background:${enabled?'#F0EFED':'#6C63FF'};color:${enabled?'#78716C':'#fff'};border-radius:10px;font-size:14px;font-weight:700">${enabled?'Desativar lembretes':'Ativar lembretes'}</button>
   </div>`;

@@ -5,6 +5,14 @@ on:
     branches:
       - main
 
+# Serializa deploys na main: um push espera o anterior terminar em vez de correr
+# em paralelo na mesma stack (a corrida entre dois deploys já derrubou o acesso
+# público do Function URL). Não cancela o que está em andamento — deploy pela
+# metade deixa infra em estado inconsistente.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -100,20 +108,9 @@ jobs:
             --function-name tracker-habitos-api \
             --region sa-east-1
 
-      - name: Garantir permissão pública no Lambda URL
-        if: steps.cfn.outcome == 'success'
-        run: |
-          aws lambda remove-permission \
-            --function-name tracker-habitos-api \
-            --statement-id AllowPublicFunctionUrlAccess \
-            --region sa-east-1 2>/dev/null || true
-          aws lambda add-permission \
-            --function-name tracker-habitos-api \
-            --statement-id AllowPublicFunctionUrlAccess \
-            --action lambda:InvokeFunctionUrl \
-            --principal "*" \
-            --function-url-auth-type NONE \
-            --region sa-east-1
+      # A permissão pública do Function URL agora é declarada no template
+      # (TrackerFunctionUrlPublicPermission) — o CloudFormation a mantém de forma
+      # idempotente, sem janela de outage. O antigo passo CLI remove/add foi removido.
 
       - name: Obter outputs do stack
         id: stack
