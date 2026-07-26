@@ -418,6 +418,18 @@ textarea,input,select{font-family:inherit;}
     <div class="body" id="goalsmgmt-body"></div>
   </div>
 
+  <!-- REPORT SCREEN -->
+  <div id="screen-report" class="screen">
+    <div class="header">
+      <div class="header-inner">
+        <button class="nav-btn" onclick="showMais()">←</button>
+        <div style="font-family:'Fraunces',serif;font-size:18px;font-weight:400;color:var(--txt)">Relatório Mensal</div>
+        <div style="width:44px"></div>
+      </div>
+    </div>
+    <div class="body" id="report-body"></div>
+  </div>
+
   <!-- AGENDA SCREEN -->
   <div id="screen-agenda" class="screen">
     <div class="header">
@@ -3174,12 +3186,13 @@ function saveDay(date,d){
 }
 
 function calcScore(d, date){
+  const meals=d.meals||{}, dsups=d.sups||{};
   const sups=getSups(d.tr);
-  const mD=MEALS.filter(m=>d.meals[m.id]).length;
+  const mD=MEALS.filter(m=>meals[m.id]).length;
   const wD=d.water>=goals.aguaCopos?1:0;
   const slD=SLEEPS.find(s=>s.id===d.sleep)?.ok?1:0;
   const coD=d.sleepOk?1:0;
-  const spD=sups.filter(s=>d.sups[s.id]).length;
+  const spD=sups.filter(s=>dsups[s.id]).length;
   const isGym=isGymType(d.tr);
   let tD=0;
   if(isGym&&date){const sess=loadGymSession(date,d.tr);tD=sess&&sess.some(ex=>ex.sets.some(s=>s.done))?1:0;}
@@ -3306,6 +3319,51 @@ function _collapsedRow(key,icon,label,detail){
     <button onclick="toggleHomeSection('${key}')" style="font-size:11px;color:#78716C;background:none;text-decoration:underline;flex-shrink:0">editar</button>
   </div>`;
 }
+// ─── FASE D — sugestão diária proativa no planner (regra-based, offline) ─────
+function dailyInsightCard(){
+  if(currentDate!==today()) return '';
+  const msgs=[];
+  const tr=dayData.tr;
+  const w=getWorkoutById(tr);
+  // 1) plano do dia
+  if(tr==='descanso'){
+    msgs.push({icon:'🛌',txt:'Hoje é dia de <b>descanso</b> no seu plano. Aproveite para recuperar.'});
+  }else if(isGymType(tr)){
+    const sess=loadGymSession(today(),tr);
+    const done=sess&&sess.some(ex=>ex.sets&&ex.sets.some(s=>s.done));
+    if(!done) msgs.push({icon:(w&&w.icon)||'🏋️',txt:'Hoje é <b>'+((w&&w.name)||'treino')+'</b> no seu plano — ainda não registrado.'});
+  }else if(w){
+    const done=(dayData.gymDurMin||0)>0;
+    if(!done) msgs.push({icon:(w&&w.icon)||'🏃',txt:'Hoje é <b>'+w.name+'</b> no seu plano.'});
+  }
+  // 2) grupo muscular descansado há ~1 semana
+  if(isGymType(tr)){
+    const seen={};
+    for(let i=1;i<=7;i++){
+      const d=addDays(today(),-i);const dd=loadDay(d);
+      if(isGymType(dd.tr)){const s=loadGymSession(d,dd.tr);(s||[]).forEach(ex=>{if(ex.group&&ex.group!=='Outro'&&ex.group!=='Cardio'&&ex.sets&&ex.sets.some(x=>x.done))seen[ex.group]=true;});}
+    }
+    const rested=['Costas','Perna','Peito','Ombro'].filter(g=>!seen[g]);
+    if(rested.length) msgs.push({icon:'💡',txt:'<b>'+rested[0]+'</b> não é treinado há uma semana — que tal encaixar?'});
+  }
+  // 3) proteína da semana abaixo da meta
+  const gObj=goals.objetivo||'manutencao';
+  const factor={cutting:2.2,manutencao:1.6,bulking:1.8}[gObj]||1.6;
+  const peso=parseFloat(goals.pesoAtual)||0;
+  const protMeta=goals.protMeta||(peso?Math.round(peso*factor):0);
+  if(protMeta){
+    const dow=getDow(today());const mon=addDays(today(),-(dow===0?6:dow-1));
+    let protWeek=0,daysSoFar=0;
+    for(let i=0;i<7;i++){const d=addDays(mon,i);if(d>today())break;daysSoFar++;const dd=loadDay(d);protWeek+=foodTotals(Array.isArray(dd.foods)?dd.foods:[]).prot;}
+    const target=protMeta*daysSoFar;
+    if(target>0){const p=Math.round(protWeek/target*100);if(p<70&&protWeek>0) msgs.push({icon:'🥩',txt:'Proteína da semana em <b>'+p+'%</b> da meta — dá para caprichar hoje.'});}
+  }
+  if(!msgs.length) return '';
+  return '<div class="card" style="background:#EEF2FF;border-color:#C7BFFF">'
+    +'<div class="sec-hdr"><div class="sec-lbl" style="color:#5A52E8"><span>✨</span> SEU DIA</div></div>'
+    +msgs.slice(0,2).map(m=>'<div style="display:flex;gap:10px;align-items:flex-start;padding:5px 0"><div style="font-size:16px;flex-shrink:0">'+m.icon+'</div><div style="font-size:13px;color:#1C1917;line-height:1.5">'+m.txt+'</div></div>').join('')
+    +'</div>';
+}
 function renderHoje(body,sc){
   const pct=sc.pct;
   const rc=pct>=100?'#6C63FF':pct>=90?'#86EFAC':pct>=80?'#4ADE80':pct>=50?'#FCD34D':pct>0?'#FB923C':'#E7E5E4';
@@ -3319,7 +3377,8 @@ function renderHoje(body,sc){
     ...(sc.habits&&sc.habits.t>0?[{l:'Hábitos',s:sc.habits,c:'#34d399'}]:[]),
   ];
   const barsHtml=bars.map(b=>{const bp=b.s.t>0?Math.round(b.s.d/b.s.t*100):0;return`<div class="score-bar-wrap"><div style="width:80px;font-size:11px;color:#78716C;font-weight:600">${b.l}</div><div class="score-bar-bg"><div class="score-bar-fill" style="width:${bp}%;background:${b.c}"></div></div><div style="font-size:11px;color:#78716C;font-family:'DM Mono',monospace;width:28px;text-align:right">${b.s.d}/${b.s.t}</div></div>`;}).join('');
-  let html=`<div class="card fade-in">
+  let html=dailyInsightCard();
+  html+=`<div class="card fade-in">
     <div style="display:flex;align-items:center;gap:18px;margin-bottom:18px">
       <svg width="96" height="96" viewBox="0 0 96 96" style="flex-shrink:0">
         <circle cx="48" cy="48" r="40" fill="none" stroke="#E7E5E4" stroke-width="10"/>
@@ -4029,6 +4088,7 @@ function renderMais(){
     {label:'METAS & HISTÓRICO',items:[
       {icon:'🌱',label:'Meus Hábitos',sub:'Hábitos diários com streak — meditar, ler, alongar…',fn:"showHabits()",c:'#34d399'},
       {icon:'🎯',label:'Metas e Objetivos',sub:'Acompanhe todas as suas metas',fn:"showGoalsMgmt()",c:'#34d399'},
+      {icon:'📈',label:'Relatório Mensal',sub:'Peso, treino, dieta e consistência do mês',fn:"showReport()",c:'#6C63FF'},
       {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
       {icon:'📅',label:'Adicionar à Agenda',sub:'Levar hábitos, refeições e treinos para o seu calendário',fn:"showAgenda()",c:'#818cf8'},
       {icon:'💾',label:'Exportar dados',sub:'Baixar todos os seus registros em JSON',fn:"exportData()",c:'#fbbf24'},
@@ -4211,10 +4271,9 @@ function _daysShort(days){
 }
 
 // ─── HISTORY ─────────────────────────────────────────────────────────────────
-async function hydrateHistory(days){
+async function hydrateRange(start,end){
   if(!USE_API||!authToken||!navigator.onLine) return false;
   try{
-    const start=addDays(today(),-(days-1)),end=today();
     const r=await fetch(`${API_URL}?action=history_range&start=${start}&end=${end}`,{headers:{authorization:'Bearer '+authToken}});
     if(!r.ok) return false;
     const {items}=await r.json();
@@ -4237,6 +4296,182 @@ async function hydrateHistory(days){
     return changed;
   }catch{return false;}
 }
+function hydrateHistory(days){return hydrateRange(addDays(today(),-(days-1)),today());}
+
+// ─── FASE D — RELATÓRIO MENSAL (peso × treino × dieta × consistência) ────────
+let _reportMonth=today().slice(0,7); // 'YYYY-MM'
+function _monthDates(ym){
+  const [y,m]=ym.split('-').map(Number);
+  const dim=new Date(y,m,0).getDate();
+  const out=[];
+  for(let d=1;d<=dim;d++) out.push(`${y}-${String(m).padStart(2,'0')}-${String(d).padStart(2,'0')}`);
+  return out;
+}
+function _monthLabel(ym){
+  const [y,m]=ym.split('-').map(Number);
+  return MONTHS[m-1]+' '+y;
+}
+function buildMonthReport(ym){
+  const all=_monthDates(ym);
+  const dates=all.filter(d=>d<=today());
+  let scoreSum=0,scoreDays=0,greatDays=0;
+  let trainDays=0,trainMin=0; const muscle={}; const trByType={};
+  let foodDays=0; const food={kcal:0,prot:0,carb:0,fat:0};
+  let mealsChecked=0,mealsPossible=0;
+  let habitDue=0,habitDone=0;
+  dates.forEach(d=>{
+    const dd=loadDay(d);
+    const isEmpty=JSON.stringify(dd)===JSON.stringify(makeEmpty(d));
+    const sc=calcScore(dd,d);
+    if(!isEmpty){scoreSum+=sc.pct;scoreDays++;if(sc.pct>=80)greatDays++;}
+    // treino
+    if(isGymType(dd.tr)){
+      const sess=loadGymSession(d,dd.tr);
+      if(sess&&sess.some(ex=>ex.sets&&ex.sets.some(s=>s.done))){
+        trainDays++;
+        const w=getWorkoutById(dd.tr);const nm=w?w.name:dd.tr;
+        trByType[nm]=(trByType[nm]||0)+1;
+        sess.forEach(ex=>{
+          if(ex.group&&ex.group!=='Outro'&&ex.group!=='Cardio'){
+            const done=(ex.sets||[]).filter(s=>s.done).length;
+            if(done>0) muscle[ex.group]=(muscle[ex.group]||0)+done;
+          }
+        });
+      }
+    }
+    trainMin+=dd.gymDurMin||0;
+    // dieta livre
+    const ft=foodTotals(Array.isArray(dd.foods)?dd.foods:[]);
+    if(dd.foods&&dd.foods.length){foodDays++;food.kcal+=ft.kcal;food.prot+=ft.prot;food.carb+=ft.carb;food.fat+=ft.fat;}
+    // aderência de refeições do plano
+    if(!isEmpty){mealsPossible+=MEALS.length;mealsChecked+=MEALS.filter(m=>dd.meals&&dd.meals[m.id]).length;}
+    // hábitos
+    if(sc.habits){habitDue+=sc.habits.t;habitDone+=sc.habits.d;}
+  });
+  const be=bodyEntries.filter(e=>e&&e.date&&e.date.slice(0,7)===ym&&e.weight!=null&&!isNaN(e.weight)).sort((a,b)=>a.date<b.date?-1:1);
+  let weight=null;
+  if(be.length){
+    const first=be[0],last=be[be.length-1];
+    weight={first:+first.weight,last:+last.weight,delta:+(last.weight-first.weight).toFixed(1),
+      firstDate:first.date,lastDate:last.date,count:be.length,
+      fatLast:last.fat!=null?+last.fat:null,leanLast:last.lean!=null?+last.lean:null};
+  }
+  const topMuscle=Object.entries(muscle).sort((a,b)=>b[1]-a[1]);
+  return{
+    ym, monthLabel:_monthLabel(ym),
+    avgScore:scoreDays?Math.round(scoreSum/scoreDays):0, scoreDays, greatDays, totalDays:dates.length,
+    trainDays, trainMin, topMuscle, trByType,
+    foodDays, foodAvg:foodDays?{kcal:Math.round(food.kcal/foodDays),prot:Math.round(food.prot/foodDays),carb:Math.round(food.carb/foodDays),fat:Math.round(food.fat/foodDays)}:null,
+    mealsAdherence:mealsPossible?Math.round(mealsChecked/mealsPossible*100):0,
+    habitAdherence:habitDue?Math.round(habitDone/habitDue*100):null,
+    weight
+  };
+}
+function showReport(){_reportMonth=today().slice(0,7);renderReport();showScreen('report');setBnavActive('mais');
+  const ds=_monthDates(_reportMonth);hydrateRange(ds[0],ds[ds.length-1]).then(ch=>{if(ch)renderReport();});}
+function reportChangeMonth(delta){
+  const [y,m]=_reportMonth.split('-').map(Number);
+  const d=new Date(y,m-1+delta,1);
+  const nm=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+  if(nm>today().slice(0,7)) return; // não navega para o futuro
+  _reportMonth=nm;renderReport();
+  const ds=_monthDates(_reportMonth);hydrateRange(ds[0],ds[ds.length-1]).then(ch=>{if(ch)renderReport();});
+}
+function _statCard(val,label,color){
+  return `<div style="flex:1;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:12px 8px;text-align:center">
+    <div style="font-size:20px;font-weight:800;font-family:'DM Mono',monospace;color:${color}">${val}</div>
+    <div style="font-size:10px;color:#78716C;font-weight:600;margin-top:3px">${label}</div></div>`;
+}
+function renderReport(){
+  const body=document.getElementById('report-body');
+  if(!body) return;
+  const r=buildMonthReport(_reportMonth);
+  const isCurrent=_reportMonth===today().slice(0,7);
+  const nav=`<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+    <button onclick="reportChangeMonth(-1)" style="padding:6px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:16px;color:var(--txt)">←</button>
+    <div style="font-family:'Fraunces',serif;font-size:17px;color:var(--txt)">${r.monthLabel}</div>
+    <button onclick="reportChangeMonth(1)" ${isCurrent?'disabled':''} style="padding:6px 12px;background:var(--card);border:1px solid var(--border);border-radius:8px;font-size:16px;color:var(--txt);opacity:${isCurrent?0.3:1}">→</button>
+  </div>`;
+
+  // Consistência
+  const consist=`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>📊</span> CONSISTÊNCIA</div></div>
+    <div style="display:flex;gap:8px">
+      ${_statCard(r.avgScore+'%','Score médio','#6C63FF')}
+      ${_statCard(r.scoreDays,'Dias ativos','#16A34A')}
+      ${_statCard(r.greatDays,'Dias ótimos','#D97706')}
+    </div></div>`;
+
+  // Peso & composição
+  let pesoCard;
+  if(r.weight){
+    const w=r.weight;
+    const up=w.delta>0, flat=w.delta===0;
+    const arrow=flat?'→':up?'▲':'▼';
+    const col=flat?'#78716C':up?'#DC2626':'#16A34A';
+    pesoCard=`<div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>⚖️</span> PESO & COMPOSIÇÃO</div><span style="font-size:10px;color:#78716C">${w.count} registro${w.count>1?'s':''}</span></div>
+      <div style="display:flex;align-items:center;gap:14px">
+        <div style="flex:1"><div style="font-size:11px;color:#78716C">Início → Fim</div>
+          <div style="font-size:15px;font-weight:700;color:#1C1917;font-family:'DM Mono',monospace">${w.first} → ${w.last} kg</div></div>
+        <div style="text-align:right"><div style="font-size:22px;font-weight:800;color:${col};font-family:'DM Mono',monospace">${arrow} ${Math.abs(w.delta)}</div>
+          <div style="font-size:10px;color:#78716C">kg no mês</div></div>
+      </div>
+      ${(w.fatLast!=null||w.leanLast!=null)?`<div style="display:flex;gap:14px;margin-top:10px;padding-top:10px;border-top:1px solid #E7E5E4">
+        ${w.fatLast!=null?`<div style="font-size:11px;color:#78716C">Gordura: <b style="color:#1C1917">${w.fatLast}%</b></div>`:''}
+        ${w.leanLast!=null?`<div style="font-size:11px;color:#78716C">Massa magra: <b style="color:#1C1917">${w.leanLast}kg</b></div>`:''}
+      </div>`:''}
+    </div>`;
+  }else{
+    pesoCard=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>⚖️</span> PESO & COMPOSIÇÃO</div></div>
+      <div style="font-size:12px;color:#78716C;padding:6px 0">Sem registros de peso neste mês. Anote em Mais → Composição Corporal.</div></div>`;
+  }
+
+  // Treino
+  const muscleRows=r.topMuscle.length?r.topMuscle.slice(0,6).map(([g,sets])=>{
+    const max=r.topMuscle[0][1]||1;const pct=Math.round(sets/max*100);
+    return `<div style="display:flex;align-items:center;gap:10px;padding:5px 0">
+      <div style="width:64px;font-size:12px;color:var(--txt)">${g}</div>
+      <div style="flex:1;height:6px;background:#E7E5E4;border-radius:99px;overflow:hidden"><div style="width:${pct}%;height:100%;background:#818cf8;border-radius:99px"></div></div>
+      <div style="width:52px;text-align:right;font-size:11px;color:#78716C;font-family:'DM Mono',monospace">${sets} séries</div>
+    </div>`;}).join(''):'<div style="font-size:12px;color:#78716C;padding:6px 0">Nenhum treino registrado neste mês.</div>';
+  const treinoCard=`<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>🏋️</span> TREINO</div></div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      ${_statCard(r.trainDays,'Dias treinados','#818cf8')}
+      ${_statCard(r.trainMin,'Minutos','#38bdf8')}
+      ${_statCard(Object.keys(r.trByType).length,'Tipos','#6C63FF')}
+    </div>
+    ${muscleRows}</div>`;
+
+  // Dieta
+  let dietaCard;
+  if(r.foodAvg){
+    const a=r.foodAvg;
+    dietaCard=`<div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> DIETA</div><span style="font-size:10px;color:#78716C">${r.foodDays} dia${r.foodDays>1?'s':''} com registro livre</span></div>
+      <div style="font-size:11px;color:#78716C;margin-bottom:8px">Média por dia registrado</div>
+      <div style="display:flex;justify-content:space-between;text-align:center;gap:6px;margin-bottom:10px">
+        <div style="flex:1"><div style="font-size:15px;font-weight:700;font-family:'DM Mono',monospace;color:#fb923c">${a.kcal}</div><div style="font-size:9px;color:#78716C">kcal</div></div>
+        <div style="flex:1"><div style="font-size:15px;font-weight:700;font-family:'DM Mono',monospace;color:#818cf8">${a.prot}g</div><div style="font-size:9px;color:#78716C">prot</div></div>
+        <div style="flex:1"><div style="font-size:15px;font-weight:700;font-family:'DM Mono',monospace;color:#eab308">${a.carb}g</div><div style="font-size:9px;color:#78716C">carbo</div></div>
+        <div style="flex:1"><div style="font-size:15px;font-weight:700;font-family:'DM Mono',monospace;color:#34d399">${a.fat}g</div><div style="font-size:9px;color:#78716C">gord</div></div>
+      </div>
+      <div style="font-size:11px;color:#78716C">Aderência às refeições do plano: <b style="color:#1C1917">${r.mealsAdherence}%</b></div>
+    </div>`;
+  }else{
+    dietaCard=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> DIETA</div></div>
+      <div style="font-size:11px;color:#78716C">Aderência às refeições do plano: <b style="color:#1C1917">${r.mealsAdherence}%</b></div>
+      <div style="font-size:11px;color:#A8A29E;margin-top:6px">Registre refeições livres (aba Nutrição) para ver médias de macros do mês.</div></div>`;
+  }
+
+  const habitLine=r.habitAdherence!=null?`<div class="card" style="padding:12px 14px"><div style="font-size:12px;color:#78716C">🌱 Hábitos cumpridos no mês: <b style="color:#1C1917">${r.habitAdherence}%</b></div></div>`:'';
+
+  body.innerHTML=`<div class="fade-in">${nav}${consist}${pesoCard}${treinoCard}${dietaCard}${habitLine}
+    <div style="font-size:10px;color:#A8A29E;text-align:center;padding:10px 20px;line-height:1.5">Relatório calculado a partir dos seus registros do mês. ${r.totalDays<28?'Mês em andamento — os números crescem conforme você registra.':''}</div>
+  </div>`;
+}
+
 function showHistory(){
   renderHistory();
   hydrateHistory(60).then(changed=>{if(changed)renderHistory();});
