@@ -89,8 +89,18 @@ O coração da transformação pedida.
 - [ ] Sugestão diária no planner (evolução do `week_suggestion`): "hoje é perna + você está 300 kcal abaixo da meta esta semana"
 - [ ] Insight no push matinal: em vez de lembrete genérico, resumo do plano do dia
 
+### Fase E — Agenda & Lembretes externos (caminho leve, decidido em 2026-07-26)
+Levar o planner para a agenda que a pessoa já usa, **sem OAuth e sem backend novo** — 100% no cliente, cada evento aprovado pela própria pessoa no calendário dela.
+- [ ] Geração de arquivos **`.ics` (iCalendar)** — eventos recorrentes por `RRULE` (ex.: `FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR`) a partir de hábitos com horário/dias, refeições e do plano semanal de treino (`__weekplan__`)
+- [ ] Botões **"Adicionar à agenda"** — link `calendar.google.com/render?...` (Google) + download `.ics` (Apple/Outlook/qualquer)
+- [ ] Exportar **um item** (um hábito → evento recorrente) ou **a semana toda** (`VEVENT` por bloco do dia)
+- [ ] `VALARM` opcional para lembrete X min antes
+- [ ] Sem mudança no `template.yaml`, sem OAuth, sem tokens. Alternativa futura (não agora): sincronização de mão dupla via Google Calendar API (OAuth) — fica registrada como possível Fase E-2.
+
+Nota: os **lembretes push por hábito/horário** (item da Fase B, ainda pendente) e esta Fase E são complementares — push é lembrete dentro do app; a agenda é o calendário externo da pessoa. Podem entrar juntos numa branch "lembretes".
+
 ### Ordem recomendada
-**A → B → C → D**, cada fase numa branch própria (padrão já usado no repo). A Fase A cabe numa branch única (`fix/fundacao-sync`); a B é a maior e pode ser dividida (hábitos primeiro, planner depois).
+**A → B → C → D → E**, cada fase numa branch própria (padrão já usado no repo). A Fase E é independente de C/D e pode ser antecipada se a integração com a agenda for prioridade.
 
 ---
 
@@ -98,4 +108,5 @@ O coração da transformação pedida.
 
 - Novos dados de config seguem o padrão de "datas especiais": `__habits__`, `__weekplan__` (planejamento semanal), `__foodlog__` fica **dentro do dia** (`data.foods[]`), não em chave separada.
 - Novos endpoints seguem `?action=`: `history_range`, `export`, `estimate_food` — sem infra nova além do IAM `Query`.
+- **Agenda (Fase E)** é totalmente client-side: geração de `.ics` e links de calendário em JS puro, sem endpoint novo, sem OAuth.
 - Nada de framework: mantém HTML/JS puro, single file, que é a identidade do projeto.
