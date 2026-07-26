@@ -1394,6 +1394,8 @@ function renderSemanaScreen(){
     });
   });
   const cardioMin=weekDays.reduce((s,{dd})=>s+(dd.gymDurMin||0),0);
+  // Macros da semana (refeições livres) — Dieta 2.0
+  const weekFood=weekDays.reduce((a,{dd})=>{const t=foodTotals(Array.isArray(dd.foods)?dd.foods:[]);return{kcal:a.kcal+t.kcal,prot:a.prot+t.prot,carb:a.carb+t.carb,fat:a.fat+t.fat,days:a.days+((dd.foods&&dd.foods.length)?1:0)};},{kcal:0,prot:0,carb:0,fat:0,days:0});
 
   const ALL=['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo'];
 
@@ -1537,6 +1539,16 @@ function renderSemanaScreen(){
     +balance
     +(cardioMin>0?'<div style="display:flex;align-items:center;gap:10px;padding:8px 0"><div style="flex:1;font-size:12px;font-weight:500;color:var(--txt)">Cardio</div><div style="font-size:11px;color:#16A34A">'+cardioMin+' min</div></div>':'')
     +'</div>'
+    +(weekFood.days>0?('<div class="card">'
+      +'<div class="sec-hdr"><div class="sec-lbl">Macros da Semana</div><span style="font-size:10px;color:var(--muted)">refeições livres · '+weekFood.days+' dia'+(weekFood.days>1?'s':'')+'</span></div>'
+      +'<div style="display:flex;justify-content:space-between;text-align:center;gap:6px">'
+        +'<div style="flex:1"><div style="font-size:15px;font-weight:700;font-family:\'DM Mono\',monospace;color:#fb923c">'+weekFood.kcal+'</div><div style="font-size:9px;color:var(--muted)">kcal</div></div>'
+        +'<div style="flex:1"><div style="font-size:15px;font-weight:700;font-family:\'DM Mono\',monospace;color:#818cf8">'+weekFood.prot+'g</div><div style="font-size:9px;color:var(--muted)">prot</div></div>'
+        +'<div style="flex:1"><div style="font-size:15px;font-weight:700;font-family:\'DM Mono\',monospace;color:#eab308">'+weekFood.carb+'g</div><div style="font-size:9px;color:var(--muted)">carbo</div></div>'
+        +'<div style="flex:1"><div style="font-size:15px;font-weight:700;font-family:\'DM Mono\',monospace;color:#34d399">'+weekFood.fat+'g</div><div style="font-size:9px;color:var(--muted)">gord</div></div>'
+      +'</div>'
+      +'<div style="font-size:10px;color:var(--muted);text-align:center;margin-top:8px">Média ~'+Math.round(weekFood.kcal/weekFood.days)+' kcal/dia registrado</div>'
+      +'</div>'):'')
     +sugHtml
     +'</div>';
   if(untrained.length>0&&remaining>0){
@@ -2870,7 +2882,7 @@ function makeEmpty(date){
   const dow=getDow(date);
   const isFds=dow===0||dow===6;
   return{tr:plannedTrForDow(dow),isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
-         meals:{},sups:{},habits:{},water:0,sleep:null,sleepOk:null,notes:'',gymDurMin:0};
+         meals:{},sups:{},habits:{},foods:[],water:0,sleep:null,sleepOk:null,notes:'',gymDurMin:0};
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
@@ -3405,6 +3417,15 @@ function renderNutricaoResumo(){
     if(match) calIngerida+=parseInt(match[1]);
   });
 
+  // Refeições livres (Dieta 2.0) — entram nos totais e trazem carbo/gordura
+  const fT=foodTotals(dayFoods());
+  calIngerida+=fT.kcal;
+  protIngerida+=fT.prot;
+  // metas de carbo/gordura derivadas da meta calórica (proteína ocupa 4 kcal/g, gordura 25% das kcal)
+  const fatMeta=Math.max(0,Math.round(calMeta*0.25/9));
+  const carbMeta=Math.max(0,Math.round((calMeta-protMeta*4-fatMeta*9)/4));
+  const carbIngerida=fT.carb, fatIngerida=fT.fat;
+
   function barHtml(val,meta,unit,color){
     const pct=meta>0?Math.min(100,Math.round(val/meta*100)):0;
     return`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;margin-bottom:8px">
@@ -3451,7 +3472,107 @@ function renderNutricaoResumo(){
         <div style="height:4px;background:#E7E5E4;border-radius:99px;margin-top:5px;overflow:hidden"><div style="width:${Math.min(100,calMeta>0?Math.round(calIngerida/calMeta*100):0)}%;height:100%;background:#fb923c;border-radius:99px"></div></div>
       </div>
     </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+      <div>
+        <div style="font-size:10px;color:#78716C;margin-bottom:5px">🍞 Carboidrato</div>
+        <div style="font-size:17px;font-weight:700;font-family:'DM Mono',monospace;color:#eab308">${carbIngerida}g</div>
+        <div style="font-size:10px;color:#A8A29E">de ${carbMeta}g · ${carbMeta>0?Math.round(carbIngerida/carbMeta*100):0}%</div>
+        <div style="height:4px;background:#E7E5E4;border-radius:99px;margin-top:5px;overflow:hidden"><div style="width:${Math.min(100,carbMeta>0?Math.round(carbIngerida/carbMeta*100):0)}%;height:100%;background:#eab308;border-radius:99px"></div></div>
+      </div>
+      <div>
+        <div style="font-size:10px;color:#78716C;margin-bottom:5px">🥑 Gordura</div>
+        <div style="font-size:17px;font-weight:700;font-family:'DM Mono',monospace;color:#34d399">${fatIngerida}g</div>
+        <div style="font-size:10px;color:#A8A29E">de ${fatMeta}g · ${fatMeta>0?Math.round(fatIngerida/fatMeta*100):0}%</div>
+        <div style="height:4px;background:#E7E5E4;border-radius:99px;margin-top:5px;overflow:hidden"><div style="width:${Math.min(100,fatMeta>0?Math.round(fatIngerida/fatMeta*100):0)}%;height:100%;background:#34d399;border-radius:99px"></div></div>
+      </div>
+    </div>
+    ${(carbIngerida||fatIngerida)?'':`<div style="font-size:10px;color:#A8A29E;margin-top:6px;line-height:1.4">Carbo e gordura vêm das refeições livres (➕) — registre um prato para ver os macros completos.</div>`}
     ${alerta?`<div style="margin-top:8px">${alerta}</div>`:''}
+  </div>`;
+}
+
+// ─── DIETA 2.0 — registro de refeição livre + macros completos ───────────────
+function dayFoods(){if(!Array.isArray(dayData.foods))dayData.foods=[];return dayData.foods;}
+function foodTotals(list){
+  list=list||dayFoods();
+  return list.reduce((a,x)=>({kcal:a.kcal+(+x.kcal||0),prot:a.prot+(+x.prot||0),carb:a.carb+(+x.carb||0),fat:a.fat+(+x.fat||0)}),{kcal:0,prot:0,carb:0,fat:0});
+}
+function addFood(f){
+  dayFoods().push({id:'f'+Date.now(),name:(f.name||'Refeição').slice(0,60),kcal:+f.kcal||0,prot:+f.prot||0,carb:+f.carb||0,fat:+f.fat||0,ts:Date.now(),src:f.src||'manual'});
+  save();renderUI();
+}
+function removeFood(id){dayData.foods=dayFoods().filter(x=>x.id!==id);save();renderUI();}
+let _foodEst=null; // estimativa pendente aguardando confirmação
+function _setFoodStatus(msg,color){const el=document.getElementById('food-status');if(el){el.textContent=msg;el.style.color=color||'#78716C';}}
+async function estimateFoodText(){
+  const inp=document.getElementById('food-text');
+  const txt=((inp&&inp.value)||'').trim();
+  if(!txt){showToast('Descreva o que você comeu');return;}
+  if(!USE_API||!authToken){showToast('Faça login para estimar macros');return;}
+  _setFoodStatus('⏳ Estimando macros com IA…','#D97706');
+  try{
+    const r=await fetch(`${API_URL}?action=estimate_food`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({text:txt})});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.error||'falha ao estimar');
+    _foodEst={...d,src:'text'};
+    renderUI();
+  }catch(e){_setFoodStatus('❌ '+(e.message||'não deu para estimar'),'#f87171');}
+}
+async function estimateFoodPhoto(input){
+  const file=input.files[0];if(!file) return;
+  if(!USE_API||!authToken){showToast('Faça login para estimar macros');return;}
+  _setFoodStatus('⏳ Analisando a foto…','#D97706');
+  try{
+    const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+    const r=await fetch(`${API_URL}?action=estimate_food`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({file:base64,mimeType:file.type})});
+    const d=await r.json();
+    if(!r.ok) throw new Error(d.error||'falha ao analisar');
+    if(!d.kcal&&!d.prot&&!d.carb&&!d.fat){_setFoodStatus('🤔 Não identifiquei comida na foto — tente descrever por texto','#D97706');return;}
+    _foodEst={...d,src:'photo'};
+    renderUI();
+  }catch(e){_setFoodStatus('❌ '+(e.message||'não deu para analisar'),'#f87171');}
+  finally{input.value='';}
+}
+function confirmFoodEst(){if(!_foodEst)return;addFood(_foodEst);_foodEst=null;showToast('✓ Refeição adicionada');}
+function cancelFoodEst(){_foodEst=null;renderUI();}
+function renderFreeFoodCard(){
+  const foods=dayFoods();
+  const t=foodTotals(foods);
+  const e=_foodEst;
+  const estHtml=e?`
+    <div style="background:#EDE9FF;border:1px solid #C7BFFF;border-radius:10px;padding:11px 12px;margin-bottom:8px">
+      <div style="font-size:12px;font-weight:700;color:#1C1917;margin-bottom:6px">${(e.name||'Refeição')} — estimativa</div>
+      <div style="display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:#4C1D95;font-family:'DM Mono',monospace;margin-bottom:9px">
+        <span>🔥 ${e.kcal} kcal</span><span>🥩 ${e.prot}g</span><span>🍞 ${e.carb}g</span><span>🥑 ${e.fat}g</span>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button onclick="confirmFoodEst()" style="flex:1;padding:8px;background:#6C63FF;color:#fff;border-radius:8px;font-size:12px;font-weight:600">Adicionar ao dia</button>
+        <button onclick="cancelFoodEst()" style="padding:8px 12px;background:#FAFAF9;border:1px solid #E7E5E4;color:#78716C;border-radius:8px;font-size:12px">Descartar</button>
+      </div>
+    </div>`:'';
+  const listHtml=foods.length?foods.map(f=>`
+    <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:9px;margin-bottom:6px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:#1C1917">${f.src==='photo'?'📷 ':''}${f.name}</div>
+        <div style="font-size:10px;color:#78716C;font-family:'DM Mono',monospace;margin-top:1px">🔥${f.kcal} · 🥩${f.prot}g · 🍞${f.carb}g · 🥑${f.fat}g</div>
+      </div>
+      <button onclick="removeFood('${f.id}')" style="font-size:14px;background:none;color:#A8A29E;padding:4px 6px;flex-shrink:0">✕</button>
+    </div>`).join('')+`
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:9px 10px 2px;margin-top:2px;border-top:1px solid #E7E5E4;font-size:11px;font-weight:700;color:#1C1917">
+      <span>Total livre</span><span style="font-family:'DM Mono',monospace">🔥${t.kcal} · 🥩${t.prot}g · 🍞${t.carb}g · 🥑${t.fat}g</span>
+    </div>`:'';
+  return `<div class="card">
+    <div class="sec-hdr"><div class="sec-lbl"><span>➕</span> REFEIÇÃO LIVRE</div></div>
+    <div style="font-size:11px;color:#78716C;margin-bottom:9px">Comeu algo fora do plano? Descreva ou tire uma foto — a IA estima os macros.</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <input id="food-text" placeholder="Ex: 2 ovos mexidos e uma banana" onkeydown="if(event.key==='Enter')estimateFoodText()" style="flex:1;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:9px;padding:9px 11px;font-size:13px;color:#1C1917;outline:none">
+      <button onclick="estimateFoodText()" style="padding:9px 14px;background:#6C63FF;color:#fff;border-radius:9px;font-size:12px;font-weight:600;flex-shrink:0">Estimar</button>
+    </div>
+    <label style="display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#6C63FF;font-weight:600;cursor:pointer">
+      📷 Estimar por foto do prato<input type="file" accept="image/*" onchange="estimateFoodPhoto(this)" style="display:none"></label>
+    <div id="food-status" style="font-size:11px;min-height:15px;margin:6px 0 2px"></div>
+    ${estHtml}
+    ${listHtml}
   </div>`;
 }
 
@@ -3468,6 +3589,9 @@ function renderNutricao(body,sc){
     <div style="margin-bottom:10px"><div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.08em;margin-bottom:6px">VARIANTE DO JANTAR</div><div style="display:flex;gap:6px">${jBtns}</div></div>
     ${mealCards}
   </div>`;
+
+  // ── Refeição livre (Dieta 2.0) ────────────────────────────────────────────
+  html+=renderFreeFoodCard();
 
   // ── Suplementos do dia (seção inline) ────────────────────────────────────
   const sups=getSups(dayData.tr);

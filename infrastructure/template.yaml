@@ -247,6 +247,29 @@ Resources:
             resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':[{'text':prompt}]}],inferenceConfig={'maxTokens':200})
             txt=resp['output']['message']['content'][0]['text']
             return [s.strip() for s in txt.strip().split('\n') if s.strip()]
+          def estimate_food(text,file_b64,mime):
+            instr=(
+              'Voce e um nutricionista. Estime os macros da refeicao/alimento descrito'
+              +(' na imagem.' if file_b64 else ': "'+text+'".')
+              +' Some tudo num unico total. Responda APENAS um JSON valido, sem markdown:\n'
+              '{"name":"nome curto da refeicao","kcal":inteiro,"prot":gramas_inteiro,"carb":gramas_inteiro,"fat":gramas_inteiro}\n'
+              'Se nao der para identificar comida, retorne {"name":"","kcal":0,"prot":0,"carb":0,"fat":0}.'
+            )
+            if file_b64:
+              fb=base64.b64decode(file_b64)
+              fmt=mime.split('/')[-1].replace('jpg','jpeg')
+              content=[{'image':{'format':fmt,'source':{'bytes':fb}}},{'text':instr}]
+            else:
+              content=[{'text':instr}]
+            resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':content}],inferenceConfig={'maxTokens':200,'temperature':0})
+            txt=resp['output']['message']['content'][0]['text']
+            m=re.search(r'\{[\s\S]*\}',txt)
+            if not m: raise Exception('Nao foi possivel estimar')
+            d=json.loads(m.group())
+            def _i(v):
+              try: return max(0,int(round(float(v))))
+              except: return 0
+            return {'name':str(d.get('name','')).strip()[:60],'kcal':_i(d.get('kcal')),'prot':_i(d.get('prot')),'carb':_i(d.get('carb')),'fat':_i(d.get('fat'))}
           def query_days(uid,cond_key=None):
             items=[]
             kwargs={'KeyConditionExpression':Key('userId').eq(uid)&cond_key if cond_key else Key('userId').eq(uid)}
@@ -287,6 +310,17 @@ Resources:
                 body=json.loads(event.get('body') or '{}')
                 suggestions=week_suggestion(body.get('weekSummary',{}),body.get('untrainedGroups',[]),body.get('remainingDays',0))
                 return{'statusCode':200,'body':json.dumps({'suggestions':suggestions})}
+              except Exception as e:
+                return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+            if action=='estimate_food' and method=='POST':
+              try:
+                body=json.loads(event.get('body') or '{}')
+                text=(body.get('text') or '').strip()
+                file_b64=body.get('file')
+                if not text and not file_b64:
+                  return{'statusCode':400,'body':json.dumps({'error':'missing text or file'})}
+                res=estimate_food(text,file_b64,body.get('mimeType','image/jpeg'))
+                return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
               except Exception as e:
                 return{'statusCode':500,'body':json.dumps({'error':str(e)})}
             if action=='save_push_subscription' and method=='POST':
