@@ -493,6 +493,15 @@ const DESCANSO={id:'descanso',name:'Descanso',type:'descanso',icon:'🛌',color:
 const WK_COLORS={musculacao:'#818cf8',aerobico:'#38bdf8',descanso:'#78716C'};
 const WK_ICONS ={musculacao:'🏋️',aerobico:'🏃',descanso:'🛌'};
 const GYM_GROUPS=['Peito','Costas','Ombro','Bíceps','Tríceps','Perna','Core','Glúteo','Cardio','Outro'];
+// O Bedrock nem sempre devolve os acentos que o prompt pede. Sem casar o valor
+// recebido com o grupo canonico, "Biceps" seria gravado onde o resto do app
+// espera "Bíceps" — e o heatmap da tela Semana deixa de contabilizar o exercicio.
+function stripAccents(s){return String(s||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
+function canonGroup(g){
+  if(!g) return '';
+  const t=stripAccents(g);
+  return GYM_GROUPS.find(x=>stripAccents(x)===t)||'';
+}
 const GROUP_ICONS={'Peito':'🫁','Costas':'🔙','Ombro':'🏋️','Bíceps':'💪','Tríceps':'💪','Perna':'🦵','Glúteo':'🍑','Core':'⚡','Cardio':'🏃','Outro':'🏋️'};
 const GYM_MUSCLES=['Peito','Costas','Ombros','Bíceps','Tríceps','Quadríceps','Isquiotibiais','Glúteos','Core','Panturrilha','Ombros'];
 const ANTAGONIST_PAIRS=[['pectorals','latissimus dorsi'],['pectorals','traps'],['biceps','triceps'],['quadriceps','hamstrings'],['delts','traps'],['abs','erector spinae']];
@@ -1161,7 +1170,17 @@ function advanceToNextBlock(){
   showToast('Novo bloco iniciado: '+getCurrentBlock()?.name);
   renderGym();
 }
-function loadGymPlan(){try{return JSON.parse(localStorage.getItem('ht:gymplan')||'{}');}catch{return{};}}
+// Cura dados ja gravados: importacoes de PDF antigas guardaram "Biceps" sem
+// acento, que nao casa com GYM_GROUPS e por isso some do heatmap da Semana.
+function normExGroups(list){
+  if(Array.isArray(list)) list.forEach(ex=>{const c=ex&&canonGroup(ex.group);if(c)ex.group=c;});
+  return list;
+}
+function normPlanGroups(plan){
+  if(plan&&typeof plan==='object') Object.values(plan).forEach(normExGroups);
+  return plan;
+}
+function loadGymPlan(){try{return normPlanGroups(JSON.parse(localStorage.getItem('ht:gymplan')||'{}'));}catch{return{};}}
 function saveGymPlan(){
   try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}
   if(!USE_API||!authToken) return;
@@ -1171,10 +1190,10 @@ async function syncGymPlan(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__gymplan__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){gymPlan=d;try{localStorage.setItem('ht:gymplan',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){gymPlan=normPlanGroups(d);try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}}}
   }catch{}
 }
-function loadGymSession(date,tr){try{return JSON.parse(localStorage.getItem('ht:gym:'+date+':'+(tr||''))||'null');}catch{return null;}}
+function loadGymSession(date,tr){try{return normExGroups(JSON.parse(localStorage.getItem('ht:gym:'+date+':'+(tr||''))||'null'));}catch{return null;}}
 function saveGymSession(date,tr,data){
   try{localStorage.setItem('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}
   if(!USE_API||!authToken) return;
@@ -1217,19 +1236,14 @@ async function gymIdentifyExercise(name){
     const r=await fetch(API_URL+'?action=identify_exercise&name='+encodeURIComponent(name),{headers:{authorization:'Bearer '+authToken}});
     if(!r.ok) throw new Error('err');
     const d=await r.json();
+    const canon=canonGroup(d.group);
+    if(canon) d.group=canon;
     _gymIdInfo=d;
     if(d.found){
       _gymAddIdState='found';
+      // so atribui se o grupo existe no select — valor solto deixaria o campo em branco
       const groupEl=document.getElementById('gpa-group');
-      if(groupEl&&d.group){
-        function _stripAccents(s){return s.normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase();}
-        const opt=[...groupEl.options].find(function(o){
-          return o.value===d.group||
-                 o.value.normalize('NFC')===d.group.normalize('NFC')||
-                 _stripAccents(o.value)===_stripAccents(d.group);
-        });
-        if(opt) groupEl.value=opt.value;
-      }
+      if(groupEl&&canon) groupEl.value=canon;
     } else {
       _gymAddIdState='not_found';
     }
@@ -2289,7 +2303,7 @@ async function handleGymPlanFile(input,tr){
   statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando plano com IA — aguarde...</span>';
   try{
     const items=await analyzeViaLambda(file,'gym_plan');
-    _gymPlanPreview=items.map((ex,i)=>({...ex,id:'ex_'+Date.now()+i,_checked:true}));
+    _gymPlanPreview=items.map((ex,i)=>({...ex,group:canonGroup(ex.group)||'Outro',id:'ex_'+Date.now()+i,_checked:true}));
     document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
     statusEl.innerHTML=`<span style="color:#16A34A">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
   }catch(e){

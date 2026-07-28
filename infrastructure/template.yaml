@@ -183,7 +183,7 @@ Resources:
                 'Extraia kcal e prot (proteína em gramas) de cada refeição. Somente o JSON.'
               )
             else:
-              prompt='Extraia todos os exercicios deste plano de treino. Retorne APENAS um array JSON: [{"name":"exercicio","group":"Peito|Costas|Ombro|Biceps|Triceps|Perna|Core|Gluteo|Cardio|Outro","sets":3,"reps":"12","obs":""}]. Somente o JSON, sem markdown.'
+              prompt='Extraia todos os exercicios deste plano de treino. Retorne APENAS um array JSON: [{"name":"exercicio","group":"Peito|Costas|Ombro|Bíceps|Tríceps|Perna|Core|Glúteo|Cardio|Outro","sets":3,"reps":"12","obs":""}]. Use os acentos exatamente como escritos. Somente o JSON, sem markdown.'
             if is_pdf:
               content=[{'document':{'format':'pdf','name':'arquivo','source':{'bytes':file_bytes}}},{'text':prompt}]
             else:
