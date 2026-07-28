@@ -38,6 +38,17 @@ jobs:
           cd ../..
           aws s3 cp push-sender.zip s3://tracker-habitos/lambda-builds/push-sender.zip --region sa-east-1
 
+      # Precisa rodar ANTES do deploy da stack: o template referencia essa S3Key,
+      # e num deploy do zero o objeto tem que existir. Sem dependências de terceiros
+      # — a API usa só stdlib + boto3, que já vem no runtime.
+      # O zip vai para build/ porque esse diretório já está no .gitignore e nos
+      # excludes do `s3 sync`, então o código-fonte da Lambda nunca vaza para o site.
+      - name: Empacotar Lambda da API
+        run: |
+          mkdir -p build
+          zip -j build/api.zip infrastructure/api/index.py
+          aws s3 cp build/api.zip s3://tracker-habitos/lambda-builds/api.zip --region sa-east-1
+
       - name: Registrar identidade SES para e-mails do Cognito
         run: |
           aws ses verify-email-identity \
@@ -94,6 +105,24 @@ jobs:
             --function-name tracker-habitos-push-sender \
             --region sa-east-1
 
+      # O CloudFormation só re-publica o código quando a S3Key muda, e a chave aqui
+      # é fixa. Sem este passo, uma alteração em infrastructure/api/index.py subiria
+      # para o S3 mas nunca chegaria à função — mesma razão do passo do push-sender.
+      - name: Atualizar código da Lambda da API
+        if: steps.cfn.outcome == 'success'
+        run: |
+          aws lambda update-function-code \
+            --function-name tracker-habitos-api \
+            --s3-bucket tracker-habitos \
+            --s3-key lambda-builds/api.zip \
+            --region sa-east-1
+          aws lambda wait function-updated \
+            --function-name tracker-habitos-api \
+            --region sa-east-1
+
+      # --environment SUBSTITUI o mapa inteiro, não faz merge: toda variável do
+      # template precisa ser repetida aqui. SUB_TABLE_NAME estava faltando e era
+      # apagada a cada deploy — só não quebrou o push porque o código tem default.
       - name: Atualizar RAPIDAPI_KEY no Lambda
         if: steps.cfn.outcome == 'success'
         env:
@@ -103,7 +132,7 @@ jobs:
           aws lambda update-function-configuration \
             --function-name tracker-habitos-api \
             --region sa-east-1 \
-            --environment "Variables={TABLE_NAME=tracker-habitos-data,CACHE_TABLE_NAME=exercise-cache,RAPIDAPI_KEY=$RAPIDAPI_KEY}"
+            --environment "Variables={TABLE_NAME=tracker-habitos-data,CACHE_TABLE_NAME=exercise-cache,SUB_TABLE_NAME=tracker-habitos-push-subscriptions,RAPIDAPI_KEY=$RAPIDAPI_KEY}"
           aws lambda wait function-updated \
             --function-name tracker-habitos-api \
             --region sa-east-1

@@ -10,13 +10,14 @@ planejamento do repositório viraram registro histórico:
 - `exercicios-refinamento.md` — resta **um item**: o redesign do formulário do Plano
 
 Gaps técnicos ainda abertos, nenhum bloqueante: **latência do Cognito** (`get_uid()`
-faz round-trip a cada request) e **manutenibilidade** (`habit-tracker.html` com ~5k
-linhas + Lambda inline no `template.yaml`).
+faz round-trip a cada request) e **`habit-tracker.html` com ~5k linhas**. A outra
+metade do gap de manutenibilidade foi fechada — o Lambda da API saiu de dentro do
+`template.yaml` e virou `infrastructure/api/index.py`.
 
 ## Arquitetura atual
 
 - **Frontend:** HTML/CSS/JS puro, single file (`habit-tracker.html`), hospedado em S3 + CloudFront
-- **Backend:** AWS Lambda (Python 3.12) com Function URL — single function, discriminada por `?action=`
+- **Backend:** AWS Lambda (Python 3.12) com Function URL — single function, discriminada por `?action=`. Código em `infrastructure/api/index.py`, empacotado em zip pelo workflow e publicado em `s3://tracker-habitos/lambda-builds/api.zip`
 - **DB:** DynamoDB `tracker-habitos-data` — PK `userId` (string) + SK `date` (string)
 - **Auth:** AWS Cognito — Lambda extrai `userId` do `AccessToken` via `GetUser`
 - **Infra como código:** `infrastructure/template.yaml` (CloudFormation)
@@ -109,6 +110,28 @@ em vez de comparar strings de grupo na mão. `loadGymPlan`, `loadGymSession` e
 `syncGymPlan` também normalizam na leitura, para curar dado gravado antes do fix.
 
 ---
+
+## Onde mexer no backend
+
+O código das duas Lambdas está em arquivo próprio — **não edite Python dentro do
+`template.yaml`**, ele só declara infraestrutura:
+
+| Lambda | Fonte | Zip no S3 |
+|---|---|---|
+| `tracker-habitos-api` | `infrastructure/api/index.py` | `lambda-builds/api.zip` |
+| `tracker-habitos-push-sender` | `infrastructure/push-sender/index.py` | `lambda-builds/push-sender.zip` |
+
+O `S3Key` é fixo, então o CloudFormation **não** percebe mudança de código. Quem
+republica é o passo `update-function-code` do workflow, depois do deploy da stack.
+Se você mudar o caminho do zip, mude nos dois lugares (template e workflow).
+
+A API não tem `requirements.txt`: usa só stdlib + `boto3`, que já vem no runtime.
+Se um dia precisar de dependência de terceiros, copie o padrão do `push-sender`
+(`pip install -t` antes do zip).
+
+⚠️ O passo "Atualizar RAPIDAPI_KEY" usa `update-function-configuration
+--environment`, que **substitui o mapa inteiro de variáveis**, não faz merge. Toda
+variável declarada no template precisa estar repetida lá, senão some a cada deploy.
 
 ## Comandos úteis
 
