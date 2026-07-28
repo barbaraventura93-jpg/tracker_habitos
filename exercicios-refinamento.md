@@ -1,24 +1,33 @@
 # Refinamento técnico — Exercícios & Identificação Muscular
-## branch: feature/semana → feature/exercicios-v2
+
+> **Estado em 2026-07-28:** de tudo que este documento levantou, resta **um único
+> item** — o redesign do formulário do Plano (ocultar o `gpa-group` quando a IA
+> identifica). Todo o resto foi entregue. O texto abaixo é registro do diagnóstico
+> original; a seção do bug de acentuação descreve um problema já corrigido.
 
 ---
 
 ## Contexto e estado atual
 
-O módulo de exercícios tem identificação via Bedrock já funcionando no Lambda, mas com um bug ativo e um problema de UX que tornam a experiência confusa.
-
 | Capacidade | Estado | Observação |
 |---|---|---|
-| Identificação via Bedrock (`identify_exercise`) | ✅ Existe | Bug de acentuação impede auto-fill |
+| Identificação via Bedrock (`identify_exercise`) | ✅ Existe | Funcionando |
 | Cache no DynamoDB (`exercise-cache`) | ✅ Existe | Tabela criada, caching funciona |
-| Auto-preenchimento do grupo no formulário | ❌ Bug ativo | Mismatch de acentos — veja abaixo |
-| Formulário limpo (sem campos manuais) | ❌ Pendente | `gpa-group` sempre visível |
-| ExerciseDB (GIF + músculo preciso) | ✅ Existe | GIF + instruções + músculo-alvo, com cache |
-| Identificação no log diário (não só no plano) | ❌ Pendente | Só funciona na tela de Plano |
+| Auto-preenchimento do grupo no formulário | ✅ Corrigido | PR #23 — prompt acentuado + `canonGroup()` |
+| ExerciseDB (GIF + músculo preciso) | ✅ Existe | PR #22 — GIF + instruções + músculo-alvo, com cache |
+| Identificação no log diário (não só no plano) | ✅ Existe | `gym-new-name` também chama `gymTriggerIdentify` |
+| Formulário limpo (sem campos manuais) | ⏳ Pendente | `gpa-group` sempre visível no form do Plano |
 
 ---
 
-## Bug: Grupo muscular não é preenchido pela API
+## Bug: Grupo muscular não é preenchido pela API ✅ corrigido (PR #23)
+
+> Corrigido nas duas pontas, como esta seção recomendava. O prompt do Lambda passou
+> a pedir os grupos acentuados — tanto no `identify_exercise` quanto no `analyze`,
+> que era o caminho esquecido e continuava corrompendo planos importados de PDF — e
+> o frontend ganhou `canonGroup()`, que casa qualquer variante com o valor canônico
+> de `GYM_GROUPS`. `loadGymPlan`, `loadGymSession` e `syncGymPlan` normalizam na
+> leitura, curando o dado já gravado. O diagnóstico abaixo fica como registro.
 
 ### Causa raiz — mismatch de acentuação
 
@@ -233,7 +242,11 @@ function gymPlanManualConfirm(wId) {
 
 ---
 
-## Identificação no log diário (não só no plano)
+## Identificação no log diário (não só no plano) ✅ entregue
+
+> O input `gym-new-name` do log diário chama `gymTriggerIdentify`, e
+> `gymConfirmAdd` lê `_gymIdInfo` ao salvar — inclusive `gifUrl` e `instructions`.
+> Exercícios ad-hoc entram no heatmap normalmente.
 
 Hoje a identificação só funciona em `gymPlanManualAdd` (tela de Plano). Quando o usuário adiciona um exercício ad-hoc durante o treino (log do dia), o `_gymAddIdState` e `_gymIdInfo` são resetados, mas não há chamada a `gymTriggerIdentify`.
 
@@ -246,21 +259,20 @@ Hoje a identificação só funciona em `gymPlanManualAdd` (tela de Plano). Quand
 ## Ordem de implementação
 
 ```
-1. [URGENTE / BAIXO ESFORÇO] Fix do bug de acentuação
-   → Corrigir o prompt do Lambda (Biceps → Bíceps, etc.)
-   → Adicionar stripAccents() na comparação do frontend
-   → 5 linhas de mudança — pode entrar em qualquer branch
+1. [FEITO — PR #23] Fix do bug de acentuação
+   → Prompt do Lambda corrigido nos dois caminhos (identify_exercise e analyze)
+   → canonGroup() no frontend normaliza qualquer variante recebida
+   → Dado ja gravado curado na leitura (loadGymPlan/loadGymSession/syncGymPlan)
 
-2. [MÉDIO] Redesign do formulário de adição
+2. [PENDENTE — unico item em aberto deste documento] Redesign do formulario do Plano
    → Ocultar gpa-group quando API identifica
-   → Mostrar card de identificação como confirmação visual
-   → Botão "Corrigir" para override manual
-   → ~50 linhas
+   → Mostrar musculos secundarios na card de identificacao
+   → Botao "Corrigir" para override manual (ja existe no log diario, falta no Plano)
+   → Cosmetico: o grupo salvo hoje ja sai correto e normalizado
 
-3. [MÉDIO] Estender identificação ao log diário
-   → Chamar gymTriggerIdentify no input do log
-   → Ler _gymIdInfo ao salvar exercício ad-hoc
-   → Garantir que group sempre seja preenchido para o heatmap
+3. [FEITO] Estender identificação ao log diário
+   → gym-new-name chama gymTriggerIdentify
+   → gymConfirmAdd le _gymIdInfo ao salvar, incluindo gifUrl e instructions
 
 4. [FEITO — Fase 2] Integração ExerciseDB
    → GIF animado + instruções + músculo-alvo da base de dados

@@ -1,5 +1,18 @@
 # tracker_habitos — Contexto para Claude Code
 
+## Estado do projeto (2026-07-28)
+
+O roadmap de `docs/transformacao-app-diario.md` (Fases A–E) está **concluído**, assim
+como as três fases da Periodização Semanal descritas abaixo. Os dois documentos de
+planejamento do repositório viraram registro histórico:
+
+- `docs/transformacao-app-diario.md` — diagnóstico e roadmap, tudo entregue
+- `exercicios-refinamento.md` — resta **um item**: o redesign do formulário do Plano
+
+Gaps técnicos ainda abertos, nenhum bloqueante: **latência do Cognito** (`get_uid()`
+faz round-trip a cada request) e **manutenibilidade** (`habit-tracker.html` com ~5k
+linhas + Lambda inline no `template.yaml`).
+
 ## Arquitetura atual
 
 - **Frontend:** HTML/CSS/JS puro, single file (`habit-tracker.html`), hospedado em S3 + CloudFront
@@ -17,87 +30,92 @@ O app **já é multi-usuário**: cada request carrega `Bearer <token>`, o Lambda
 
 ## Convenções do Lambda
 
-Ações especiais no Lambda usam `?action=<nome>`. Exemplos já existentes:
-- `action=analyze` + POST: extrai exercícios/suplementos de PDF/imagem via Bedrock
+Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
+
+| Action | O que faz |
+|---|---|
+| `analyze` (POST) | extrai exercícios/suplementos/plano alimentar de PDF/imagem via Bedrock |
+| `identify_exercise` | grupo + músculos + GIF + instruções de um exercício, com cache |
+| `estimate_food` | estima macros de refeição livre (texto ou foto) via Bedrock |
+| `week_suggestion` | sugestão de treino para os dias restantes da semana |
+| `history_range` | Query por `userId` com `date BETWEEN` — hidrata o histórico num dispositivo novo |
+| `export` | download de todos os dados do usuário |
+| `save_push_subscription` / `delete_push_subscription` | inscrição Web Push |
 
 "Datas especiais" no DynamoDB (não são datas reais, são chaves de config por usuário):
-`__gymplan__`, `__workouts__`, `__csups__`, `__goals__`, `__goalsdefs__`, `__goallogs__`, `__body__`
+`__gymplan__`, `__workouts__`, `__mealplan__`, `__csups__`, `__goals__`, `__goalsdefs__`,
+`__goallogs__`, `__body__`, `__habits__`, `__weekplan__`, `__periodization__`
 
-## IAM — permissões atuais e gap
+## IAM
 
-Policy `DynamoDBAccess` atual: só `GetItem` e `PutItem`.  
-**Gap:** `week_summary` precisa buscar 7 dias de um usuário. Sem `dynamodb:Query`, a solução é 7 chamadas `GetItem` paralelas (suficiente para Fase 1).
+Policy `DynamoDBAccess`: `GetItem`, `PutItem` e `Query`, nas duas tabelas
+(`tracker-habitos-data` e `exercise-cache`). O `Query` entrou junto com o
+`history_range`.
 
-Policy `BedrockAccess`: `bedrock:InvokeModel` com `"*"` — infra para Fase 3 já existe.
+Policy `BedrockAccess`: `bedrock:InvokeModel` com `"*"`.
+
+**Gap conhecido e ainda aberto:** `get_uid()` chama `GetUser` no Cognito a cada
+request (~100–200 ms extras). Validar a assinatura do JWT localmente, com JWKS
+em cache, dispensaria a maioria dessas chamadas.
 
 ---
 
-## Feature em desenvolvimento: Periodização Semanal Inteligente
+## Periodização Semanal — entregue (Fases 1, 2 e 3)
 
-**Branch:** `feature/semana` (saindo de `feature/design`)
+As três fases estão no `main`. O que segue descreve o que existe, não um plano.
 
-### Decisões técnicas confirmadas
+### Tela Semana (Fase 1)
 
-1. **Novos handlers entram como `?action=` no Lambda existente** — sem nova infra Lambda:
-   - `?action=week_summary&date=2026-06-16` → retorna os 7 dias da semana que contém essa data
-   - `?action=week_suggestion` → sugestão de treino via Bedrock (Fase 3)
+- Aba "Semana" dentro da tela de treino, com os 7 dias (Seg–Dom): tipo de treino,
+  grupos musculares trabalhados e duração
+- Silhueta SVG desenhada à mão no próprio HTML (`viewBox 0 0 400 466`, paths
+  espelhados por `transform="scale(-1,1)"`), colorida por intensidade via `svgFill`
+- **A intensidade é contagem de séries concluídas, não volume de carga.**
+  `muscleSets[grupo] += nº de séries com done=true`, e
+  `pct = min(100, round(muscleSets[grupo] / 15 × 100))` — ou seja, 15 séries na
+  semana saturam o grupo em 100%. A ideia original de `Σ(séries × reps × peso)`
+  não foi adiante: peso é opcional no log e deixava o mapa vazio para quem não
+  anota carga
+- `Cardio` e `Outro` ficam fora do heatmap de propósito
+- Os 7 dias são lidos do cache local (`loadDay`), hidratado por `history_range` —
+  **não existe handler `week_summary`**, ele foi descartado quando o `Query`
+  entrou no IAM e tornou o `history_range` suficiente
 
-2. **Cache de exercícios ExerciseDB → nova tabela DynamoDB** (`exercise-cache`)
-   - Adicionar ao `template.yaml` com PK `exerciseName` (string) — sem `userId`, é global
-   - Adicionar ao `template.yaml` apenas na Fase 2
-   - **Não usar** `__cache__` como `userId` na tabela atual — gambiarra não escalável
+### Identificação de exercício (Fase 2)
 
-3. **Mapa muscular → SVG estático com CSS dinâmico** — sem API externa
-   - `muscle-visualizer.exercisedb.io` não tem documentação pública verificável
-   - SVG com IDs nos grupos musculares + intensidade por CSS é a abordagem principal (não plano B)
-   - Grupos já disponíveis nos logs: `Peito`, `Costas`, `Ombro`, `Biceps`, `Triceps`, `Perna`, `Core`, `Gluteo`, `Cardio`, `Outro`
+- Tabela `exercise-cache` (PK `exerciseName`, global — sem `userId`)
+- `identify_exercise` roda em dois passos: o Bedrock resolve o grupo em português
+  (necessário para o heatmap, e que a ExerciseDB não fornece) e traduz o nome para
+  inglês; essa tradução busca GIF, instruções e músculo-alvo na ExerciseDB
+- A ordem importa: buscar a ExerciseDB primeiro erraria quase sempre, porque os
+  nomes são digitados em português. Assim fica 1 requisição por exercício novo,
+  dentro do free tier de 100/dia
+- Sem a chave da RapidAPI o handler continua funcionando, só não enriquece — essas
+  entradas são marcadas com `edb:'nokey'` e refeitas quando a chave passa a existir.
+  O marcador `schema:'v2'` invalida entradas antigas gravadas com `gifUrl` vazio
 
-4. **ExerciseDB free tier (100 req/dia)** — suficiente com cache, mas o cache é pré-requisito obrigatório antes de integrar
+### Sugestão semanal (Fase 3)
 
-### Fases de implementação
+- `action=week_suggestion` via Bedrock, com os grupos não treinados e os dias
+  restantes da semana no contexto
 
-**Fase 1 — sem API externa (esta branch `feature/semana`)**
-- [ ] Tela "Semana" na nav inferior
-- [ ] Busca de 7 dias via 7 `GetItem` paralelos no Lambda (`action=week_summary`)
-- [ ] Cálculo de intensidade muscular baseado no campo `group` dos exercícios logados
-  - Fórmula: `intensidade = Σ(séries × reps × peso)` por grupo muscular, normalizada 0–100
-- [ ] SVG estático de silhueta humana com grupos musculares identificados por ID
-- [ ] Colorização dinâmica do SVG por intensidade (verde → amarelo → laranja → vermelho)
-- [ ] Sem mudança no `template.yaml`, sem nova tabela
+### Grupos musculares — atenção ao acento
 
-**Fase 2 — concluída**
-- [x] Nova tabela `exercise-cache` no `template.yaml`
-- [x] `dynamodb:Query` no IAM policy
-- [x] Integração ExerciseDB: GIF + músculo preciso + instruções no momento do log
-- [x] Handler `action=identify_exercise&name=<nome>` com cache em DynamoDB
-
-O `identify_exercise` roda em dois passos: o Bedrock resolve o grupo em português
-(necessário para o heatmap) e traduz o nome para inglês; esse nome em inglês busca
-o GIF, as instruções e o músculo-alvo na ExerciseDB. Sem a chave da RapidAPI o
-handler continua funcionando, só não enriquece — as entradas gravadas nesse estado
-são marcadas com `edb:'nokey'` e refeitas quando a chave passa a existir.
-
-**Fase 3 — nova branch**
-- [ ] `action=week_suggestion` via Bedrock com contexto semanal
-
-### UX da tela Semana
-
-- 7 cards de dias (Seg–Dom) mostrando: tipo de treino, grupos musculares trabalhados, duração
-- Silhueta SVG com heatmap muscular da semana
-- Indicador de músculo mais trabalhado e mais descansado
-- Sugestão passiva: "Costas está em repouso há 5 dias"
+`GYM_GROUPS` usa **`Bíceps`, `Tríceps`, `Glúteo` com acento**. O heatmap indexa
+`muscleSets` por essa string, então qualquer valor sem acento simplesmente some do
+mapa, sem erro visível. Os prompts do Bedrock pedem os grupos acentuados, e
+`canonGroup()` no frontend normaliza qualquer variante recebida — use essa função
+em vez de comparar strings de grupo na mão. `loadGymPlan`, `loadGymSession` e
+`syncGymPlan` também normalizam na leitura, para curar dado gravado antes do fix.
 
 ---
 
 ## Comandos úteis
 
 ```bash
-# Ver branches locais
-git -C "c:\Users\barba\Local\tracker_habitos" branch
-
-# Criar feature/semana a partir de feature/design (se ainda não existir)
-git -C "c:\Users\barba\Local\tracker_habitos" checkout -b feature/semana feature/design
-
-# Deploy (só funciona via push para main — CI/CD cuida do resto)
+# Deploy: só acontece via push para main — o CI/CD cuida do resto
 git push origin main
 ```
+
+O workflow `Deploy to S3` **não roda em pull requests**, só em push para `main`.
+PRs não têm checks — a validação antes do merge é manual.
