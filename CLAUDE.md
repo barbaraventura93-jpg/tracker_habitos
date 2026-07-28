@@ -65,11 +65,17 @@ Policy `BedrockAccess`: `bedrock:InvokeModel` com `"*"` — infra para Fase 3 j�
 - [ ] Colorização dinâmica do SVG por intensidade (verde → amarelo → laranja → vermelho)
 - [ ] Sem mudança no `template.yaml`, sem nova tabela
 
-**Fase 2 — nova branch após `feature/semana` entrar no main**
-- [ ] Nova tabela `exercise-cache` no `template.yaml`
-- [ ] `dynamodb:Query` no IAM policy
-- [ ] Integração ExerciseDB: GIF + músculo preciso + instruções no momento do log
-- [ ] Handler `action=identify_exercise&name=<nome>` com cache em DynamoDB
+**Fase 2 — concluída**
+- [x] Nova tabela `exercise-cache` no `template.yaml`
+- [x] `dynamodb:Query` no IAM policy
+- [x] Integração ExerciseDB: GIF + músculo preciso + instruções no momento do log
+- [x] Handler `action=identify_exercise&name=<nome>` com cache em DynamoDB
+
+O `identify_exercise` roda em dois passos: o Bedrock resolve o grupo em português
+(necessário para o heatmap) e traduz o nome para inglês; esse nome em inglês busca
+o GIF, as instruções e o músculo-alvo na ExerciseDB. Sem a chave da RapidAPI o
+handler continua funcionando, só não enriquece — as entradas gravadas nesse estado
+são marcadas com `edb:'nokey'` e refeitas quando a chave passa a existir.
 
 **Fase 3 — nova branch**
 - [ ] `action=week_suggestion` via Bedrock com contexto semanal

@@ -13,7 +13,7 @@ O módulo de exercícios tem identificação via Bedrock já funcionando no Lamb
 | Cache no DynamoDB (`exercise-cache`) | ✅ Existe | Tabela criada, caching funciona |
 | Auto-preenchimento do grupo no formulário | ❌ Bug ativo | Mismatch de acentos — veja abaixo |
 | Formulário limpo (sem campos manuais) | ❌ Pendente | `gpa-group` sempre visível |
-| ExerciseDB (GIF + músculo preciso) | ❌ Pendente | Fase 2 |
+| ExerciseDB (GIF + músculo preciso) | ✅ Existe | GIF + instruções + músculo-alvo, com cache |
 | Identificação no log diário (não só no plano) | ❌ Pendente | Só funciona na tela de Plano |
 
 ---
@@ -262,11 +262,14 @@ Hoje a identificação só funciona em `gymPlanManualAdd` (tela de Plano). Quand
    → Ler _gymIdInfo ao salvar exercício ad-hoc
    → Garantir que group sempre seja preenchido para o heatmap
 
-4. [ALTO — Fase 2] Integração ExerciseDB
-   → Depende de cache funcionando (já existe)
-   → GIF animado + músculo preciso da base de dados
-   → Enriquece a card de identificação com imagem
-   → Novo contexto no Lambda: busca ExerciseDB antes de Bedrock
+4. [FEITO — Fase 2] Integração ExerciseDB
+   → GIF animado + instruções + músculo-alvo da base de dados
+   → Card de identificação mostra o GIF no lugar do ícone do grupo
+   → Ordem invertida em relação ao plano original: Bedrock primeiro, ExerciseDB
+     depois. A busca da ExerciseDB é por nome em inglês, então com nomes em
+     português ("Rosca direta") ela erraria quase sempre. O Bedrock resolve o
+     grupo em português — que a ExerciseDB não tem — e traduz o nome; a busca
+     usa essa tradução. Fica 1 requisição por exercício novo, dentro do free tier.
 ```
 
 ---

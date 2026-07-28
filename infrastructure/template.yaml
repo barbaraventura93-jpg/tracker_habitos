@@ -195,25 +195,59 @@ Resources:
             if not m:
               raise Exception('Nenhum item identificado no arquivo')
             return json.loads(m.group())
+          EDB_HOST='exercisedb.p.rapidapi.com'
+          def edb_get(path):
+            if not RAPIDAPI_KEY: return None
+            try:
+              req=urllib.request.Request('https://'+EDB_HOST+path,headers={'X-RapidAPI-Key':RAPIDAPI_KEY,'X-RapidAPI-Host':EDB_HOST})
+              with urllib.request.urlopen(req,timeout=6) as r:
+                return json.loads(r.read())
+            except:
+              return None
+          def edb_lookup(english_name,target):
+            # ExerciseDB indexa por nome em ingles; a busca e por substring e devolve varios matches
+            q=(english_name or '').lower().strip()
+            if not q: return None
+            rows=edb_get('/exercises/name/'+urllib.parse.quote(q))
+            if not isinstance(rows,list) or not rows:
+              # 2a tentativa sem o equipamento: "barbell bench press" -> "bench press"
+              words=q.split()
+              if len(words)>2:
+                rows=edb_get('/exercises/name/'+urllib.parse.quote(' '.join(words[-2:])))
+            if not isinstance(rows,list) or not rows: return None
+            tgt=(target or '').lower().strip()
+            def score(r):
+              n=(r.get('name') or '').lower()
+              s=0
+              if n==q: s+=100
+              elif q in n or n in q: s+=40
+              if tgt and (r.get('target') or '').lower()==tgt: s+=25
+              return s
+            return max(rows,key=score)
           def identify_exercise(name):
             key=name.lower().strip()
             try:
               cached=cache_table.get_item(Key={'exerciseName':key}).get('Item')
-              if cached and cached.get('found'): return cached
+              # so reaproveita cache do schema atual; entradas gravadas sem a chave da
+              # RapidAPI sao refeitas quando a chave passa a existir
+              if cached and cached.get('found') and cached.get('schema')=='v2':
+                if not (cached.get('edb')=='nokey' and RAPIDAPI_KEY): return cached
             except: pass
             prompt=(
               'Identifique o exercicio de musculacao: "'+name+'"\n\n'
               'Responda APENAS com um JSON valido, sem markdown:\n'
               '{"group":"Peito|Costas|Ombro|Bíceps|Tríceps|Perna|Glúteo|Core|Cardio|Outro",'
               '"targetMuscle":"musculo principal em ingles",'
+              '"englishName":"nome do exercicio em ingles, como aparece numa base de dados de exercicios",'
               '"secondaryMuscles":["musculo2","musculo3"]}\n\n'
               'Exemplos:\n'
-              '"Supino reto"->{"group":"Peito","targetMuscle":"pectorals","secondaryMuscles":["triceps","delts"]}\n'
-              '"Remada curvada"->{"group":"Costas","targetMuscle":"latissimus dorsi","secondaryMuscles":["biceps","rhomboids"]}\n'
-              '"Squat"->{"group":"Perna","targetMuscle":"quadriceps","secondaryMuscles":["hamstrings","glutes"]}'
+              '"Supino reto"->{"group":"Peito","targetMuscle":"pectorals","englishName":"barbell bench press","secondaryMuscles":["triceps","delts"]}\n'
+              '"Remada curvada"->{"group":"Costas","targetMuscle":"latissimus dorsi","englishName":"barbell bent over row","secondaryMuscles":["biceps","rhomboids"]}\n'
+              '"Rosca direta"->{"group":"Bíceps","targetMuscle":"biceps","englishName":"barbell curl","secondaryMuscles":["forearms"]}\n'
+              '"Squat"->{"group":"Perna","targetMuscle":"quadriceps","englishName":"barbell squat","secondaryMuscles":["hamstrings","glutes"]}'
             )
             try:
-              resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':[{'text':prompt}]}],inferenceConfig={'maxTokens':120,'temperature':0})
+              resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':[{'text':prompt}]}],inferenceConfig={'maxTokens':200,'temperature':0})
               txt=resp['output']['message']['content'][0]['text'].strip()
               m=re.search(r'\{[\s\S]*\}',txt)
               if not m: return {'exerciseName':key,'found':False}
@@ -221,13 +255,28 @@ Resources:
               result={
                 'exerciseName':key,
                 'found':True,
+                'schema':'v2',
                 'group':data.get('group','Outro'),
                 'targetMuscle':data.get('targetMuscle',''),
                 'secondaryMuscles':data.get('secondaryMuscles',[]),
+                'englishName':data.get('englishName',''),
                 'gifUrl':'',
+                'instructions':[],
                 'fromBedrock':True,
+                'edb':'nokey' if not RAPIDAPI_KEY else 'miss',
                 'cachedAt':datetime.datetime.utcnow().isoformat()+'Z',
               }
+              # enriquece com GIF e instrucoes; o grupo em portugues continua vindo do Bedrock
+              hit=edb_lookup(data.get('englishName') or name,data.get('targetMuscle'))
+              if hit:
+                result['edb']='hit'
+                result['gifUrl']=hit.get('gifUrl') or ''
+                result['edbName']=hit.get('name') or ''
+                if hit.get('target'): result['targetMuscle']=hit['target']
+                ins=hit.get('instructions')
+                if isinstance(ins,list) and ins: result['instructions']=[str(i) for i in ins[:6]]
+                sec=hit.get('secondaryMuscles')
+                if isinstance(sec,list) and sec: result['secondaryMuscles']=[str(s) for s in sec]
               try: cache_table.put_item(Item=result)
               except: pass
               return result
