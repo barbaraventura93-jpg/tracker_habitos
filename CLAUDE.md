@@ -133,6 +133,24 @@ Se um dia precisar de dependência de terceiros, copie o padrão do `push-sender
 --environment`, que **substitui o mapa inteiro de variáveis**, não faz merge. Toda
 variável declarada no template precisa estar repetida lá, senão some a cada deploy.
 
+### Chamadas ao Bedrock
+
+Toda chamada passa por `bedrock_text(content, max_tokens, temperature=None)` —
+não chame `bedrock.converse` direto. O helper registra o código de erro real da
+AWS no CloudWatch antes de propagar; sem ele os erros sumiam nos `except` mudos.
+
+⚠️ **`temperature=0` é inválido no Amazon Nova** — o mínimo aceito é `0.00001`
+(a constante `NOVA_MIN_TEMP`). Passar `0` derruba a chamada inteira com
+`ValidationException`. Foi o que quebrou `estimate_food` e `identify_exercise`
+enquanto `analyze` e `week_suggestion`, que não mandavam `temperature`,
+continuavam funcionando. O helper ainda repete a chamada sem `temperature` se o
+modelo recusar o `inferenceConfig`, então uma mudança futura de validação
+degrada em vez de quebrar.
+
+O `read_timeout` do cliente (25 s × 2 tentativas) tem que caber no `Timeout` da
+Lambda, hoje 60 s. Se a função estoura o tempo, o Function URL responde 502 **sem
+os headers de CORS** e o navegador mostra só "Failed to fetch", sem a causa.
+
 ## Comandos úteis
 
 ```bash
