@@ -67,9 +67,13 @@ Não há como o usuário exportar seus dados (CSV/JSON). Para um app pessoal com
 ### G7 — Manutenibilidade ⏳ em aberto
 4.043 linhas num único HTML e o Lambda inline no `template.yaml`. Funciona, mas cada feature nova fica mais cara. Não bloqueia o roadmap, mas vale ao menos separar o Lambda em arquivo próprio (como já foi feito com `push-sender/`).
 
-*Atualização 2026-07-28:* o gap cresceu — `habit-tracker.html` está em **4.969 linhas**
-e o Lambda inline passa de 275 linhas dentro do `template.yaml`. Continua não
-bloqueante, mas é o candidato mais óbvio a próximo trabalho técnico.
+*Atualização 2026-07-28:* **metade resolvida.** O Lambda da API saiu de dentro do
+`template.yaml` e virou `infrastructure/api/index.py` (274 linhas), empacotado e
+publicado pelo workflow no mesmo padrão do `push-sender` — o template caiu de 494
+para 224 linhas e passou a declarar só infraestrutura.
+
+Continua aberto o outro lado: `habit-tracker.html` está em **4.969 linhas** num
+arquivo único. Não bloqueia nada, mas é o próximo candidato natural.
 
 ### Já conhecido e aceito
 - localStorage sem prefixo de usuário (documentado no CLAUDE.md — ok para app pessoal).
