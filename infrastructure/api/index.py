@@ -1,12 +1,23 @@
-import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime,unicodedata
+import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime,unicodedata,logging
 from boto3.dynamodb.conditions import Key
+from botocore.config import Config
+from botocore.exceptions import ClientError
+log=logging.getLogger()
+log.setLevel(logging.INFO)
 dynamo=boto3.resource('dynamodb')
 table=dynamo.Table(os.environ['TABLE_NAME'])
 cache_table=dynamo.Table(os.environ.get('CACHE_TABLE_NAME','exercise-cache'))
 sub_table=dynamo.Table(os.environ.get('SUB_TABLE_NAME','tracker-habitos-push-subscriptions'))
-bedrock=boto3.client('bedrock-runtime',region_name='us-east-1')
+# read_timeout tem que caber no Timeout da Lambda: estourar o tempo da funcao
+# devolve 502 sem os headers de CORS, e o navegador reporta isso como "Failed to
+# fetch", sem mensagem. Falhando dentro da funcao o erro volta como JSON.
+BEDROCK_CFG=Config(connect_timeout=5,read_timeout=25,retries={'max_attempts':2,'mode':'standard'})
+bedrock=boto3.client('bedrock-runtime',region_name='us-east-1',config=BEDROCK_CFG)
 REGION=os.environ.get('AWS_REGION','sa-east-1')
 MODEL='us.amazon.nova-lite-v1:0'
+# O Amazon Nova recusa temperature=0 — o minimo aceito e 0.00001. Passar 0
+# derruba a chamada inteira com ValidationException.
+NOVA_MIN_TEMP=0.00001
 RAPIDAPI_KEY=os.environ.get('RAPIDAPI_KEY','')
 class Dec(json.JSONEncoder):
   def default(self,o):
@@ -18,8 +29,34 @@ def get_uid(token):
     req=urllib.request.Request('https://cognito-idp.'+REGION+'.amazonaws.com/',data=json.dumps({'AccessToken':token}).encode(),headers={'Content-Type':'application/x-amz-json-1.1','X-Amz-Target':'AWSCognitoIdentityProviderService.GetUser'})
     with urllib.request.urlopen(req,timeout=5) as r:
       return json.loads(r.read())['Username']
-  except:
+  except Exception as e:
+    log.warning('get_uid falhou: %s: %s',type(e).__name__,e)
     return None
+def bedrock_text(content,max_tokens,temperature=None):
+  """Chama o Converse e devolve o texto da resposta.
+
+  Ponto unico de entrada do Bedrock: sem isso cada handler engolia a excecao por
+  conta propria e a causa real (codigo de erro da AWS) nunca chegava ao CloudWatch.
+  """
+  cfg={'maxTokens':max_tokens}
+  if temperature is not None: cfg['temperature']=temperature
+  msgs=[{'role':'user','content':content}]
+  try:
+    resp=bedrock.converse(modelId=MODEL,messages=msgs,inferenceConfig=cfg)
+  except ClientError as e:
+    err=e.response.get('Error',{})
+    code=err.get('Code','')
+    log.error('bedrock converse falhou modelId=%s code=%s msg=%s',MODEL,code,err.get('Message',''))
+    # Rede de seguranca: se o modelo recusar o inferenceConfig, repete so com
+    # maxTokens, que e sempre aceito. Vale mais uma resposta menos deterministica
+    # do que erro na tela.
+    if code=='ValidationException' and 'temperature' in cfg:
+      del cfg['temperature']
+      log.info('repetindo converse sem temperature')
+      resp=bedrock.converse(modelId=MODEL,messages=msgs,inferenceConfig=cfg)
+    else:
+      raise
+  return resp['output']['message']['content'][0]['text']
 def call_ai(file_b64,mime,ctx):
   file_bytes=base64.b64decode(file_b64)
   is_pdf=mime=='application/pdf'
@@ -43,8 +80,7 @@ def call_ai(file_b64,mime,ctx):
   else:
     fmt=mime.split('/')[-1].replace('jpg','jpeg')
     content=[{'image':{'format':fmt,'source':{'bytes':file_bytes}}},{'text':prompt}]
-  resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':content}],inferenceConfig={'maxTokens':3000})
-  txt=resp['output']['message']['content'][0]['text']
+  txt=bedrock_text(content,3000)
   m=re.search(r'\[[\s\S]*\]',txt)
   if not m:
     raise Exception('Nenhum item identificado no arquivo')
@@ -56,7 +92,8 @@ def edb_get(path):
     req=urllib.request.Request('https://'+EDB_HOST+path,headers={'X-RapidAPI-Key':RAPIDAPI_KEY,'X-RapidAPI-Host':EDB_HOST})
     with urllib.request.urlopen(req,timeout=6) as r:
       return json.loads(r.read())
-  except:
+  except Exception as e:
+    log.warning('ExerciseDB %s falhou: %s: %s',path,type(e).__name__,e)
     return None
 def edb_lookup(english_name,target):
   # ExerciseDB indexa por nome em ingles; a busca e por substring e devolve varios matches
@@ -86,7 +123,8 @@ def identify_exercise(name):
     # RapidAPI sao refeitas quando a chave passa a existir
     if cached and cached.get('found') and cached.get('schema')=='v2':
       if not (cached.get('edb')=='nokey' and RAPIDAPI_KEY): return cached
-  except: pass
+  except Exception as e:
+    log.warning('cache get falhou para %r: %s',key,e)
   prompt=(
     'Identifique o exercicio de musculacao: "'+name+'"\n\n'
     'Responda APENAS com um JSON valido, sem markdown:\n'
@@ -101,10 +139,11 @@ def identify_exercise(name):
     '"Squat"->{"group":"Perna","targetMuscle":"quadriceps","englishName":"barbell squat","secondaryMuscles":["hamstrings","glutes"]}'
   )
   try:
-    resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':[{'text':prompt}]}],inferenceConfig={'maxTokens':200,'temperature':0})
-    txt=resp['output']['message']['content'][0]['text'].strip()
+    txt=bedrock_text([{'text':prompt}],200,NOVA_MIN_TEMP).strip()
     m=re.search(r'\{[\s\S]*\}',txt)
-    if not m: return {'exerciseName':key,'found':False}
+    if not m:
+      log.warning('identify_exercise: resposta sem JSON para %r: %r',name,txt[:200])
+      return {'exerciseName':key,'found':False}
     data=json.loads(m.group())
     result={
       'exerciseName':key,
@@ -132,10 +171,13 @@ def identify_exercise(name):
       sec=hit.get('secondaryMuscles')
       if isinstance(sec,list) and sec: result['secondaryMuscles']=[str(s) for s in sec]
     try: cache_table.put_item(Item=result)
-    except: pass
+    except Exception as e: log.warning('cache put falhou para %r: %s',key,e)
     return result
-  except:
-    return {'exerciseName':key,'found':False}
+  except Exception as e:
+    # a UI espera found:false para nao quebrar; o motivo vai junto para o campo
+    # error e para o CloudWatch, em vez de sumir como "nao identificado"
+    log.exception('identify_exercise falhou para %r',name)
+    return {'exerciseName':key,'found':False,'error':'%s: %s'%(type(e).__name__,e)}
 def week_suggestion(week_summary,untrained,remaining_days):
   if remaining_days==0: return []
   untrained_str=', '.join(untrained) if untrained else 'nenhum — semana equilibrada'
@@ -147,8 +189,7 @@ def week_suggestion(week_summary,untrained,remaining_days):
     'treinar nos dias restantes para equilibrar a semana. Linguagem simples, sem jargao tecnico. '
     'Responda so com as sugestoes, sem introducao ou numeracao.'
   )
-  resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':[{'text':prompt}]}],inferenceConfig={'maxTokens':200})
-  txt=resp['output']['message']['content'][0]['text']
+  txt=bedrock_text([{'text':prompt}],200)
   return [s.strip() for s in txt.strip().split('\n') if s.strip()]
 def estimate_food(text,file_b64,mime):
   instr=(
@@ -164,10 +205,11 @@ def estimate_food(text,file_b64,mime):
     content=[{'image':{'format':fmt,'source':{'bytes':fb}}},{'text':instr}]
   else:
     content=[{'text':instr}]
-  resp=bedrock.converse(modelId=MODEL,messages=[{'role':'user','content':content}],inferenceConfig={'maxTokens':200,'temperature':0})
-  txt=resp['output']['message']['content'][0]['text']
+  txt=bedrock_text(content,200,NOVA_MIN_TEMP)
   m=re.search(r'\{[\s\S]*\}',txt)
-  if not m: raise Exception('Nao foi possivel estimar')
+  if not m:
+    log.warning('estimate_food: resposta sem JSON: %r',txt[:200])
+    raise Exception('Nao foi possivel estimar')
   d=json.loads(m.group())
   def _i(v):
     try: return max(0,int(round(float(v))))

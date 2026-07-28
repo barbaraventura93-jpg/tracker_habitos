@@ -135,7 +135,10 @@ Resources:
       Runtime: python3.12
       Handler: index.handler
       Role: !GetAtt LambdaRole.Arn
-      Timeout: 30
+      # Precisa acomodar o pior caso do Bedrock (2 tentativas x read_timeout de
+      # 25s). Estourando o tempo aqui o Function URL devolve 502 sem CORS, e o
+      # erro chega ao navegador como "Failed to fetch", sem causa.
+      Timeout: 60
       Environment:
         Variables:
           TABLE_NAME: tracker-habitos-data
