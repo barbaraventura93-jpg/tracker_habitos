@@ -1234,7 +1234,13 @@ async function gymIdentifyExercise(name){
   gymRenderIdBlock();
   try{
     const r=await fetch(API_URL+'?action=identify_exercise&name='+encodeURIComponent(name),{headers:{authorization:'Bearer '+authToken}});
-    if(!r.ok) throw new Error('err');
+    if(!r.ok){
+      // le o corpo antes de desistir: o Lambda manda a causa no campo error, e
+      // descartar isso era o que transformava falha de infra em silencio
+      let why='HTTP '+r.status;
+      try{const b=await r.json();if(b&&b.error)why=b.error;}catch(_){}
+      throw new Error(why);
+    }
     const d=await r.json();
     const canon=canonGroup(d.group);
     if(canon) d.group=canon;
@@ -1248,7 +1254,13 @@ async function gymIdentifyExercise(name){
       _gymAddIdState='not_found';
     }
     gymRenderIdBlock();
-  } catch(e){_gymIdInfo=null;_gymAddIdState='idle';const s=document.getElementById('gym-id-status');if(s)s.innerHTML='';}
+  } catch(e){
+    // antes isso voltava para idle e limpava a tela: falha de rede, 502 sem CORS
+    // e 500 do Lambda ficavam todos indistinguiveis de "nao digitei nada ainda"
+    _gymIdInfo={error:(e&&e.message)||'falha na chamada'};
+    _gymAddIdState='not_found';
+    gymRenderIdBlock();
+  }
 }
 function gymRenderIdBlock(){
   const container=document.getElementById('gym-id-status');
@@ -1289,6 +1301,15 @@ function gymRenderIdBlock(){
         +'</div></div>';
     } else {
       container.innerHTML='<div style="font-size:11px;color:#A8A29E;padding:4px 0">Não encontrado — selecione o grupo abaixo.</div>';
+    }
+    // Falha de infra (Bedrock fora, sem permissao, timeout) chega aqui como
+    // "nao encontrado". Sem mostrar o motivo, um erro de plataforma fica
+    // indistinguivel de um exercicio que a IA realmente nao conhece.
+    if(_gymIdInfo&&_gymIdInfo.error){
+      const errEl=document.createElement('div');
+      errEl.style.cssText='font-size:10px;color:#f87171;font-family:\'DM Mono\',monospace;word-break:break-word;padding:4px 0';
+      errEl.textContent='⚠ '+_gymIdInfo.error; // textContent: a mensagem pode ecoar o nome digitado
+      container.appendChild(errEl);
     }
     return;
   }
