@@ -100,6 +100,28 @@ As três fases estão no `main`. O que segue descreve o que existe, não um plan
 - `action=week_suggestion` via Bedrock, com os grupos não treinados e os dias
   restantes da semana no contexto
 
+### Timer de treino
+
+Um único widget com dois modos, em `_tmr`: `rest` (regressivo, descanso entre
+séries) e `work` (progressivo, exercícios medidos em tempo).
+
+- O widget é criado em `document.body`, **não** dentro do HTML da tela. `renderGym()`
+  reconstrói a tela inteira a cada série marcada — dentro dela o timer morreria a
+  cada toque
+- O tempo sai sempre de `Date.now()` (`_tmrValue()`), nunca de um contador
+  decrementado: com a tela apagada o navegador estrangula o `setInterval` e um
+  contador dessincronizaria
+- `AudioContext` é criado no **início** do timer, que é sempre um gesto do usuário.
+  Criar no fim da contagem seria bloqueado pelo mobile, que exige gesto
+- Preferências em `localStorage` `ht:tmr` (`{rest, auto, sound}`). Os botões ±15s
+  gravam o novo padrão — o timer aprende o descanso real, sem tela de configuração
+- `timerLogWork()` grava na primeira série pendente: `"45s"` na musculação,
+  minutos decimais no aeróbico (onde o campo alimenta `dayData.gymDurMin`).
+  Guarda `date`/`tr` do início para não gravar no lugar errado se a pessoa
+  trocar de dia no meio
+- A classe `body.tmr-on` aumenta o `padding-bottom` do `.screens-wrap` para a
+  barra não cobrir o fim da lista
+
 ### Grupos musculares — atenção ao acento
 
 `GYM_GROUPS` usa **`Bíceps`, `Tríceps`, `Glúteo` com acento**. O heatmap indexa

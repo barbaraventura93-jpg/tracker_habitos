@@ -54,11 +54,14 @@ textarea,input,select{font-family:inherit;}
 }
 .main-content{flex:1;min-width:0;display:flex;flex-direction:column;}
 .screens-wrap{flex:1;padding-bottom:calc(var(--bnav) + 8px);}
+/* enquanto o timer está na tela, abre espaço para ele não cobrir o fim da lista */
+body.tmr-on .screens-wrap{padding-bottom:calc(var(--bnav) + 96px);}
 
 @media(min-width:768px){
   .sidebar{display:flex;}
   .main-content{margin-left:var(--sidebar);}
   .screens-wrap{padding-bottom:40px;}
+  body.tmr-on .screens-wrap{padding-bottom:128px;}
   .bnav{display:none!important;}
   .mobile-header{display:none!important;}
 }
@@ -1743,9 +1746,10 @@ function renderGym(){
     const pl=dispDate(prev.date);
     html+=`<div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:8px 12px;margin-bottom:10px;font-size:11px;color:#78716C">📊 Comparando com: <b style="color:#78716C">${pl.day} ${pl.date}</b></div>`;
   }
-  html+=`<div style="display:flex;align-items:center;margin-bottom:10px">
-    <div style="flex:1"><div style="font-size:15px;font-weight:800;color:${trObj.color}">${trObj.icon} ${trObj.name}</div></div>
-    ${doneCount>0?`<div style="font-size:12px;color:#16A34A;font-family:'DM Mono',monospace;font-weight:700">${doneCount}/${totalSets} ${isCardio?'atividades':'séries'} ✓</div>`:''}
+  html+=`<div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+    <div style="flex:1;min-width:0"><div style="font-size:15px;font-weight:800;color:${trObj.color}">${trObj.icon} ${trObj.name}</div></div>
+    ${doneCount>0?`<div style="font-size:12px;color:#16A34A;font-family:'DM Mono',monospace;font-weight:700;flex-shrink:0">${doneCount}/${totalSets} ${isCardio?'atividades':'séries'} ✓</div>`:''}
+    ${!isCardio?`<button onclick="timerToggleAuto()" title="Iniciar o descanso sozinho ao concluir uma série" style="flex-shrink:0;padding:5px 9px;border-radius:7px;font-size:10px;font-weight:700;border:1px solid ${tmrPrefs.auto?'#C4BFFF':'#E7E5E4'};background:${tmrPrefs.auto?'#EDE9FF':'#fff'};color:${tmrPrefs.auto?'#6C63FF':'#A8A29E'}">⏱ ${tmrPrefs.auto?_tmrShort(tmrPrefs.rest):'off'}</button>`:''}
   </div>
   `;
 
@@ -1760,7 +1764,11 @@ function renderGym(){
   // Helper: build one exercise card HTML
   function _gymCard(ei,ex){
     const prevEx=prevMap[ex.id];
-    const prevSummary=prevEx?prevEx.sets.filter(s=>s.done&&(s.reps||s.kg)).map(s=>isCardio?[s.reps?s.reps+'min':null,s.kg?s.kg+'km':null].filter(Boolean).join(' '):`${s.reps}×${s.kg||'?'}kg`).join(' · '):'';
+    // séries cronometradas gravam reps como "45s" — mostrar "45s×?kg" seria ruído
+    const _fmtPrev=s=>isCardio
+      ?[s.reps?s.reps+'min':null,s.kg?s.kg+'km':null].filter(Boolean).join(' ')
+      :(/^\d+s$/.test(String(s.reps||''))?`${s.reps}${s.kg?' × '+s.kg+'kg':''}`:`${s.reps}×${s.kg||'?'}kg`);
+    const prevSummary=prevEx?prevEx.sets.filter(s=>s.done&&(s.reps||s.kg)).map(_fmtPrev).join(' · '):'';
     const doneSets=ex.sets.filter(s=>s.done).length;
     const allDone=doneSets===ex.sets.length&&doneSets>0;
     const setRows=ex.sets.map((set,si)=>{
@@ -1788,7 +1796,10 @@ function renderGym(){
       </div>
       ${prevSummary?`<div style="font-size:10px;color:#A8A29E;font-family:'DM Mono',monospace;margin-bottom:8px;padding:5px 8px;background:#fff;border-radius:6px">Ant: ${prevSummary}</div>`:''}
       ${setRows}
-      <button onclick="gymAddSet(${ei})" style="width:100%;padding:6px;background:#fff;border:1px dashed #D4D0CE;border-radius:8px;color:#78716C;font-size:11px;margin-top:2px">+ ${isCardio?'intervalo':'série'}</button>
+      <div style="display:flex;gap:6px;margin-top:2px">
+        <button onclick="gymAddSet(${ei})" style="flex:1;padding:6px;background:#fff;border:1px dashed #D4D0CE;border-radius:8px;color:#78716C;font-size:11px">+ ${isCardio?'intervalo':'série'}</button>
+        <button onclick="timerStartWork(${ei})" title="Cronometrar esta série (prancha, isometria...)" style="padding:6px 12px;background:#fff;border:1px dashed #D4D0CE;border-radius:8px;color:#78716C;font-size:11px;flex-shrink:0">⏱ Cronometrar</button>
+      </div>
     </div>`;
   }
 
@@ -1862,16 +1873,190 @@ function gymSetVal(ei,si,field,val){
   const s=loadGymSession(currentDate,tr);if(!s?.[ei]?.sets?.[si]) return;
   s[ei].sets[si][field]=val;saveGymSession(currentDate,tr,s);
 }
+// ─── TIMER DE TREINO ────────────────────────────────────────────────────────
+// Dois modos no mesmo widget: 'rest' conta pra trás (descanso entre séries) e
+// 'work' conta pra frente (exercícios medidos em tempo: prancha, isometria).
+// O widget vive no body, fora do HTML da tela — assim sobrevive ao renderGym(),
+// que reconstrói a tela inteira a cada série marcada.
+let _tmr=null,_tmrIv=null,_tmrAC=null;
+const TMR_DEFAULTS={rest:60,auto:true,sound:true};
+let tmrPrefs=(function(){try{return Object.assign({},TMR_DEFAULTS,JSON.parse(localStorage.getItem('ht:tmr')||'{}'));}catch{return Object.assign({},TMR_DEFAULTS);}})();
+function saveTmrPrefs(){try{localStorage.setItem('ht:tmr',JSON.stringify(tmrPrefs));}catch{}}
+function _tmrFmt(sec){const s=Math.max(0,Math.round(sec));return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
+// rótulo curto para o chip do cabeçalho: "45s", "1:00", "1:30"
+function _tmrShort(sec){const s=Math.max(0,Math.round(sec));return s<60?s+'s':Math.floor(s/60)+':'+String(s%60).padStart(2,'0');}
+
+// O AudioContext precisa nascer dentro de um gesto do usuário, senão o mobile
+// bloqueia. Criamos ao iniciar o timer (que é sempre um toque) e reaproveitamos
+// no fim da contagem, quando não há gesto nenhum.
+function _tmrAudioUnlock(){
+  if(!tmrPrefs.sound) return;
+  try{
+    const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+    if(!_tmrAC)_tmrAC=new AC();
+    if(_tmrAC.state==='suspended')_tmrAC.resume();
+  }catch{}
+}
+function _tmrBeep(){
+  if(!tmrPrefs.sound||!_tmrAC) return;
+  try{
+    const t0=_tmrAC.currentTime;
+    [0,0.2,0.4].forEach(function(off){
+      const o=_tmrAC.createOscillator(),g=_tmrAC.createGain();
+      o.type='sine';o.frequency.value=880;
+      g.gain.setValueAtTime(0.0001,t0+off);
+      g.gain.exponentialRampToValueAtTime(0.3,t0+off+0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001,t0+off+0.16);
+      o.connect(g);g.connect(_tmrAC.destination);
+      o.start(t0+off);o.stop(t0+off+0.18);
+    });
+  }catch{}
+}
+
+function timerStop(){
+  if(_tmrIv){clearInterval(_tmrIv);_tmrIv=null;}
+  _tmr=null;
+  const el=document.getElementById('tmr-bar');
+  if(el) el.remove();
+  document.body.classList.remove('tmr-on');
+}
+// Segundos decorridos ('work') ou restantes ('rest'), sempre a partir do relógio
+// real — contador decrementado dessincroniza quando o navegador suspende a aba.
+function _tmrValue(){
+  if(!_tmr) return 0;
+  const ref=_tmr.paused?_tmr.pausedAt:Date.now();
+  if(_tmr.mode==='rest') return (_tmr.endsAt-ref)/1000;
+  return (ref-_tmr.startedAt)/1000;
+}
+function timerStartRest(sec){
+  const dur=Math.max(5,sec||tmrPrefs.rest);
+  _tmrAudioUnlock();
+  if(_tmrIv)clearInterval(_tmrIv);
+  _tmr={mode:'rest',dur,endsAt:Date.now()+dur*1000,paused:false,done:false};
+  _tmrBuild();_tmrIv=setInterval(_tmrTick,200);_tmrTick();
+}
+function timerStartWork(ei){
+  const tr=loadDay(currentDate).tr;
+  _tmrAudioUnlock();
+  if(_tmrIv)clearInterval(_tmrIv);
+  // guarda onde registrar: se a pessoa trocar de dia/treino no meio, não grava no lugar errado
+  _tmr={mode:'work',ei,date:currentDate,tr,startedAt:Date.now(),paused:false};
+  _tmrBuild();_tmrIv=setInterval(_tmrTick,200);_tmrTick();
+}
+function timerToggle(){
+  if(!_tmr) return;
+  if(_tmr.paused){
+    const off=Date.now()-_tmr.pausedAt;
+    if(_tmr.mode==='rest')_tmr.endsAt+=off; else _tmr.startedAt+=off;
+    _tmr.paused=false;
+  }else{
+    _tmr.pausedAt=Date.now();_tmr.paused=true;
+  }
+  _tmrBuild();_tmrTick();
+}
+// Ajusta o descanso em andamento e guarda como novo padrão — o timer aprende
+// o tempo que a pessoa de fato usa, sem precisar de tela de configuração.
+function timerAdd(sec){
+  if(!_tmr||_tmr.mode!=='rest') return;
+  _tmr.endsAt+=sec*1000;
+  _tmr.dur=Math.max(5,_tmr.dur+sec);
+  if(_tmr.done&&_tmrValue()>0){_tmr.done=false;_tmrBuild();}
+  tmrPrefs.rest=_tmr.dur;saveTmrPrefs();
+  _tmrTick();
+}
+function timerToggleAuto(){
+  tmrPrefs.auto=!tmrPrefs.auto;saveTmrPrefs();
+  showToast(tmrPrefs.auto?'Descanso automático ligado':'Descanso automático desligado');
+  renderGym();
+}
+// Encerra o cronômetro de exercício gravando o tempo na primeira série pendente.
+function timerLogWork(){
+  if(!_tmr||_tmr.mode!=='work') return;
+  const secs=Math.round(_tmrValue());
+  const {ei,date,tr}=_tmr;
+  const s=loadGymSession(date,tr)||[];
+  const ex=s[ei];
+  if(!ex||!ex.sets||!ex.sets.length){timerStop();showToast('Exercício não encontrado');return;}
+  let si=ex.sets.findIndex(x=>!x.done);
+  if(si<0) si=ex.sets.length-1;
+  const isCardioNow=getWorkoutById(tr)?.type==='aerobico';
+  ex.sets[si].reps=isCardioNow?String(Math.round(secs/6)/10):secs+'s';
+  ex.sets[si].done=true;
+  saveGymSession(date,tr,s);
+  if(isCardioNow&&date===currentDate){
+    dayData.gymDurMin=s.reduce((a,e)=>a+e.sets.filter(st=>st.done).reduce((b,st)=>b+(parseFloat(st.reps)||0),0),0);
+    save();
+  }
+  timerStop();
+  if(date===currentDate){renderGym();_gymUpdateScoreHeader();}
+  showToast('Série '+(si+1)+' registrada: '+(isCardioNow?Math.round(secs/6)/10+' min':secs+'s'));
+  if(tmrPrefs.auto&&!isCardioNow) timerStartRest();
+}
+function _tmrBuild(){
+  let el=document.getElementById('tmr-bar');
+  if(!el){
+    el=document.createElement('div');
+    el.id='tmr-bar';
+    el.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(var(--bnav) + 12px);z-index:70;background:rgba(255,255,255,.97);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px);border:1px solid #E7E5E4;border-radius:14px;box-shadow:0 6px 24px rgba(28,25,23,.16);padding:10px 12px;max-width:456px;margin:0 auto';
+    document.body.appendChild(el);
+  }
+  document.body.classList.add('tmr-on');
+  const isRest=_tmr&&_tmr.mode==='rest';
+  const btn='border:none;cursor:pointer;border-radius:8px;font-size:12px;font-weight:700;padding:7px 10px;flex-shrink:0';
+  const ctrl=isRest
+    ? `<button onclick="timerAdd(-15)" style="${btn};background:#F0EFED;color:#78716C">−15s</button>
+       <button onclick="timerAdd(15)" style="${btn};background:#F0EFED;color:#78716C">+15s</button>
+       <button onclick="timerToggle()" style="${btn};background:#EDE9FF;color:#6C63FF">${_tmr&&_tmr.paused?'▶':'❚❚'}</button>`
+    : `<button onclick="timerToggle()" style="${btn};background:#EDE9FF;color:#6C63FF">${_tmr&&_tmr.paused?'▶':'❚❚'}</button>
+       <button onclick="timerLogWork()" style="${btn};background:#16a34a;color:#fff">✓ Registrar</button>`;
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:8px">
+      <div style="flex-shrink:0">
+        <div style="font-size:9px;font-weight:700;color:#A8A29E;letter-spacing:.5px">${isRest?'DESCANSO':'CRONÔMETRO'}</div>
+        <div id="tmr-time" style="font-size:22px;font-weight:800;font-family:'DM Mono',monospace;color:#1C1917;line-height:1.1">--:--</div>
+      </div>
+      <div style="flex:1;display:flex;gap:5px;justify-content:flex-end;flex-wrap:wrap">${ctrl}</div>
+      <button onclick="timerStop()" style="${btn};background:none;color:#A8A29E;padding:7px 4px;font-size:15px">✕</button>
+    </div>
+    ${isRest?'<div style="height:3px;background:#E7E5E4;border-radius:99px;margin-top:8px;overflow:hidden"><div id="tmr-prog" style="width:100%;height:100%;background:#6C63FF;border-radius:99px"></div></div>':''}`;
+}
+function _tmrTick(){
+  if(!_tmr) return;
+  const v=_tmrValue();
+  const t=document.getElementById('tmr-time');
+  if(!t){timerStop();return;}
+  if(_tmr.mode==='rest'){
+    t.textContent=_tmrFmt(Math.max(0,v));
+    const p=document.getElementById('tmr-prog');
+    if(p)p.style.width=Math.max(0,Math.min(100,v/_tmr.dur*100))+'%';
+    if(v<=0&&!_tmr.done){
+      _tmr.done=true;
+      t.style.color='#16a34a';
+      if(navigator.vibrate)navigator.vibrate([120,60,120,60,200]);
+      _tmrBeep();
+      showToast('Descanso concluído — próxima série');
+    }
+  }else{
+    t.textContent=_tmrFmt(v);
+  }
+}
+// Ao voltar de tela apagada o intervalo pode ter sido estrangulado; recalcula na hora.
+document.addEventListener('visibilitychange',function(){if(!document.hidden&&_tmr)_tmrTick();});
+
 function gymDone(ei,si){
   const tr=loadDay(currentDate).tr;
   const s=loadGymSession(currentDate,tr)||[];if(!s?.[ei]?.sets?.[si]) return;
   s[ei].sets[si].done=!s[ei].sets[si].done;saveGymSession(currentDate,tr,s);
-  if(getWorkoutById(tr)?.type==='aerobico'){
+  const nowDone=s[ei].sets[si].done;
+  const isCardioNow=getWorkoutById(tr)?.type==='aerobico';
+  if(isCardioNow){
     dayData.gymDurMin=s.reduce((a,ex)=>a+ex.sets.filter(st=>st.done).reduce((b,st)=>b+(parseFloat(st.reps)||0),0),0);
     save();
   }
   renderGym();
   _gymUpdateScoreHeader();
+  // Descanso só faz sentido entre séries de musculação — num intervalo de corrida
+  // já registrado não tem o que cronometrar.
+  if(nowDone&&tmrPrefs.auto&&!isCardioNow) timerStartRest();
 }
 function _gymUpdateScoreHeader(){
   const sc=calcScore(dayData,currentDate);
