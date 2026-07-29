@@ -3377,6 +3377,10 @@ function queuePut(key,payload){
   flushOutbox();
 }
 let _flushing=false;
+// Motivo da última falha de sincronização. Sem isto o flushOutbox dava `break`
+// em silêncio: a fila parava de subir, o indicador ficava em "sincronizando…"
+// para sempre e nada dizia que os dados não estavam chegando ao servidor.
+let _syncErr='';
 async function flushOutbox(){
   if(_flushing||!USE_API||!authToken||!navigator.onLine) return;
   _flushing=true;
@@ -3389,9 +3393,10 @@ async function flushOutbox(){
       let r;
       try{
         r=await fetch(`${API_URL}?date=${encodeURIComponent(key)}`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:entry.body});
-      }catch{break;}
-      if(r.status===401){const ok=await tryRefresh();if(ok)continue;break;}
-      if(!r.ok) break;
+      }catch(e){_syncErr=(e&&e.message)||'sem conexão com a API';break;}
+      if(r.status===401){const ok=await tryRefresh();if(ok)continue;_syncErr='sessão expirada — entre de novo';break;}
+      if(!r.ok){_syncErr=apiErr(r,await readApiBody(r),'falha ao sincronizar');break;}
+      _syncErr='';
       const cur=loadOutbox();
       if(cur[key]&&cur[key].ts===entry.ts) delete cur[key];
       saveOutbox(cur);
@@ -3410,6 +3415,10 @@ function updateSyncStatus(){
   if(!navigator.onLine){
     el.textContent=pending?`⚡ offline · ${pending} na fila`:'⚡ offline';
     el.style.color='#D97706';
+  }else if(pending&&_syncErr){
+    // fila parada por erro: mostrar a causa, senão fica "sincronizando…" eterno
+    el.textContent=`⚠ ${pending} não sincronizado(s) · ${_syncErr}`;
+    el.style.color='#f87171';
   }else if(pending){
     el.textContent=`↻ sincronizando ${pending}…`;
     el.style.color='#D97706';
