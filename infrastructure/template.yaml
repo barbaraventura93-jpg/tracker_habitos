@@ -113,6 +113,7 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
                   - dynamodb:DeleteItem
+                  - dynamodb:BatchWriteItem
                   - dynamodb:Scan
                   - dynamodb:Query
                 Resource:

@@ -4458,6 +4458,142 @@ function showMealPlanConfig(){
   document.getElementById('mais-body').innerHTML=renderMealPlanConfigHtml();
   setBnavActive('mais');
 }
+
+// ─── CONTA — senha, refazer onboarding e exclusão ────────────────────────────
+let _accPanel=null; // null | 'senha' | 'excluir'
+function showAccount(panel){
+  _accPanel=panel||null;
+  document.getElementById('mais-body').innerHTML=renderAccountHtml();
+  setBnavActive('mais');
+}
+function renderAccountHtml(){
+  const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:8px';
+  const senha=_accPanel==='senha'?`
+    <div style="border-top:1px solid #F0EFED;margin-top:10px;padding-top:12px">
+      <input id="acc-pw-atual" type="password" autocomplete="current-password" placeholder="Senha atual" style="${inp}">
+      <input id="acc-pw-nova" type="password" autocomplete="new-password" placeholder="Nova senha (mínimo 8 caracteres)" style="${inp}">
+      <input id="acc-pw-conf" type="password" autocomplete="new-password" placeholder="Repita a nova senha" style="${inp}">
+      <div id="acc-pw-msg" style="font-size:12px;min-height:17px;margin-bottom:6px"></div>
+      <button onclick="accChangePassword()" id="acc-pw-btn" style="width:100%;padding:12px;background:var(--accent);border-radius:10px;color:#fff;font-size:14px;font-weight:600">Alterar senha</button>
+    </div>`:'';
+  const excluir=_accPanel==='excluir'?`
+    <div style="border-top:1px solid #FECACA;margin-top:10px;padding-top:12px">
+      <div style="font-size:12px;color:#78716C;line-height:1.6;margin-bottom:10px">
+        Isto apaga <b style="color:#1C1917">para sempre</b>:
+        <ul style="margin:6px 0 0 16px;line-height:1.7">
+          <li>todos os seus dias, treinos e registros no servidor</li>
+          <li>metas, hábitos, plano alimentar e suplementos</li>
+          <li>o lembrete por notificação, se estiver ativo</li>
+          <li>seu login — o e-mail fica livre para cadastrar de novo</li>
+        </ul>
+        <div style="margin-top:8px">Não dá para desfazer. Se quiser guardar uma cópia, use <b style="color:#1C1917">Exportar dados</b> antes.</div>
+      </div>
+      <div style="font-size:11px;font-weight:700;color:#78716C;letter-spacing:.06em;margin-bottom:6px">DIGITE <b style="color:#DC2626">EXCLUIR</b> PARA CONFIRMAR</div>
+      <input id="acc-del-confirm" placeholder="EXCLUIR" autocapitalize="characters" style="${inp};letter-spacing:2px">
+      <div id="acc-del-msg" style="font-size:12px;min-height:17px;margin-bottom:6px"></div>
+      <button onclick="accDeleteAccount()" id="acc-del-btn" style="width:100%;padding:12px;background:#DC2626;border-radius:10px;color:#fff;font-size:14px;font-weight:600">Excluir minha conta</button>
+    </div>`:'';
+  return`<div class="card fade-in">
+    <div class="sec-hdr"><div class="sec-lbl"><span>🔒</span> SENHA</div></div>
+    <div style="font-size:12px;color:#78716C;line-height:1.6;margin-bottom:${_accPanel==='senha'?'0':'10px'}">Troque a senha desta conta sem precisar sair. Você continua logado depois.</div>
+    ${_accPanel==='senha'?senha:`<button onclick="showAccount('senha')" style="width:100%;padding:11px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:13px;font-weight:500">Alterar senha</button>`}
+  </div>
+  <div class="card fade-in">
+    <div class="sec-hdr"><div class="sec-lbl"><span>👋</span> ASSISTENTE DE CONFIGURAÇÃO</div></div>
+    <div style="font-size:12px;color:#78716C;line-height:1.6;margin-bottom:10px">Reabre o passo a passo de primeiro acesso. Nada é gravado enquanto você não chegar ao fim, e as etapas que você pular continuam como estão hoje.</div>
+    <button onclick="accRestartOnboarding()" style="width:100%;padding:11px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:13px;font-weight:500">Refazer configuração inicial</button>
+  </div>
+  <div class="card fade-in" style="border-color:#FECACA">
+    <div class="sec-hdr"><div class="sec-lbl" style="color:#DC2626"><span>⚠️</span> EXCLUIR CONTA</div></div>
+    ${_accPanel==='excluir'?excluir:`
+      <div style="font-size:12px;color:#78716C;line-height:1.6;margin-bottom:10px">Apaga a conta e todos os dados, no servidor e neste aparelho. Permanente.</div>
+      <button onclick="showAccount('excluir')" style="width:100%;padding:11px;background:none;border:1px solid #FCA5A5;border-radius:10px;color:#DC2626;font-size:13px;font-weight:600">Quero excluir minha conta</button>`}
+  </div>
+  <button onclick="showMais()" style="width:100%;padding:10px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:13px;font-weight:500;margin-bottom:8px">← Voltar</button>`;
+}
+function accRestartOnboarding(){
+  lsDel('ht:onboard_done');
+  startOnboarding();
+}
+async function accChangePassword(){
+  const msg=document.getElementById('acc-pw-msg');
+  const btn=document.getElementById('acc-pw-btn');
+  const atual=document.getElementById('acc-pw-atual').value;
+  const nova=document.getElementById('acc-pw-nova').value;
+  const conf=document.getElementById('acc-pw-conf').value;
+  const fail=t=>{msg.style.color='#DC2626';msg.textContent=t;};
+  if(!atual||!nova){fail('Preencha a senha atual e a nova.');return;}
+  if(nova.length<8){fail('A nova senha precisa ter pelo menos 8 caracteres.');return;}
+  if(nova!==conf){fail('A confirmação não bate com a nova senha.');return;}
+  if(nova===atual){fail('A nova senha é igual à atual.');return;}
+  btn.disabled=true;btn.textContent='Alterando…';msg.textContent='';
+  let res=await cognito('ChangePassword',{AccessToken:authToken,PreviousPassword:atual,ProposedPassword:nova});
+  // NotAuthorized cobre tanto senha errada quanto token vencido — só a mensagem
+  // do Cognito separa os dois casos.
+  if(res.__type&&/expired/i.test(res.message||'')&&await tryRefresh()){
+    res=await cognito('ChangePassword',{AccessToken:authToken,PreviousPassword:atual,ProposedPassword:nova});
+  }
+  btn.disabled=false;btn.textContent='Alterar senha';
+  if(res.__type){
+    const t=res.__type;
+    if(t.includes('NotAuthorized')) fail('Senha atual incorreta.');
+    else if(t.includes('InvalidPassword')) fail('Senha fraca. Use pelo menos 8 caracteres.');
+    else if(t.includes('LimitExceeded')) fail('Muitas tentativas. Aguarde alguns minutos.');
+    else fail(forgotMapError(t));
+    return;
+  }
+  showAccount(null);
+  showToast('✓ Senha alterada');
+}
+// Remove todo o cache local deste uid. Chamado só na exclusão de conta — o
+// logout normal preserva o cache para o próximo login ser instantâneo.
+function wipeUserScope(uid){
+  try{
+    const pref='ht:u:'+uid+':',del=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k&&k.startsWith(pref)) del.push(k);
+    }
+    for(const k of del) localStorage.removeItem(k);
+    if(localStorage.getItem('ht:legacy_claimed')===uid) localStorage.setItem('ht:legacy_claimed','');
+  }catch{}
+}
+async function accDeleteAccount(){
+  const msg=document.getElementById('acc-del-msg');
+  const btn=document.getElementById('acc-del-btn');
+  const fail=t=>{msg.style.color='#DC2626';msg.textContent=t;btn.disabled=false;btn.textContent='Excluir minha conta';};
+  if((document.getElementById('acc-del-confirm').value||'').trim().toUpperCase()!=='EXCLUIR'){
+    msg.style.color='#DC2626';msg.textContent='Digite EXCLUIR para confirmar.';return;
+  }
+  if(!navigator.onLine){msg.style.color='#DC2626';msg.textContent='Sem conexão — é preciso estar online para excluir.';return;}
+  btn.disabled=true;btn.textContent='Excluindo…';msg.textContent='';
+  const uid=_userScope;
+  // 1) dados no servidor, enquanto o token ainda vale
+  if(USE_API){
+    let r;
+    try{
+      r=await fetch(`${API_URL}?action=delete_account`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({confirm:'EXCLUIR'})});
+    }catch{ fail('Falha de rede. Nada foi excluído — tente de novo.');return; }
+    if(r.status===401&&await tryRefresh()){
+      try{
+        r=await fetch(`${API_URL}?action=delete_account`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({confirm:'EXCLUIR'})});
+      }catch{ fail('Falha de rede. Nada foi excluído — tente de novo.');return; }
+    }
+    if(!r.ok){fail('Não foi possível excluir os dados. Nada foi apagado — tente de novo.');return;}
+  }
+  // 2) o login no Cognito
+  const res=await cognito('DeleteUser',{AccessToken:authToken});
+  if(res&&res.__type){
+    // Os dados já foram embora; só o login sobrou. Dizer isso é melhor do que
+    // fingir sucesso e deixar a pessoa achando que o e-mail está livre.
+    fail('Seus dados foram apagados, mas o login não pôde ser removido. Saia e entre de novo para tentar outra vez.');
+    return;
+  }
+  // 3) cache local
+  if(uid) wipeUserScope(uid);
+  signOut();
+  showToast('Conta excluída. O e-mail já pode ser cadastrado de novo.');
+}
 function renderMealPlanConfigHtml(){
   const plan=effectiveMealPlan()||BLANK_MEAL_PLAN;
   const triggerLabel={
@@ -4665,6 +4801,9 @@ function renderMais(){
       {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
       {icon:'📅',label:'Adicionar à Agenda',sub:'Levar hábitos, refeições e treinos para o seu calendário',fn:"showAgenda()",c:'#818cf8'},
       {icon:'💾',label:'Exportar dados',sub:'Baixar todos os seus registros em JSON',fn:"exportData()",c:'#fbbf24'},
+    ]},
+    {label:'CONTA',items:[
+      {icon:'🔒',label:'Conta e senha',sub:'Trocar a senha, refazer a configuração inicial ou excluir a conta',fn:"showAccount()",c:'#78716C'},
     ]},
   ];
   const renderItem=it=>`

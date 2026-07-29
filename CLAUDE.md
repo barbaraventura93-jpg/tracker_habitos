@@ -85,17 +85,33 @@ Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
 | `week_suggestion` | sugestão de treino para os dias restantes da semana |
 | `history_range` | Query por `userId` com `date BETWEEN` — hidrata o histórico num dispositivo novo |
 | `export` | download de todos os dados do usuário |
+| `delete_account` (POST) | apaga todas as linhas do `userId` nas duas tabelas — exige `{"confirm":"EXCLUIR"}` no body |
 | `save_push_subscription` / `delete_push_subscription` | inscrição Web Push |
 
 "Datas especiais" no DynamoDB (não são datas reais, são chaves de config por usuário):
 `__gymplan__`, `__workouts__`, `__mealplan__`, `__csups__`, `__goals__`, `__goalsdefs__`,
 `__goallogs__`, `__body__`, `__habits__`, `__weekplan__`, `__periodization__`
 
+## Conta do usuário
+
+Tudo em `showAccount()`, dentro de Mais › Conta e senha:
+
+- **Alterar senha** — `ChangePassword` do Cognito, direto do cliente, sem backend.
+  `NotAuthorizedException` cobre senha errada *e* token vencido; só a `message`
+  separa os dois, e o código dá `tryRefresh()` antes de desistir no segundo caso.
+- **Refazer configuração inicial** — apaga `ht:onboard_done` e reabre o assistente.
+- **Excluir conta** — a ordem importa: primeiro `action=delete_account` (dados no
+  DynamoDB), depois `DeleteUser` no Cognito, por último `wipeUserScope()` no
+  `localStorage`. Ao contrário, o token morreria antes e as linhas do DynamoDB
+  ficariam órfãs, sem ninguém que consiga apagá-las. Se a API falhar, nada é
+  apagado e o Cognito nem é chamado.
+
 ## IAM
 
-Policy `DynamoDBAccess`: `GetItem`, `PutItem` e `Query`, nas duas tabelas
-(`tracker-habitos-data` e `exercise-cache`). O `Query` entrou junto com o
-`history_range`.
+Policy `DynamoDBAccess`: `GetItem`, `PutItem`, `DeleteItem`, `BatchWriteItem`,
+`Scan` e `Query`, nas três tabelas (`tracker-habitos-data`, `exercise-cache` e
+`tracker-habitos-push-subscriptions`). O `Query` entrou junto com o
+`history_range`; o `BatchWriteItem`, junto com o `delete_account`.
 
 Policy `BedrockAccess`: `bedrock:InvokeModel` com `"*"`.
 
