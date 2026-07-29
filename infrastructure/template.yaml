@@ -136,9 +136,15 @@ Resources:
       Handler: index.handler
       Role: !GetAtt LambdaRole.Arn
       # Precisa acomodar o pior caso do Bedrock (2 tentativas x read_timeout de
-      # 25s). Estourando o tempo aqui o Function URL devolve 502 sem CORS, e o
+      # 20s). Estourando o tempo aqui o Function URL devolve 502 sem CORS, e o
       # erro chega ao navegador como "Failed to fetch", sem causa.
       Timeout: 60
+      # Sem isto a funcao rodava com o default de 128 MB, apertado para boto3 +
+      # cliente do bedrock-runtime + decode de imagem/PDF em base64. Estouro de
+      # memoria MATA o processo: nenhum except roda e a plataforma responde
+      # {"message":"Internal Server Error"} — indistinguivel de timeout, e sem a
+      # causa. A CPU tambem escala com a memoria, entao 128 MB deixava tudo lento.
+      MemorySize: 512
       Environment:
         Variables:
           TABLE_NAME: tracker-habitos-data
