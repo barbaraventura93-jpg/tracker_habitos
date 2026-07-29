@@ -1,4 +1,4 @@
-import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime,unicodedata,logging
+import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime,unicodedata,logging,time
 from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -8,10 +8,12 @@ dynamo=boto3.resource('dynamodb')
 table=dynamo.Table(os.environ['TABLE_NAME'])
 cache_table=dynamo.Table(os.environ.get('CACHE_TABLE_NAME','exercise-cache'))
 sub_table=dynamo.Table(os.environ.get('SUB_TABLE_NAME','tracker-habitos-push-subscriptions'))
-# read_timeout tem que caber no Timeout da Lambda: estourar o tempo da funcao
-# devolve 502 sem os headers de CORS, e o navegador reporta isso como "Failed to
-# fetch", sem mensagem. Falhando dentro da funcao o erro volta como JSON.
-BEDROCK_CFG=Config(connect_timeout=5,read_timeout=25,retries={'max_attempts':2,'mode':'standard'})
+# 2 tentativas x 20s = ~45s com overhead, dentro dos 60s da funcao. A folga
+# importa: estourando o Timeout da Lambda o processo e morto e nenhum except
+# roda — a plataforma responde 502/"Internal Server Error", sem os headers de
+# CORS e sem o campo `error` que o frontend le. Falhando aqui dentro, vira
+# ReadTimeoutError com mensagem.
+BEDROCK_CFG=Config(connect_timeout=5,read_timeout=20,retries={'max_attempts':2,'mode':'standard'})
 bedrock=boto3.client('bedrock-runtime',region_name='us-east-1',config=BEDROCK_CFG)
 REGION=os.environ.get('AWS_REGION','sa-east-1')
 MODEL='us.amazon.nova-lite-v1:0'
@@ -41,8 +43,10 @@ def bedrock_text(content,max_tokens,temperature=None):
   cfg={'maxTokens':max_tokens}
   if temperature is not None: cfg['temperature']=temperature
   msgs=[{'role':'user','content':content}]
+  t0=time.time()
   try:
     resp=bedrock.converse(modelId=MODEL,messages=msgs,inferenceConfig=cfg)
+    log.info('bedrock ok em %.1fs',time.time()-t0)
   except ClientError as e:
     err=e.response.get('Error',{})
     code=err.get('Code','')
@@ -56,6 +60,10 @@ def bedrock_text(content,max_tokens,temperature=None):
       resp=bedrock.converse(modelId=MODEL,messages=msgs,inferenceConfig=cfg)
     else:
       raise
+  except Exception as e:
+    # timeout de leitura, DNS, TLS: nao sao ClientError e escapavam sem log
+    log.error('bedrock falhou (nao-AWS) em %.1fs: %s: %s',time.time()-t0,type(e).__name__,e)
+    raise
   return resp['output']['message']['content'][0]['text']
 def call_ai(file_b64,mime,ctx):
   file_bytes=base64.b64decode(file_b64)
@@ -226,6 +234,21 @@ def query_days(uid,cond_key=None):
     kwargs['ExclusiveStartKey']=lek
   return items
 def handler(event,context):
+  """Guarda de ultimo recurso.
+
+  Qualquer excecao que escapasse do _dispatch fazia a plataforma responder
+  {"message":"Internal Server Error"} — JSON valido, mas sem o campo `error` que
+  o frontend le, o que virava "falha ao estimar" sem causa nenhuma. Aqui o erro
+  vira sempre JSON nosso, com nome da excecao.
+  """
+  params=event.get('queryStringParameters') or {}
+  action=params.get('action','') or '(dia)'
+  try:
+    return _dispatch(event,context)
+  except Exception as e:
+    log.exception('handler falhou action=%s',action)
+    return{'statusCode':500,'body':json.dumps({'error':'%s: %s'%(type(e).__name__,e),'action':action})}
+def _dispatch(event,context):
   method=event.get('requestContext',{}).get('http',{}).get('method','')
   auth=(event.get('headers') or {}).get('authorization','')
   uid=get_uid(auth[7:]) if auth.startswith('Bearer ') else None

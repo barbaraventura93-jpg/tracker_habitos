@@ -1053,6 +1053,25 @@ function deleteSup(id){
   renderUI();
 }
 
+// ── Leitura de resposta da API ────────────────────────────────────────────────
+// Quando a Lambda estoura o Timeout ou morre fora dos try, quem responde é a
+// plataforma: {"message":"Internal Server Error"} — JSON válido, mas sem o campo
+// `error`. Ler só `error` fazia isso virar a mensagem genérica de fallback, sem
+// causa. Pior: `await r.json()` antes de checar `r.ok` estoura em corpo não-JSON
+// (502/504 devolvem HTML) e o erro de parse mascarava o erro real.
+async function readApiBody(r){
+  const raw=await r.text().catch(function(){return'';});
+  if(!raw) return {}; // objeto vazio, nunca null: quem chama desreferencia direto
+  try{return JSON.parse(raw);}catch(_){return{_raw:raw.slice(0,300)};}
+}
+function apiErr(r,d,fallback){
+  if(d){
+    if(d.error) return d.error;
+    if(d.message) return d.message+' (HTTP '+r.status+')'; // erro da plataforma, não do nosso código
+    if(d._raw) return 'HTTP '+r.status+': '+d._raw;
+  }
+  return fallback+' (HTTP '+r.status+')';
+}
 // ── Importação via IA ─────────────────────────────────────────────────────────
 async function analyzeViaLambda(file,context){
   const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
@@ -1234,14 +1253,10 @@ async function gymIdentifyExercise(name){
   gymRenderIdBlock();
   try{
     const r=await fetch(API_URL+'?action=identify_exercise&name='+encodeURIComponent(name),{headers:{authorization:'Bearer '+authToken}});
-    if(!r.ok){
-      // le o corpo antes de desistir: o Lambda manda a causa no campo error, e
-      // descartar isso era o que transformava falha de infra em silencio
-      let why='HTTP '+r.status;
-      try{const b=await r.json();if(b&&b.error)why=b.error;}catch(_){}
-      throw new Error(why);
-    }
-    const d=await r.json();
+    // le o corpo antes de desistir: descartar isso era o que transformava falha
+    // de infra em silencio na tela
+    const d=await readApiBody(r);
+    if(!r.ok) throw new Error(apiErr(r,d,'falha ao identificar'));
     const canon=canonGroup(d.group);
     if(canon) d.group=canon;
     _gymIdInfo=d;
@@ -3622,8 +3637,8 @@ async function estimateFoodText(){
   _setFoodStatus('⏳ Estimando macros com IA…','#D97706');
   try{
     const r=await fetch(`${API_URL}?action=estimate_food`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({text:txt})});
-    const d=await r.json();
-    if(!r.ok) throw new Error(d.error||'falha ao estimar');
+    const d=await readApiBody(r);
+    if(!r.ok) throw new Error(apiErr(r,d,'falha ao estimar'));
     _foodEst={...d,src:'text'};
     renderUI();
   }catch(e){_setFoodStatus('❌ '+(e.message||'não deu para estimar'),'#f87171');}
@@ -3635,8 +3650,8 @@ async function estimateFoodPhoto(input){
   try{
     const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
     const r=await fetch(`${API_URL}?action=estimate_food`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({file:base64,mimeType:file.type})});
-    const d=await r.json();
-    if(!r.ok) throw new Error(d.error||'falha ao analisar');
+    const d=await readApiBody(r);
+    if(!r.ok) throw new Error(apiErr(r,d,'falha ao analisar'));
     if(!d.kcal&&!d.prot&&!d.carb&&!d.fat){_setFoodStatus('🤔 Não identifiquei comida na foto — tente descrever por texto','#D97706');return;}
     _foodEst={...d,src:'photo'};
     renderUI();
