@@ -172,6 +172,14 @@ Resources:
         AllowHeaders:
           - content-type
           - authorization
+        # Sem ExposeHeaders o navegador só entrega ao JS os headers da safelist
+        # do CORS, e estes dois ficam invisíveis. São justamente os que a AWS usa
+        # para nomear a causa de um erro de plataforma (403/502), que acontece
+        # antes do nosso código rodar — sem eles, resta adivinhar.
+        ExposeHeaders:
+          - x-amzn-errortype
+          - x-amzn-requestid
+          - x-amzn-trace-id
       TargetFunctionArn: !Ref TrackerFunction
 
   # Acesso público ao Function URL declarado como recurso (idempotente).
