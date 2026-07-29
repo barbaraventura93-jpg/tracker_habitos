@@ -1068,17 +1068,26 @@ async function readApiBody(r){
   try{return JSON.parse(raw);}catch(_){return{_raw:raw.slice(0,300)};}
 }
 function apiErr(r,d,fallback){
+  // x-amzn-errortype nomeia a causa exata de erros de plataforma (que ocorrem
+  // ANTES do nosso código rodar) e o requestid liga a falha à linha do
+  // CloudWatch. Só ficam legíveis porque o Function URL declara ExposeHeaders.
+  let sufixo=' (HTTP '+r.status+')';
+  try{
+    const tipo=r.headers&&r.headers.get('x-amzn-errortype');
+    const rid=r.headers&&r.headers.get('x-amzn-requestid');
+    if(tipo) sufixo=' ['+tipo+']'+sufixo;
+    if(rid) sufixo+=' req='+rid;
+  }catch(_){}
   if(d){
-    if(d.error) return d.error;
+    if(d.error) return d.error+sufixo;
     // a AWS responde {"Message":"Forbidden"} com M MAIÚSCULO no 403 do Function
     // URL, e {"message":"Internal Server Error"} minúsculo no 502 — ler só uma
     // das grafias fazia o erro real virar a frase genérica de fallback
     const platform=d.Message||d.message;
-    if(platform) return platform+' (HTTP '+r.status+')';
-    if(d._raw) return 'HTTP '+r.status+': '+d._raw;
+    if(platform) return platform+sufixo;
+    if(d._raw) return d._raw+sufixo;
   }
-  if(r.status===403) return 'Forbidden (HTTP 403) — permissão pública do Function URL ausente';
-  return fallback+' (HTTP '+r.status+')';
+  return fallback+sufixo;
 }
 // ── Importação via IA ─────────────────────────────────────────────────────────
 async function analyzeViaLambda(file,context){

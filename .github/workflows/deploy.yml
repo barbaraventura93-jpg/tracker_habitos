@@ -137,27 +137,12 @@ jobs:
             --function-name tracker-habitos-api \
             --region sa-east-1
 
-      # A permissão pública do Function URL é declarada no template
-      # (TrackerFunctionUrlPublicPermission). Na prática ela já sumiu antes — o
-      # sintoma é HTTP 403 em TODA a API, porque a plataforma recusa a invocação
-      # antes de chegar no Python. Este passo é rede de segurança: só ADICIONA,
-      # nunca remove, então não recria a janela de outage do passo antigo. Se já
-      # existir, a AWS devolve ResourceConflictException e seguimos.
-      - name: Garantir acesso público ao Function URL
-        if: steps.cfn.outcome == 'success'
-        run: |
-          aws lambda add-permission \
-            --function-name tracker-habitos-api \
-            --statement-id FunctionURLPublicAccessGuard \
-            --action lambda:InvokeFunctionUrl \
-            --principal '*' \
-            --function-url-auth-type NONE \
-            --region sa-east-1 \
-            && echo "Permissão pública adicionada." \
-            || echo "Permissão já existia (ResourceConflictException) — seguindo."
-
-      # Diagnóstico: imprime a policy efetiva da função. Sem isto, "o 403 é falta
-      # de permissão?" só dá para responder abrindo o console da AWS.
+      # Diagnóstico: imprime a policy efetiva da função. Foi este passo que
+      # provou que a permissão pública NÃO era a causa do 403 — a policy já tinha
+      # dois statements de InvokeFunctionUrl antes de qualquer intervenção. Um
+      # passo add-permission chegou a ser adicionado aqui e foi removido por ser
+      # redundante; o statement FunctionURLPublicAccessGuard que ele criou ficou
+      # na AWS e é inofensivo (Allow idêntico aos outros dois).
       - name: Conferir policy do Function URL
         if: steps.cfn.outcome == 'success'
         continue-on-error: true
