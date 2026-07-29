@@ -1070,9 +1070,14 @@ async function readApiBody(r){
 function apiErr(r,d,fallback){
   if(d){
     if(d.error) return d.error;
-    if(d.message) return d.message+' (HTTP '+r.status+')'; // erro da plataforma, não do nosso código
+    // a AWS responde {"Message":"Forbidden"} com M MAIÚSCULO no 403 do Function
+    // URL, e {"message":"Internal Server Error"} minúsculo no 502 — ler só uma
+    // das grafias fazia o erro real virar a frase genérica de fallback
+    const platform=d.Message||d.message;
+    if(platform) return platform+' (HTTP '+r.status+')';
     if(d._raw) return 'HTTP '+r.status+': '+d._raw;
   }
+  if(r.status===403) return 'Forbidden (HTTP 403) — permissão pública do Function URL ausente';
   return fallback+' (HTTP '+r.status+')';
 }
 // ── Importação via IA ─────────────────────────────────────────────────────────
