@@ -295,16 +295,12 @@ textarea,input,select{font-family:inherit;}
     </div>
   </div>
 
-  <!-- ONBOARDING WELCOME SCREEN -->
+  <!-- ONBOARDING — assistente de primeiro acesso -->
   <div id="screen-onboarding" class="screen">
-    <div style="min-height:100vh;display:flex;align-items:center;justify-content:center;padding:24px;background:var(--bg)">
-      <div style="width:100%;max-width:360px;text-align:center">
-        <div style="font-size:40px;margin-bottom:14px">👋</div>
-        <div style="font-family:'Fraunces',serif;font-size:22px;font-weight:400;color:var(--txt);margin-bottom:10px">Bem-vindo(a)!</div>
-        <div style="font-size:13px;color:var(--muted);line-height:1.6;margin-bottom:28px">Antes de começar, leva 2 minutinhos para configurar seu perfil — assim suas metas de água, calorias e treino já vêm calculadas certinhas pra você.</div>
-        <button onclick="onboardingStart()" style="width:100%;padding:14px;background:var(--accent);border-radius:10px;color:#fff;font-size:15px;font-weight:500;margin-bottom:12px">Configurar meu perfil</button>
-        <a href="#" onclick="onboardingSkip();return false;" style="font-size:13px;color:var(--muted);text-decoration:underline">Pular por agora</a>
-      </div>
+    <div style="min-height:100vh;display:flex;flex-direction:column;background:var(--bg)">
+      <div id="onb-head" style="padding:18px 18px 12px;background:var(--card);border-bottom:1px solid var(--border)"></div>
+      <div id="onb-body" style="flex:1;overflow-y:auto;padding:20px 18px 24px"></div>
+      <div id="onb-foot" style="padding:12px 18px calc(14px + env(safe-area-inset-bottom));background:var(--card);border-top:1px solid var(--border)"></div>
     </div>
   </div>
 
@@ -486,6 +482,82 @@ textarea,input,select{font-family:inherit;}
 </nav>
 
 <script>
+// ─── ESCOPO DE USUÁRIO NO localStorage ───────────────────────────────────────
+// Todo cache local vive sob `ht:u:<uid>:<chave>`. Sem isso, dois logins no mesmo
+// navegador compartilhavam `ht:goals`, `ht:outbox`, `ht:<data>` etc. — o segundo
+// usuário via o cache do primeiro, e pior: o outbox do primeiro era enviado com
+// o token do segundo. `ht:token` e `ht:refresh` seguem globais porque são eles
+// que definem quem está logado.
+let _userScope=null;      // uid do Cognito (sub) ou null quando deslogado
+let _legacyInstall=false; // true quando este navegador já usava a versão sem escopo
+
+function _b64urlJson(seg){
+  const s=seg.replace(/-/g,'+').replace(/_/g,'/');
+  const bin=atob(s+'==='.slice((s.length+3)%4));
+  const utf8=decodeURIComponent(Array.from(bin,c=>'%'+('00'+c.charCodeAt(0).toString(16)).slice(-2)).join(''));
+  return JSON.parse(utf8);
+}
+// O AccessToken do Cognito é um JWT: dá pra ler o uid sem round-trip de rede.
+// Como o pool usa `UsernameAttributes: email`, o claim `username` é o próprio sub
+// — o mesmo valor que o Lambda usa como PK no DynamoDB.
+function uidFromToken(token){
+  if(!token) return null;
+  try{
+    const p=_b64urlJson(String(token).split('.')[1]);
+    return p.sub||p.username||null;
+  }catch{return null;}
+}
+function scopedKey(k){
+  if(!_userScope) return null;
+  return 'ht:u:'+_userScope+':'+(k.startsWith('ht:')?k.slice(3):k);
+}
+function lsGet(k){const s=scopedKey(k);if(!s)return null;try{return localStorage.getItem(s);}catch{return null;}}
+function lsSet(k,v){const s=scopedKey(k);if(!s)return;try{localStorage.setItem(s,v);}catch{}}
+function lsDel(k){const s=scopedKey(k);if(!s)return;try{localStorage.removeItem(s);}catch{}}
+
+// Instalação antiga: as chaves sem prefixo são do único usuário que já usava o
+// app neste navegador. Elas são movidas para o escopo dele no primeiro login
+// pós-atualização; depois disso não sobra nenhuma chave global para vazar.
+const _LS_KEEP_GLOBAL=new Set(['ht:token','ht:refresh','ht:legacy_claimed']);
+function claimLegacyKeys(uid,atBoot){
+  try{
+    const claimed=localStorage.getItem('ht:legacy_claimed');
+    if(claimed!==null){_legacyInstall=claimed===uid;return;}
+    const old=[];
+    for(let i=0;i<localStorage.length;i++){
+      const k=localStorage.key(i);
+      if(k&&k.startsWith('ht:')&&!k.startsWith('ht:u:')&&!_LS_KEEP_GLOBAL.has(k)) old.push(k);
+    }
+    if(atBoot){
+      // A sessão já estava aberta quando a página carregou: as chaves sem
+      // prefixo são desse mesmo usuário, então migram para o escopo dele.
+      for(const k of old){
+        const v=localStorage.getItem(k);
+        if(v!==null) localStorage.setItem('ht:u:'+uid+':'+k.slice(3),v);
+        localStorage.removeItem(k);
+      }
+      _legacyInstall=old.length>0;
+      localStorage.setItem('ht:legacy_claimed',old.length?uid:'');
+    }else{
+      // Login novo num navegador que ainda tem cache sem prefixo: esse cache é
+      // de quem usava o app antes, não de quem está entrando agora. Descartar é
+      // seguro — o servidor tem tudo, e o dono recupera no próximo sync dele.
+      for(const k of old) localStorage.removeItem(k);
+      localStorage.setItem('ht:legacy_claimed','');
+    }
+  }catch{}
+}
+function setUserScope(token,atBoot){
+  const uid=uidFromToken(token);
+  _userScope=uid;
+  _legacyInstall=false;
+  if(uid) claimLegacyKeys(uid,!!atBoot);
+  return uid;
+}
+// Roda antes de qualquer `let x=loadX()` abaixo — um reload com token salvo já
+// hidrata direto do escopo certo.
+setUserScope((()=>{try{return localStorage.getItem('ht:token');}catch{return null;}})(),true);
+
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const DAYS=['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 const MONTHS=['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
@@ -514,7 +586,7 @@ function suggestGrouping(ex1,ex2){
   return null;
 }
 function loadUserWorkouts(){
-  try{const s=JSON.parse(localStorage.getItem('ht:workouts')||'null');if(s&&Array.isArray(s)&&s.length)return s;}catch{}
+  try{const s=JSON.parse(lsGet('ht:workouts')||'null');if(s&&Array.isArray(s)&&s.length)return s;}catch{}
   return[
     {id:'wk_musc',name:'Musculação',type:'musculacao',icon:'🏋️',color:'#818cf8',weekDays:[1,2,4,5]},
     {id:'wk_aero',name:'Aeróbico',  type:'aerobico',  icon:'🏃', color:'#38bdf8',weekDays:[3,6]},
@@ -524,19 +596,19 @@ let userWorkouts=loadUserWorkouts();
 // ── Plano semanal (template por dia da semana) — __weekplan__ ────────────────
 // mapa { "0".."6": workoutId | "descanso" }. Vazio = usa weekDays padrão do treino.
 function loadWeekPlan(){
-  try{const s=JSON.parse(localStorage.getItem('ht:weekplan')||'null');if(s&&typeof s==='object'&&!Array.isArray(s))return s;}catch{}
+  try{const s=JSON.parse(lsGet('ht:weekplan')||'null');if(s&&typeof s==='object'&&!Array.isArray(s))return s;}catch{}
   return {};
 }
 let weekPlan=loadWeekPlan();
 function saveWeekPlan(){
-  try{localStorage.setItem('ht:weekplan',JSON.stringify(weekPlan));}catch{}
+  try{lsSet('ht:weekplan',JSON.stringify(weekPlan));}catch{}
   queuePut('__weekplan__',weekPlan);
 }
 async function syncWeekPlan(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__weekplan__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){weekPlan=d;try{localStorage.setItem('ht:weekplan',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){weekPlan=d;try{lsSet('ht:weekplan',JSON.stringify(d));}catch{}}}
   }catch{}
 }
 // treino previsto para um dia da semana (plano explícito tem prioridade sobre weekDays)
@@ -549,7 +621,7 @@ function plannedTrForDow(dow){
   return (userWorkouts.find(w=>w.weekDays.includes(dow))||{}).id||'descanso';
 }
 function saveUserWorkouts(){
-  try{localStorage.setItem('ht:workouts',JSON.stringify(userWorkouts));}catch{}
+  try{lsSet('ht:workouts',JSON.stringify(userWorkouts));}catch{}
   if(!USE_API||!authToken) return;
   queuePut('__workouts__',userWorkouts);
 }
@@ -557,7 +629,7 @@ async function syncUserWorkouts(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__workouts__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){userWorkouts=d;try{localStorage.setItem('ht:workouts',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){userWorkouts=d;try{lsSet('ht:workouts',JSON.stringify(d));}catch{}}}
   }catch{}
 }
 function getWorkoutById(id){return id==='descanso'?DESCANSO:(userWorkouts.find(w=>w.id===id)||null);}
@@ -599,11 +671,11 @@ let _mpEditMealId=null;
 let _mpEditVariantIdx=null;
 let _mpImportPreview=[];
 function loadMealPlan(){
-  try{const s=localStorage.getItem('ht:mealplan');return s?JSON.parse(s):null;}
+  try{const s=lsGet('ht:mealplan');return s?JSON.parse(s):null;}
   catch{return null;}
 }
 function saveMealPlan(){
-  try{localStorage.setItem('ht:mealplan',JSON.stringify(mealPlan));}catch{}
+  try{lsSet('ht:mealplan',JSON.stringify(mealPlan));}catch{}
   if(!USE_API||!authToken) return;
   queuePut('__mealplan__',mealPlan);
 }
@@ -611,11 +683,24 @@ async function syncMealPlan(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__mealplan__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)&&d.cafe){mealPlan=d;try{localStorage.setItem('ht:mealplan',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)&&d.cafe){mealPlan=d;try{lsSet('ht:mealplan',JSON.stringify(d));}catch{}}}
   }catch{}
 }
+// DEFAULT_MEAL_PLAN é o plano pessoal de quem usava o app antes do escopo por
+// usuário. Ele só continua servindo de fallback para essa instalação — para
+// qualquer conta nova o plano começa vazio, e não com a comida de outra pessoa.
+const BLANK_MEAL_PLAN={
+  cafe:  {default:{kcal:0,prot:0,hint:'',badge:''}},
+  almoco:{default:{kcal:0,prot:0,hint:'',badge:''}},
+  lanche:{default:{kcal:0,prot:0,hint:'',badge:''}},
+  jantar:{default:{kcal:0,prot:0,hint:'',badge:''}},
+  ceia:  {default:{kcal:0,prot:0,hint:'',badge:''}},
+};
+function effectiveMealPlan(){return mealPlan||(_legacyInstall?DEFAULT_MEAL_PLAN:null);}
+function starterMealPlan(){return JSON.parse(JSON.stringify(_legacyInstall?DEFAULT_MEAL_PLAN:BLANK_MEAL_PLAN));}
 function getMealSlot(mealId,d){
-  const cfg=(mealPlan||DEFAULT_MEAL_PLAN)[mealId];
+  const plan=effectiveMealPlan();
+  const cfg=plan&&plan[mealId];
   if(!cfg) return null;
   if(cfg.variants&&cfg.variants.length){
     for(const v of cfg.variants){
@@ -627,32 +712,21 @@ function getMealSlot(mealId,d){
   return cfg.default||null;
 }
 function _getMealSlotRaw(mealId,variantIdx){
-  const cfg=(mealPlan||DEFAULT_MEAL_PLAN)[mealId];
+  const plan=effectiveMealPlan();
+  const cfg=plan&&plan[mealId];
   if(!cfg) return null;
   if(variantIdx===null||variantIdx===undefined) return cfg.default;
   return cfg.variants?.[variantIdx]||null;
 }
-function _getMealDetailHardcoded(id,d){
-  if(id==='cafe') return d.isFds
-    ?{macro:'~350 kcal · ~28g prot',hint:'Pão francês + 2 ovos + Requeijão light + Whey 14g',badge:'Final de semana'}
-    :{macro:'~380 kcal · ~35g prot',hint:'Whey 28g + Banana 100g + Creatina + Leite em pó desnatado',badge:'Semana'};
-  if(id==='almoco') return d.almocoCarb
-    ?{macro:'~520 kcal · ~38g prot',hint:'Salada à vontade + Frango 100g + Macarrão 110g + Legumes 150g',badge:'Com carboidrato'}
-    :{macro:'~380 kcal · ~36g prot',hint:'Salada à vontade + Frango 100g + Legumes assados 150g + Azeite 8g',badge:'Low carb'};
-  if(id==='lanche') return{macro:'~250 kcal · ~20g prot',hint:'Barrinha de proteína 60g  —  ou  —  3 ovos + Pão grãos + Creme de ricota',badge:'Doce ou salgada'};
-  if(id==='jantar'){
-    if(d.jantarV==='hamburguer') return{macro:'~480 kcal · ~35g prot',hint:'Pão francês + Hambúrguer patinho 100g + Maionese light + Queijo',badge:'🍔 Hambúrguer'};
-    if(d.jantarV==='rap10')      return{macro:'~330 kcal · ~30g prot',hint:'Rap10 fibras + Frango desfiado 80g + Requeijão light 30g',badge:'🌯 Rap10'};
-    return{macro:'~380 kcal · ~34g prot',hint:'Salada + Frango 100g + Batata inglesa 120g + Ketchup',badge:'🍽️ Refeição'};
-  }
-  return{macro:'~200 kcal · ~22g prot',hint:'Iogurte grego + cacau em pó + morangos + Whey misturado',badge:'21:00'};
-}
 function getMealDetail(id,d){
   const slot=getMealSlot(id,d);
-  if(slot) return{macro:`~${slot.kcal} kcal · ~${slot.prot}g prot`,hint:slot.hint,badge:slot.badge};
-  return _getMealDetailHardcoded(id,d);
+  if(slot&&(slot.hint||slot.kcal)) return{
+    macro:slot.kcal?`~${slot.kcal} kcal · ~${slot.prot||0}g prot`:'',
+    hint:slot.hint||'Sem descrição — edite em Nutrição › Plano Alimentar',
+    badge:slot.badge||''};
+  return{macro:'',hint:'Monte esta refeição em Nutrição › Plano Alimentar',badge:''};
 }
-const DEFAULT_SUPS=[
+const LEGACY_SUPS=[
   {id:'pump',  label:'PUMP — pré-treino',     sub:'Cafeína + Ioimbina + Capsaicina + Astaxantina',icon:'⚡',showOn:'treino'},
   {id:'oxi',   label:'Oximetalona 4mg',        sub:'1 comprimido antes do treino de perna',         icon:'💪',showOn:'treino'},
   {id:'f2',    label:'Fórmula 2',              sub:'Berberina + Inositol + Cromo + Topiramato — antes do jantar',icon:'🟣',showOn:'always'},
@@ -693,13 +767,15 @@ let _importPreview=[];
 
 function loadCustomSups(){
   try{
-    const raw=localStorage.getItem('ht:csups');
+    const raw=lsGet('ht:csups');
     if(raw!==null){const s=JSON.parse(raw);if(Array.isArray(s))return s;}
   }catch{}
-  return DEFAULT_SUPS.map(s=>({...s}));
+  // Mesma regra do plano alimentar: a lista pessoal antiga só vale para a
+  // instalação que já existia. Conta nova começa sem suplemento nenhum.
+  return _legacyInstall?LEGACY_SUPS.map(s=>({...s})):[];
 }
 function saveCustomSups(){
-  try{localStorage.setItem('ht:csups',JSON.stringify(customSups));}catch{}
+  try{lsSet('ht:csups',JSON.stringify(customSups));}catch{}
   if(!USE_API||!authToken) return;
   queuePut('__csups__',customSups);
 }
@@ -707,7 +783,7 @@ async function syncCustomSups(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__csups__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){customSups=d;try{localStorage.setItem('ht:csups',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){customSups=d;try{lsSet('ht:csups',JSON.stringify(d));}catch{}}}
   }catch{}
 }
 
@@ -717,18 +793,18 @@ const HABIT_ICONS=['🧘','📖','💧','🚶','🌅','💊','🦷','🧴','☀�
 let customHabits=loadHabits();
 let _habitEditId=null;
 function loadHabits(){
-  try{const raw=localStorage.getItem('ht:habits');if(raw!==null){const h=JSON.parse(raw);if(Array.isArray(h))return h;}}catch{}
+  try{const raw=lsGet('ht:habits');if(raw!==null){const h=JSON.parse(raw);if(Array.isArray(h))return h;}}catch{}
   return [];
 }
 function saveHabits(){
-  try{localStorage.setItem('ht:habits',JSON.stringify(customHabits));}catch{}
+  try{lsSet('ht:habits',JSON.stringify(customHabits));}catch{}
   queuePut('__habits__',customHabits);
 }
 async function syncHabits(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__habits__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(Array.isArray(d)){customHabits=d;try{localStorage.setItem('ht:habits',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(Array.isArray(d)){customHabits=d;try{lsSet('ht:habits',JSON.stringify(d));}catch{}}}
   }catch{}
 }
 // hábitos previstos para uma data (respeita dias da semana e data de criação)
@@ -1127,11 +1203,11 @@ let _gymPendingPlanAdd=null;
 // ── Periodização ──────────────────────────────────────────────────────────
 let periodization=loadPeriodization();
 function loadPeriodization(){
-  try{return JSON.parse(localStorage.getItem('ht:periodization')||'null');}
+  try{return JSON.parse(lsGet('ht:periodization')||'null');}
   catch{return null;}
 }
 function savePeriodization(){
-  try{localStorage.setItem('ht:periodization',JSON.stringify(periodization));}catch{}
+  try{lsSet('ht:periodization',JSON.stringify(periodization));}catch{}
   if(!USE_API||!authToken) return;
   queuePut('__periodization__',periodization);
 }
@@ -1139,7 +1215,7 @@ async function syncPeriodization(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__periodization__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(d&&d.blocks){periodization=d;try{localStorage.setItem('ht:periodization',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(d&&d.blocks){periodization=d;try{lsSet('ht:periodization',JSON.stringify(d));}catch{}}}
   }catch{}
 }
 function getCurrentBlock(){
@@ -1180,9 +1256,9 @@ function normPlanGroups(plan){
   if(plan&&typeof plan==='object') Object.values(plan).forEach(normExGroups);
   return plan;
 }
-function loadGymPlan(){try{return normPlanGroups(JSON.parse(localStorage.getItem('ht:gymplan')||'{}'));}catch{return{};}}
+function loadGymPlan(){try{return normPlanGroups(JSON.parse(lsGet('ht:gymplan')||'{}'));}catch{return{};}}
 function saveGymPlan(){
-  try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}
+  try{lsSet('ht:gymplan',JSON.stringify(gymPlan));}catch{}
   if(!USE_API||!authToken) return;
   queuePut('__gymplan__',gymPlan);
 }
@@ -1190,12 +1266,12 @@ async function syncGymPlan(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__gymplan__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){gymPlan=normPlanGroups(d);try{localStorage.setItem('ht:gymplan',JSON.stringify(gymPlan));}catch{}}}
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){gymPlan=normPlanGroups(d);try{lsSet('ht:gymplan',JSON.stringify(gymPlan));}catch{}}}
   }catch{}
 }
-function loadGymSession(date,tr){try{return normExGroups(JSON.parse(localStorage.getItem('ht:gym:'+date+':'+(tr||''))||'null'));}catch{return null;}}
+function loadGymSession(date,tr){try{return normExGroups(JSON.parse(lsGet('ht:gym:'+date+':'+(tr||''))||'null'));}catch{return null;}}
 function saveGymSession(date,tr,data){
-  try{localStorage.setItem('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}
+  try{lsSet('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}
   if(!USE_API||!authToken) return;
   queuePut('gym:'+date+':'+(tr||''),data);
 }
@@ -1206,7 +1282,7 @@ async function fetchGymSession(date,tr){
     if(!r.ok) return;
     const data=await r.json();
     if(Array.isArray(data)&&data.length>0){
-      try{localStorage.setItem('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}
+      try{lsSet('ht:gym:'+date+':'+(tr||''),JSON.stringify(data));}catch{}
     }
   }catch{}
 }
@@ -2388,9 +2464,9 @@ function gymUngroup(groupId){
 // ─── BODY COMPOSITION ────────────────────────────────────────────────────────
 let bodyEntries=loadBodyEntries();
 let _bodyMetric='weight';
-function loadBodyEntries(){try{return JSON.parse(localStorage.getItem('ht:body')||'[]');}catch{return[];}}
+function loadBodyEntries(){try{return JSON.parse(lsGet('ht:body')||'[]');}catch{return[];}}
 function saveBodyEntries(){
-  try{localStorage.setItem('ht:body',JSON.stringify(bodyEntries));}catch{}
+  try{lsSet('ht:body',JSON.stringify(bodyEntries));}catch{}
   if(!USE_API||!authToken) return;
   queuePut('__body__',bodyEntries);
 }
@@ -2398,7 +2474,7 @@ async function syncBodyEntries(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__body__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){bodyEntries=d;try{localStorage.setItem('ht:body',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){bodyEntries=d;try{lsSet('ht:body',JSON.stringify(d));}catch{}}}
   }catch{}
 }
 function showBodyComp(){renderBodyComp();showScreen('body');setBnavActive('mais');}
@@ -2555,18 +2631,48 @@ function deleteBodyEntry(date){
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
 const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5};
+// Fórmulas nutricionais compartilhadas entre a tela de Configurações de Saúde e
+// o assistente de primeiro acesso — as duas precisam chegar no mesmo número.
+const ACTIVITY_FACTORS=[[1,1.2,'sedentário'],[3,1.375,'leve'],[5,1.55,'moderado'],[7,1.725,'intenso']];
+const PROT_FACTORS={cutting:2.2,manutencao:1.6,bulking:1.8};
+function calcBMR(sexo,peso,alt,idade){
+  if(!(peso>0&&alt>0&&idade>0)) return 0;
+  return sexo==='m'?(10*peso+6.25*alt-5*idade+5):(10*peso+6.25*alt-5*idade-161);
+}
+function activityFactor(treinosSemana){
+  return ACTIVITY_FACTORS.find(([d])=>treinosSemana<=d)||ACTIVITY_FACTORS[ACTIVITY_FACTORS.length-1];
+}
+// Diferença menor que 1 kg entre peso atual e meta é ruído: não vira déficit.
+function calorieAdjust(peso,metaPeso){
+  if(!(metaPeso>0)||Math.abs(metaPeso-peso)<=1) return 0;
+  return metaPeso<peso?-400:300;
+}
+function calcCalories(sexo,peso,alt,idade,treinosSemana,metaPeso){
+  const bmr=calcBMR(sexo,peso,alt,idade);
+  if(!bmr) return 0;
+  const [,fac]=activityFactor(treinosSemana);
+  return Math.round(bmr*fac)+calorieAdjust(peso,metaPeso);
+}
+function calcProtein(peso,objetivo){
+  return peso>0?Math.round(peso*(PROT_FACTORS[objetivo]||1.6)):0;
+}
+function calcWaterCups(peso){
+  return peso>0?Math.max(6,Math.min(12,Math.round(peso*35/250))):8;
+}
 let goals=loadGoals();
-let goalsDefs=(()=>{try{const s=JSON.parse(localStorage.getItem('ht:goalsdefs')||'null');if(Array.isArray(s))return s;}catch{}return[];})();
-let goalLogs=(()=>{try{const s=JSON.parse(localStorage.getItem('ht:goallogs')||'null');if(Array.isArray(s))return s;}catch{}return[];})();
-function saveGoalsDefs(){try{localStorage.setItem('ht:goalsdefs',JSON.stringify(goalsDefs));}catch{}queuePut('__goalsdefs__',goalsDefs);}
-function saveGoalLogs(){try{localStorage.setItem('ht:goallogs',JSON.stringify(goalLogs));}catch{}queuePut('__goallogs__',goalLogs);}
+function loadGoalsDefs(){try{const s=JSON.parse(lsGet('ht:goalsdefs')||'null');if(Array.isArray(s))return s;}catch{}return[];}
+function loadGoalLogs(){try{const s=JSON.parse(lsGet('ht:goallogs')||'null');if(Array.isArray(s))return s;}catch{}return[];}
+let goalsDefs=loadGoalsDefs();
+let goalLogs=loadGoalLogs();
+function saveGoalsDefs(){try{lsSet('ht:goalsdefs',JSON.stringify(goalsDefs));}catch{}queuePut('__goalsdefs__',goalsDefs);}
+function saveGoalLogs(){try{lsSet('ht:goallogs',JSON.stringify(goalLogs));}catch{}queuePut('__goallogs__',goalLogs);}
 function loadGoals(){
-  try{const s=localStorage.getItem('ht:goals');return s?{...DEFAULT_GOALS,...JSON.parse(s)}:{...DEFAULT_GOALS};}
+  try{const s=lsGet('ht:goals');return s?{...DEFAULT_GOALS,...JSON.parse(s)}:{...DEFAULT_GOALS};}
   catch{return{...DEFAULT_GOALS};}
 }
 function saveGoals(g){
   goals=g;
-  try{localStorage.setItem('ht:goals',JSON.stringify(g));}catch{}
+  try{lsSet('ht:goals',JSON.stringify(g));}catch{}
   if(!USE_API||!authToken) return;
   queuePut('__goals__',g);
 }
@@ -2667,8 +2773,8 @@ function urlBase64ToUint8Array(base64String){
 }
 function renderPushCard(){
   const supported='serviceWorker' in navigator && 'PushManager' in window;
-  const enabled=localStorage.getItem('ht:push_enabled')==='1';
-  const hour=localStorage.getItem('ht:push_hour')||'19';
+  const enabled=lsGet('ht:push_enabled')==='1';
+  const hour=lsGet('ht:push_hour')||'19';
   if(!supported){
     return`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🔔</span> LEMBRETES</div></div><div style="font-size:12px;color:#78716C">Seu navegador não suporta notificações push.</div></div>`;
   }
@@ -2692,8 +2798,8 @@ async function enablePushReminders(){
     if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)});
     const res=await fetch(`${API_URL}?action=save_push_subscription`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({subscription:sub.toJSON(),reminderHour:hour})});
     if(!res.ok) throw new Error('falha ao salvar no servidor');
-    localStorage.setItem('ht:push_enabled','1');
-    localStorage.setItem('ht:push_hour',String(hour));
+    lsSet('ht:push_enabled','1');
+    lsSet('ht:push_hour',String(hour));
     showToast('Lembretes ativados! 🔔');
   }catch(e){
     showToast('Não foi possível ativar os lembretes agora');
@@ -2707,7 +2813,7 @@ async function disablePushReminders(){
     const sub=reg&&await reg.pushManager.getSubscription();
     if(sub) await sub.unsubscribe();
   }catch{}
-  localStorage.removeItem('ht:push_enabled');
+  lsDel('ht:push_enabled');
   showToast('Lembretes desativados');
   showGoals();
 }
@@ -2769,7 +2875,7 @@ function goalsCalcUpdate(){
   let aguaSug=goals.aguaCopos;
   if(peso>0){
     const ml=Math.round(peso*35);
-    const copos=Math.max(6,Math.min(12,Math.round(ml/250)));
+    const copos=calcWaterCups(peso);
     const liters=(ml/1000).toFixed(1).replace('.',',');
     aguaSug=copos;
     if(aguaFormulaEl) aguaFormulaEl.innerHTML=`🧮 <b>${peso} kg</b> × 35 ml = <b>${ml} ml</b> (<b>${liters} L</b>) ÷ 250 ml/copo = <span style="color:#38bdf8;font-weight:700">${copos} copos · ${liters} L/dia</span><br><span style="color:#A8A29E;font-size:10px">Base: 30–40 ml/kg — EFSA & Institute of Medicine</span>`;
@@ -2792,17 +2898,13 @@ function goalsCalcUpdate(){
   const calInpEl=document.getElementById('g-calorias');
   const calBadgeEl=document.getElementById('g-cal-badge');
   if(peso>0&&alt>0&&idade>0){
-    const bmr=sexo==='m'
-      ?(10*peso+6.25*alt-5*idade+5)
-      :(10*peso+6.25*alt-5*idade-161);
-    const actMap=[[1,1.2,'sedentário'],[3,1.375,'leve'],[5,1.55,'moderado'],[7,1.725,'intenso']];
-    const [,fac,lbl]=actMap.find(([d])=>treinos<=d)||actMap[actMap.length-1];
+    const bmr=calcBMR(sexo,peso,alt,idade);
+    const [,fac,lbl]=activityFactor(treinos);
     const tdee=Math.round(bmr*fac);
-    let adj=0,adjHtml='';
-    if(meta>0&&Math.abs(meta-peso)>1){
-      if(meta<peso){adj=-400;adjHtml=` <span style="color:#38bdf8">− 400 kcal <span style="color:#A8A29E">(déficit para perda)</span></span>`;}
-      else{adj=300;adjHtml=` <span style="color:#fb923c">+ 300 kcal <span style="color:#A8A29E">(superávit para ganho)</span></span>`;}
-    }
+    const adj=calorieAdjust(peso,meta);
+    let adjHtml='';
+    if(adj<0) adjHtml=` <span style="color:#38bdf8">− ${-adj} kcal <span style="color:#A8A29E">(déficit para perda)</span></span>`;
+    else if(adj>0) adjHtml=` <span style="color:#fb923c">+ ${adj} kcal <span style="color:#A8A29E">(superávit para ganho)</span></span>`;
     const cal=tdee+adj;
     if(calFormulaEl) calFormulaEl.innerHTML=`🧮 BMR <span style="color:#A8A29E;font-weight:400">(gasto em repouso)</span> <b>${Math.round(bmr)}</b> kcal × <b>${fac}</b> <span style="color:#78716C">(treino ${lbl})</span> = <b>${tdee}</b> kcal${adjHtml}<br>→ <span style="color:#fb923c;font-weight:700">${cal} kcal/dia</span><br><span style="color:#A8A29E;font-size:10px">Fórmula Mifflin-St Jeor (2005) — padrão ISSN/ACSM</span>`;
     if(calInpEl) calInpEl.value=cal;
@@ -2816,9 +2918,8 @@ function goalsCalcUpdate(){
   const objEl=document.getElementById('g-obj-prot-preview');
   if(objEl&&peso>0){
     const obj=goals.objetivo||'manutencao';
-    const factorMap={cutting:2.2,manutencao:1.6,bulking:1.8};
-    const factor=factorMap[obj]||1.6;
-    const protMeta=Math.round(peso*factor);
+    const factor=PROT_FACTORS[obj]||1.6;
+    const protMeta=calcProtein(peso,obj);
     const objLabel={cutting:'cutting (déficit)',manutencao:'manutenção',bulking:'bulking (superávit)'}[obj]||obj;
     objEl.innerHTML=`🥩 Meta de proteína: <b style="color:#1C1917">${protMeta}g/dia</b> <span style="color:#A8A29E">(${factor}g/kg × ${peso}kg — ${objLabel} · ISSN 2017)</span>`;
     goals={...goals,protMeta};
@@ -2840,14 +2941,7 @@ function saveGoalsForm(){
     treinosSemana:goals.treinosSemana,
   };
   saveGoals(g);
-  if(_onboarding){
-    _onboarding=false;
-    localStorage.setItem('ht:onboard_done','1');
-    showScreen('home');setBnavActive('hoje');render(true);
-    showToast('Perfil configurado! Suas metas já estão calculadas 🎉');
-  }else{
-    showMais();
-  }
+  showMais();
 }
 
 // ─── STATE ───────────────────────────────────────────────────────────────────
@@ -2927,6 +3021,34 @@ function makeEmpty(date){
          meals:{},sups:{},habits:{},foods:[],water:0,sleep:null,sleepOk:null,notes:'',gymDurMin:0};
 }
 
+// ─── ESTADO POR USUÁRIO ──────────────────────────────────────────────────────
+// As variáveis de estado são inicializadas na carga do script, quando o escopo
+// ainda pode ser outro (ou nenhum). Toda troca de usuário — login, logout — tem
+// que reler tudo do escopo novo, senão o objeto em memória do usuário anterior
+// continua na tela até a API responder (e, para as coleções que só são
+// sobrescritas quando o servidor devolve algo, continua para sempre).
+function reloadUserState(){
+  userWorkouts=loadUserWorkouts();
+  weekPlan=loadWeekPlan();
+  mealPlan=loadMealPlan();
+  customSups=loadCustomSups();
+  customHabits=loadHabits();
+  gymPlan=loadGymPlan();
+  periodization=loadPeriodization();
+  bodyEntries=loadBodyEntries();
+  goals=loadGoals();
+  goalsDefs=loadGoalsDefs();
+  goalLogs=loadGoalLogs();
+  currentDate=today();
+  dayData=loadDay(currentDate);
+  _onbDraft=null;_onbStep=0;
+  _homeTab='hoje';
+  _homeForceExpand=new Set();
+  _agendaCache={habits:[],meals:[],workouts:[]};
+  _reportMonth=today().slice(0,7);
+  _foodEst=null;
+}
+
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
 const COGNITO_CLIENT_ID='__COGNITO_CLIENT_ID__';
 const COGNITO_URL='https://cognito-idp.sa-east-1.amazonaws.com/';
@@ -2962,9 +3084,7 @@ async function authSubmit(){
       authRefresh=res.AuthenticationResult.RefreshToken;
       localStorage.setItem('ht:token',authToken);
       localStorage.setItem('ht:refresh',authRefresh);
-      showScreen('home');setBnavActive('hoje');
-      await render(true);
-      if(needsOnboarding()) showOnboardingWelcome();
+      await enterApp();
     }else{
       const t=res.__type||'';
       if(t.includes('NotAuthorized')) errEl.textContent='E-mail ou senha incorretos.';
@@ -3000,9 +3120,7 @@ async function confirmCode(){
     authRefresh=login.AuthenticationResult.RefreshToken;
     localStorage.setItem('ht:token',authToken);
     localStorage.setItem('ht:refresh',authRefresh);
-    showScreen('home');
-    await render(true);
-    if(needsOnboarding()) showOnboardingWelcome();
+    await enterApp();
   }else{
     document.getElementById('auth-form').style.display='block';
     document.getElementById('auth-tabs').style.display='flex';
@@ -3024,16 +3142,453 @@ async function tryRefresh(){
 function signOut(){
   authToken=null;authRefresh=null;
   localStorage.removeItem('ht:token');localStorage.removeItem('ht:refresh');
+  // limpa o escopo antes de recarregar: sem uid, todo load cai no default e
+  // nada do usuário que saiu sobra em memória para o próximo login enxergar.
+  setUserScope(null);
+  reloadUserState();
   showScreen('auth');
+  authTab('login');
+  const em=document.getElementById('auth-email');if(em) em.value='';
+  const pw=document.getElementById('auth-password');if(pw) pw.value='';
 }
 
-// ─── ONBOARDING ──────────────────────────────────────────────────────────────
-let _onboarding=false;
-function needsOnboarding(){return !goals.pesoAtual&&!localStorage.getItem('ht:onboard_done');}
-function showOnboardingWelcome(){showScreen('onboarding');}
-function onboardingStart(){_onboarding=true;showGoals();}
-function onboardingSkip(){localStorage.setItem('ht:onboard_done','1');showScreen('home');setBnavActive('hoje');render(true);}
-function goalsBack(){if(_onboarding){showOnboardingWelcome();}else{showMais();}}
+// Ponto único de entrada no app depois que o token é gravado.
+async function enterApp(){
+  setUserScope(authToken);
+  reloadUserState();
+  showScreen('home');setBnavActive('hoje');
+  await render(true);
+  flushOutbox();
+  if(needsOnboarding()) startOnboarding();
+}
+
+// ─── ONBOARDING — assistente de primeiro acesso ──────────────────────────────
+// Conta nova entra por aqui: perfil, semana de treino, alimentação, suplementos
+// e metas. Só o perfil vale a pena preencher — o resto é opcional e cada etapa
+// tem "pular". Nada aqui inventa dado: o que for pulado fica vazio mesmo, e a
+// pessoa configura depois pelas telas normais.
+const ONB_STEPS=['welcome','perfil','treino','dieta','sups','metas','done'];
+const ONB_TITLES={welcome:'Boas-vindas',perfil:'Seu perfil',treino:'Sua semana',dieta:'Alimentação',sups:'Suplementos',metas:'Metas e hábitos',done:'Tudo pronto'};
+const ONB_WEEKDAYS=['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+// Distribuição de calorias entre as refeições do dia — usada só para pré-encher
+// o esqueleto do plano alimentar; a descrição da comida fica em branco.
+const ONB_MEAL_SPLIT=[['cafe',.22],['almoco',.30],['lanche',.13],['jantar',.25],['ceia',.10]];
+const STARTER_SUPS=[
+  {id:'whey', label:'Whey protein',     sub:'Após o treino',          icon:'🥛',showOn:'treino'},
+  {id:'creat',label:'Creatina',         sub:'3–5 g por dia',          icon:'⚡',showOn:'always'},
+  {id:'multi',label:'Multivitamínico',  sub:'Dose diária',            icon:'💊',showOn:'always'},
+  {id:'omega',label:'Ômega-3',          sub:'Dose diária',            icon:'🐟',showOn:'always'},
+  {id:'vitd', label:'Vitamina D',       sub:'Dose diária',            icon:'☀️',showOn:'always'},
+  {id:'zm',   label:'Zinco + Magnésio', sub:'À noite',                icon:'⚪',showOn:'always'},
+  {id:'col',  label:'Colágeno',         sub:'Dose diária',            icon:'🟤',showOn:'always'},
+  {id:'pre',  label:'Pré-treino',       sub:'30 min antes do treino', icon:'🔥',showOn:'treino'},
+];
+const STARTER_HABITS=[
+  {key:'agua',  name:'Beber água ao acordar',  icon:'💧',days:[0,1,2,3,4,5,6]},
+  {key:'medit', name:'Meditar 10 min',         icon:'🧘',days:[0,1,2,3,4,5,6]},
+  {key:'ler',   name:'Ler 20 min',             icon:'📖',days:[0,1,2,3,4,5,6]},
+  {key:'passos',name:'Caminhar 30 min',        icon:'🚶',days:[1,2,3,4,5]},
+  {key:'sono',  name:'Dormir antes das 23h',   icon:'🛌',days:[0,1,2,3,4,5,6]},
+  {key:'along', name:'Alongar 5 min',          icon:'🌅',days:[0,1,2,3,4,5,6]},
+];
+
+let _onbStep=0;
+let _onbDraft=null;
+
+// Onboarding é por usuário: a chave `ht:onboard_done` já vive no escopo do uid.
+// A checagem de goalsDefs/customHabits evita reabrir o assistente para quem
+// entra num aparelho novo e ainda está esperando o sync trazer o perfil.
+function needsOnboarding(){
+  if(lsGet('ht:onboard_done')) return false;
+  return !goals.pesoAtual&&!goalsDefs.length&&!customHabits.length;
+}
+function startOnboarding(){
+  _onbStep=0;
+  _onbDraft={
+    sexo:goals.sexo||'f',
+    idade:goals.idade||'',
+    altura:goals.altura||'',
+    pesoAtual:goals.pesoAtual||'',
+    pesoMeta:goals.pesoMeta||'',
+    objetivo:goals.objetivo||'manutencao',
+    dias:{0:'descanso',1:'musculacao',2:'aerobico',3:'musculacao',4:'aerobico',5:'musculacao',6:'descanso'},
+    aguaCopos:goals.aguaCopos||8,
+    calorias:0,
+    criarPlano:true,
+    sups:[],
+    habitos:[],
+    novoHabito:'',
+    skipped:{},
+  };
+  showScreen('onboarding');
+  renderOnboarding();
+}
+function onbNum(v){const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:0;}
+function onbTreinosSemana(){return Object.values(_onbDraft.dias).filter(v=>v!=='descanso').length;}
+function onbCalorias(){
+  const d=_onbDraft;
+  return calcCalories(d.sexo,onbNum(d.pesoAtual),onbNum(d.altura),onbNum(d.idade),onbTreinosSemana()||5,onbNum(d.pesoMeta));
+}
+function onbEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
+
+function renderOnboarding(){
+  const head=document.getElementById('onb-head');
+  const body=document.getElementById('onb-body');
+  const foot=document.getElementById('onb-foot');
+  if(!head||!body||!foot||!_onbDraft) return;
+  const step=ONB_STEPS[_onbStep];
+  const pct=Math.round(_onbStep/(ONB_STEPS.length-1)*100);
+  head.innerHTML=`
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:11px">
+      ${_onbStep>0?`<button onclick="onbBack()" style="font-size:19px;background:none;padding:2px 6px;color:var(--muted)">←</button>`:`<div style="width:8px"></div>`}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--dim);text-transform:uppercase">Passo ${_onbStep+1} de ${ONB_STEPS.length}</div>
+        <div style="font-family:'Fraunces',serif;font-size:18px;color:var(--txt)">${ONB_TITLES[step]}</div>
+      </div>
+    </div>
+    <div style="height:4px;background:var(--border);border-radius:3px;overflow:hidden">
+      <div style="height:100%;width:${pct}%;background:var(--accent);border-radius:3px;transition:width .25s ease"></div>
+    </div>`;
+  body.innerHTML=`<div class="fade-in" style="max-width:440px;margin:0 auto">${ONB_BODY[step]()}</div>`;
+  foot.innerHTML=`<div style="max-width:440px;margin:0 auto">${ONB_FOOT[step]()}</div>`;
+  if(step==='perfil') onbPerfilPreview();
+}
+function onbPrimary(label,onclick){
+  return `<button onclick="${onclick}" style="width:100%;padding:14px;background:var(--accent);border-radius:10px;color:#fff;font-size:15px;font-weight:600">${label}</button>`;
+}
+function onbSkipLink(label,onclick){
+  return `<button onclick="${onclick||'onbSkip()'}" style="width:100%;padding:10px 0 2px;background:none;color:var(--muted);font-size:13px;text-decoration:underline">${label}</button>`;
+}
+function onbSection(title,sub){
+  return `<div style="font-size:11px;font-weight:700;color:var(--muted);letter-spacing:.06em;margin:0 0 7px">${title}</div>`+
+    (sub?`<div style="font-size:12px;color:var(--dim);line-height:1.5;margin:-4px 0 9px">${sub}</div>`:'');
+}
+const ONB_INPUT="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:11px 13px;color:var(--txt);font-size:15px;outline:none";
+
+// ── navegação ───────────────────────────────────────────────────────────────
+function onbCapture(){
+  const d=_onbDraft;if(!d) return;
+  const val=id=>document.getElementById(id)?.value;
+  const step=ONB_STEPS[_onbStep];
+  if(step==='perfil'){
+    d.idade=val('onb-idade')??d.idade;
+    d.altura=val('onb-altura')??d.altura;
+    d.pesoAtual=val('onb-peso')??d.pesoAtual;
+    d.pesoMeta=val('onb-peso-meta')??d.pesoMeta;
+  }else if(step==='dieta'){
+    const c=parseInt(val('onb-cal'));
+    if(c>0) d.calorias=c;
+  }else if(step==='metas'){
+    d.novoHabito=(val('onb-habito-novo')||'').trim();
+  }
+}
+function onbGo(delta){
+  onbCapture();
+  _onbStep=Math.max(0,Math.min(ONB_STEPS.length-1,_onbStep+delta));
+  document.getElementById('onb-body')?.scrollTo(0,0);
+  renderOnboarding();
+}
+function onbBack(){onbGo(-1);}
+function onbNext(){
+  const step=ONB_STEPS[_onbStep];
+  if(step==='perfil'){
+    onbCapture();
+    const d=_onbDraft;
+    if(!(onbNum(d.pesoAtual)>0&&onbNum(d.altura)>0&&onbNum(d.idade)>0)){
+      showToast('Preencha idade, altura e peso — ou pule esta etapa');
+      return;
+    }
+    d.calorias=onbCalorias();
+    d.aguaCopos=calcWaterCups(onbNum(d.pesoAtual));
+  }
+  delete _onbDraft.skipped[step];
+  onbGo(1);
+}
+function onbSkip(){
+  _onbDraft.skipped[ONB_STEPS[_onbStep]]=true;
+  onbGo(1);
+}
+// Sair pelo topo: não configura nada, mas marca como visto para o assistente
+// não reaparecer a cada login.
+function onbQuit(){
+  lsSet('ht:onboard_done','1');
+  _onbDraft=null;
+  showScreen('home');setBnavActive('hoje');render(true);
+}
+
+// ── passo: perfil ───────────────────────────────────────────────────────────
+function onbSetSexo(v){onbCapture();_onbDraft.sexo=v;renderOnboarding();}
+function onbSetObj(v){onbCapture();_onbDraft.objetivo=v;renderOnboarding();}
+function onbPerfilPreview(){
+  const el=document.getElementById('onb-perfil-preview');
+  if(!el) return;
+  onbCapture();
+  const d=_onbDraft,peso=onbNum(d.pesoAtual);
+  if(!(peso>0&&onbNum(d.altura)>0&&onbNum(d.idade)>0)){
+    el.innerHTML='<span style="color:var(--dim)">Preencha idade, altura e peso e suas metas aparecem aqui, calculadas.</span>';
+    return;
+  }
+  const cal=onbCalorias(),prot=calcProtein(peso,d.objetivo),copos=calcWaterCups(peso);
+  el.innerHTML=`<div style="display:flex;gap:14px;flex-wrap:wrap">
+    <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">CALORIAS</div><div style="font-size:16px;font-weight:700;color:#fb923c;font-family:'DM Mono',monospace">${cal}<span style="font-size:10px;color:var(--muted)"> kcal</span></div></div>
+    <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">PROTEÍNA</div><div style="font-size:16px;font-weight:700;color:#16A34A;font-family:'DM Mono',monospace">${prot}<span style="font-size:10px;color:var(--muted)"> g</span></div></div>
+    <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">ÁGUA</div><div style="font-size:16px;font-weight:700;color:#38bdf8;font-family:'DM Mono',monospace">${copos}<span style="font-size:10px;color:var(--muted)"> copos</span></div></div>
+  </div>
+  <div style="font-size:10px;color:var(--dim);margin-top:7px;line-height:1.5">Mifflin-St Jeor (calorias) · ISSN 2017 (proteína) · 35 ml/kg (água). Dá para ajustar tudo depois em Configurações de Saúde.</div>`;
+}
+
+const ONB_BODY={
+welcome:()=>{
+  const itens=[
+    ['👤','Perfil','peso, altura e objetivo — daí saem calorias, proteína e água'],
+    ['🏋️','Treino','quais dias são musculação, aeróbico ou descanso'],
+    ['🍽️','Alimentação','meta de calorias e o esqueleto das cinco refeições'],
+    ['💊','Suplementos','o que você toma, e em quais dias aparece'],
+    ['🎯','Metas','hábitos diários para acompanhar'],
+  ];
+  return `<div style="text-align:center;padding-top:10px">
+    <div style="font-size:44px;margin-bottom:12px">👋</div>
+    <div style="font-family:'Fraunces',serif;font-size:23px;color:var(--txt);margin-bottom:9px">Vamos montar o seu app</div>
+    <div style="font-size:13px;color:var(--muted);line-height:1.65;margin-bottom:20px">Leva uns dois minutos. Só o perfil vale a pena preencher agora — treino, alimentação, suplementos e metas dá para pular e configurar quando quiser.</div>
+  </div>
+  ${itens.map(([ic,t,s])=>`<div style="display:flex;gap:11px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:11px 13px;margin-bottom:7px">
+    <div style="font-size:18px;line-height:1.3">${ic}</div>
+    <div style="min-width:0"><div style="font-size:13px;font-weight:700;color:var(--txt)">${t}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px;line-height:1.45">${s}</div></div>
+  </div>`).join('')}`;
+},
+
+perfil:()=>{
+  const d=_onbDraft;
+  const sexoBtn=(v,l)=>{const on=d.sexo===v;return`<button onclick="onbSetSexo('${v}')" style="flex:1;padding:11px;border-radius:9px;font-size:13px;font-weight:600;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'#FAFAF9'};color:${on?'#fff':'var(--muted)'}">${l}</button>`;};
+  const objs=[
+    {v:'cutting',   l:'Cutting',    ic:'📉',sub:'Perder gordura · déficit calórico',c:'#3B82F6'},
+    {v:'manutencao',l:'Manutenção', ic:'⚖️',sub:'Manter peso e composição atual',   c:'#16A34A'},
+    {v:'bulking',   l:'Bulking',    ic:'📈',sub:'Ganhar massa · superávit calórico',c:'#D97706'},
+  ];
+  const objCards=objs.map(o=>{const on=d.objetivo===o.v;return`<button onclick="onbSetObj('${o.v}')" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:2px solid ${on?o.c:'var(--border)'};background:${on?o.c+'0D':'#FAFAF9'};margin-bottom:6px;text-align:left">
+    <div style="font-size:18px;line-height:1.2">${o.ic}</div>
+    <div style="min-width:0"><div style="font-size:13px;font-weight:700;color:${on?o.c:'var(--txt)'}">${o.l}</div>
+    <div style="font-size:11px;color:var(--muted);margin-top:2px">${o.sub}</div></div>
+    ${on?`<div style="margin-left:auto;font-size:14px;color:${o.c}">✓</div>`:''}
+  </button>`;}).join('');
+  return `${onbSection('SEXO BIOLÓGICO','Entra na fórmula de gasto energético — só isso.')}
+  <div style="display:flex;gap:7px;margin-bottom:18px">${sexoBtn('f','Feminino')}${sexoBtn('m','Masculino')}</div>
+  ${onbSection('MEDIDAS')}
+  <div style="display:flex;gap:8px;margin-bottom:9px">
+    <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Idade</div>
+      <input id="onb-idade" type="number" inputmode="numeric" value="${onbEsc(d.idade)}" oninput="onbPerfilPreview()" placeholder="30" style="${ONB_INPUT}"></div>
+    <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Altura (cm)</div>
+      <input id="onb-altura" type="number" inputmode="numeric" value="${onbEsc(d.altura)}" oninput="onbPerfilPreview()" placeholder="165" style="${ONB_INPUT}"></div>
+  </div>
+  <div style="display:flex;gap:8px;margin-bottom:18px">
+    <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Peso atual (kg)</div>
+      <input id="onb-peso" type="number" inputmode="decimal" step="0.1" value="${onbEsc(d.pesoAtual)}" oninput="onbPerfilPreview()" placeholder="68" style="${ONB_INPUT}"></div>
+    <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Peso meta (kg)</div>
+      <input id="onb-peso-meta" type="number" inputmode="decimal" step="0.1" value="${onbEsc(d.pesoMeta)}" oninput="onbPerfilPreview()" placeholder="63" style="${ONB_INPUT}"></div>
+  </div>
+  ${onbSection('OBJETIVO')}
+  ${objCards}
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px;margin-top:14px" id="onb-perfil-preview"></div>`;
+},
+
+treino:()=>{
+  const d=_onbDraft;
+  const opts=[['musculacao','🏋️','Musculação'],['aerobico','🏃','Aeróbico'],['descanso','🛌','Descanso']];
+  const rows=ONB_WEEKDAYS.map((lbl,i)=>{
+    const cur=d.dias[i]||'descanso';
+    const btns=opts.map(([v,ic,t])=>{
+      const on=cur===v,c=WK_COLORS[v];
+      return`<button onclick="onbSetDay(${i},'${v}')" aria-label="${t}" style="flex:1;padding:9px 2px;border-radius:8px;font-size:14px;border:1px solid ${on?c:'var(--border)'};background:${on?c:'#FAFAF9'};opacity:${on?1:.75}">${ic}</button>`;
+    }).join('');
+    return`<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+      <div style="width:66px;font-size:12px;font-weight:600;color:var(--txt)">${lbl}</div>
+      <div style="flex:1;display:flex;gap:4px">${btns}</div>
+    </div>`;
+  }).join('');
+  const n=onbTreinosSemana();
+  return `${onbSection('SUA SEMANA','Isso define o treino que já aparece pronto em cada dia. Dá para trocar dia a dia depois.')}
+  <div style="display:flex;gap:8px;margin-bottom:9px;font-size:10px;color:var(--dim)">
+    <div style="width:66px"></div>
+    <div style="flex:1;display:flex;gap:4px;text-align:center">${opts.map(([,,t])=>`<div style="flex:1">${t}</div>`).join('')}</div>
+  </div>
+  ${rows}
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px;margin-top:12px;font-size:12px;color:var(--muted);line-height:1.55">
+    <b style="color:var(--txt)">${n} ${n===1?'dia':'dias'} de treino por semana.</b> Esse número entra no cálculo de calorias — quanto mais treino, maior o gasto estimado.
+  </div>`;
+},
+
+dieta:()=>{
+  const d=_onbDraft;
+  const cal=d.calorias||onbCalorias();
+  const prot=calcProtein(onbNum(d.pesoAtual),d.objetivo);
+  const copos=[6,7,8,9,10,11,12].map(n=>{
+    const on=d.aguaCopos===n;
+    return`<button onclick="onbSetAgua(${n})" style="flex:1;padding:9px 2px;border-radius:8px;font-size:12px;font-weight:700;border:1px solid ${on?'#38bdf8':'var(--border)'};background:${on?'#38bdf8':'#FAFAF9'};color:${on?'#fff':'var(--muted)'}">${n}</button>`;
+  }).join('');
+  return `${onbSection('META DE CALORIAS','Já vem calculada a partir do seu perfil. Ajuste se você segue outra recomendação.')}
+  <input id="onb-cal" type="number" inputmode="numeric" value="${cal||''}" placeholder="1800" style="${ONB_INPUT};margin-bottom:6px">
+  ${prot?`<div style="font-size:11px;color:var(--muted);margin-bottom:18px">🥩 Meta de proteína: <b style="color:var(--txt)">${prot} g/dia</b> — calculada do peso e do objetivo.</div>`:'<div style="margin-bottom:18px"></div>'}
+  ${onbSection('COPOS DE ÁGUA POR DIA','Copo de 250 ml.')}
+  <div style="display:flex;gap:5px;margin-bottom:18px">${copos}</div>
+  ${onbSection('PLANO ALIMENTAR')}
+  <button onclick="onbTogglePlano()" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border-radius:10px;border:2px solid ${d.criarPlano?'var(--accent)':'var(--border)'};background:${d.criarPlano?'var(--accent-light)':'#FAFAF9'};text-align:left">
+    <div style="font-size:16px;color:${d.criarPlano?'var(--accent)':'var(--dim)'}">${d.criarPlano?'☑':'☐'}</div>
+    <div style="min-width:0">
+      <div style="font-size:13px;font-weight:700;color:var(--txt)">Criar as cinco refeições com metas de macro</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5">Café, almoço, lanche, jantar e ceia já vêm com calorias e proteína distribuídas. A descrição da comida fica em branco para você preencher em Nutrição › Plano Alimentar.</div>
+    </div>
+  </button>`;
+},
+
+sups:()=>{
+  const d=_onbDraft;
+  const cards=STARTER_SUPS.map(s=>{
+    const on=d.sups.includes(s.id);
+    return`<button onclick="onbToggleSup('${s.id}')" style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent-light)':'#FAFAF9'};margin-bottom:6px;text-align:left">
+      <div style="font-size:15px;color:${on?'var(--accent)':'var(--dim)'}">${on?'☑':'☐'}</div>
+      <div style="font-size:16px">${s.icon}</div>
+      <div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:700;color:var(--txt)">${s.label}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:1px">${s.sub}${s.showOn==='treino'?' · só em dias de treino':''}</div></div>
+    </button>`;
+  }).join('');
+  return `${onbSection('O QUE VOCÊ TOMA','Marque o que usa hoje. Nome, dose e horário você edita depois em Mais › Suplementos — e nada impede de adicionar outros lá.')}
+  ${cards}`;
+},
+
+metas:()=>{
+  const d=_onbDraft;
+  const cards=STARTER_HABITS.map(h=>{
+    const on=d.habitos.includes(h.key);
+    return`<button onclick="onbToggleHabito('${h.key}')" style="width:100%;display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:10px;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent-light)':'#FAFAF9'};margin-bottom:6px;text-align:left">
+      <div style="font-size:15px;color:${on?'var(--accent)':'var(--dim)'}">${on?'☑':'☐'}</div>
+      <div style="font-size:16px">${h.icon}</div>
+      <div style="min-width:0;flex:1"><div style="font-size:13px;font-weight:700;color:var(--txt)">${h.name}</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:1px">${_daysShort(h.days)}</div></div>
+    </button>`;
+  }).join('');
+  return `${onbSection('HÁBITOS DIÁRIOS','Aparecem na tela Hoje para marcar. Metas com número — ler 12 livros no ano, correr 40 km no mês — você cria depois em Mais › Metas.')}
+  ${cards}
+  <div style="margin-top:14px">${onbSection('OUTRO HÁBITO')}
+  <input id="onb-habito-novo" value="${onbEsc(d.novoHabito)}" placeholder="Ex: Tomar sol 15 min" style="${ONB_INPUT}">
+  <div style="font-size:11px;color:var(--dim);margin-top:6px">Criado para todos os dias da semana.</div></div>`;
+},
+
+done:()=>{
+  const d=_onbDraft;
+  const linhas=[];
+  const peso=onbNum(d.pesoAtual);
+  if(peso>0) linhas.push(['👤',`${peso} kg · ${onbNum(d.altura)} cm · ${onbNum(d.idade)} anos`,{cutting:'Cutting',manutencao:'Manutenção',bulking:'Bulking'}[d.objetivo]]);
+  if(!d.skipped.treino) linhas.push(['🏋️',`${onbTreinosSemana()} dias de treino na semana`,'']);
+  if(!d.skipped.dieta){
+    const cal=d.calorias||onbCalorias();
+    linhas.push(['🍽️',`${cal?cal+' kcal/dia':'Meta de calorias em aberto'} · ${d.aguaCopos} copos de água`,d.criarPlano?'Plano com 5 refeições':'']);
+  }
+  if(!d.skipped.sups&&d.sups.length) linhas.push(['💊',`${d.sups.length} ${d.sups.length===1?'suplemento':'suplementos'}`,'']);
+  const nh=(d.skipped.metas?0:d.habitos.length+(d.novoHabito?1:0));
+  if(nh) linhas.push(['🎯',`${nh} ${nh===1?'hábito':'hábitos'} para acompanhar`,'']);
+  const resumo=linhas.length?linhas.map(([ic,a,b])=>`<div style="display:flex;gap:10px;align-items:flex-start;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:11px 13px;margin-bottom:6px">
+    <div style="font-size:16px">${ic}</div>
+    <div style="min-width:0"><div style="font-size:13px;color:var(--txt)">${a}</div>${b?`<div style="font-size:11px;color:var(--muted);margin-top:2px">${b}</div>`:''}</div>
+  </div>`).join('')
+  :`<div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:13px;font-size:12px;color:var(--muted);line-height:1.55">Você pulou todas as etapas — sem problema. O app abre vazio e cada tela tem onde configurar.</div>`;
+  return `<div style="text-align:center;padding-top:6px;margin-bottom:16px">
+    <div style="font-size:40px;margin-bottom:10px">🎉</div>
+    <div style="font-family:'Fraunces',serif;font-size:22px;color:var(--txt);margin-bottom:7px">Pronto!</div>
+    <div style="font-size:13px;color:var(--muted);line-height:1.6">Confira o resumo abaixo. Tudo isso continua editável nas telas do app.</div>
+  </div>
+  ${resumo}`;
+},
+};
+
+const ONB_FOOT={
+  welcome:()=>onbPrimary('Começar','onbNext()')+onbSkipLink('Configuro tudo depois','onbQuit()'),
+  perfil: ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Pular esta etapa'),
+  treino: ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Não quero definir treino agora'),
+  dieta:  ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Pular alimentação'),
+  sups:   ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Não tomo suplementos'),
+  metas:  ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Pular metas'),
+  done:   ()=>onbPrimary('Entrar no app','onbFinish()'),
+};
+
+function onbSetDay(i,v){_onbDraft.dias[i]=v;renderOnboarding();}
+function onbSetAgua(n){onbCapture();_onbDraft.aguaCopos=n;renderOnboarding();}
+function onbTogglePlano(){onbCapture();_onbDraft.criarPlano=!_onbDraft.criarPlano;renderOnboarding();}
+function onbToggleSup(id){
+  const a=_onbDraft.sups,i=a.indexOf(id);
+  if(i>=0) a.splice(i,1); else a.push(id);
+  renderOnboarding();
+}
+function onbToggleHabito(key){
+  onbCapture();
+  const a=_onbDraft.habitos,i=a.indexOf(key);
+  if(i>=0) a.splice(i,1); else a.push(key);
+  renderOnboarding();
+}
+
+// Só grava o que a pessoa realmente configurou: etapa pulada não escreve nada,
+// para não encher a conta nova de dado que ela não pediu.
+function onbFinish(){
+  onbCapture();
+  const d=_onbDraft;
+  const peso=onbNum(d.pesoAtual);
+  const g={...goals,sexo:d.sexo};
+  if(!d.skipped.perfil&&peso>0){
+    g.idade=d.idade;g.altura=d.altura;g.pesoAtual=d.pesoAtual;g.pesoMeta=d.pesoMeta;
+    g.objetivo=d.objetivo;
+    g.protMeta=calcProtein(peso,d.objetivo);
+  }
+  if(!d.skipped.treino) g.treinosSemana=onbTreinosSemana();
+  if(!d.skipped.dieta){
+    const cal=d.calorias||onbCalorias();
+    if(cal>0) g.calorias=cal;
+    g.aguaCopos=d.aguaCopos;
+  }
+  saveGoals(g);
+
+  if(!d.skipped.treino){
+    const musc=[],aero=[],plan={};
+    for(let i=0;i<7;i++){
+      const v=d.dias[i]||'descanso';
+      if(v==='musculacao'){musc.push(i);plan[String(i)]='wk_musc';}
+      else if(v==='aerobico'){aero.push(i);plan[String(i)]='wk_aero';}
+      else plan[String(i)]='descanso';
+    }
+    userWorkouts=userWorkouts.map(w=>
+      w.id==='wk_musc'?{...w,weekDays:musc}:w.id==='wk_aero'?{...w,weekDays:aero}:w);
+    saveUserWorkouts();
+    weekPlan=plan;saveWeekPlan();
+  }
+
+  if(!d.skipped.dieta&&d.criarPlano){
+    const cal=g.calorias||0,prot=g.protMeta||0;
+    const plan={};
+    for(const [id,frac] of ONB_MEAL_SPLIT){
+      plan[id]={default:{kcal:Math.round(cal*frac/5)*5,prot:Math.round(prot*frac),hint:'',badge:''}};
+    }
+    mealPlan=plan;saveMealPlan();
+  }
+
+  if(!d.skipped.sups){
+    customSups=d.sups.map(id=>{const s=STARTER_SUPS.find(x=>x.id===id);return{...s};});
+    saveCustomSups();
+  }
+
+  if(!d.skipped.metas){
+    const novos=STARTER_HABITS.filter(h=>d.habitos.includes(h.key))
+      .map((h,i)=>({id:'h'+Date.now()+'_'+i,name:h.name,icon:h.icon,days:[...h.days],time:'',since:today()}));
+    if(d.novoHabito) novos.push({id:'h'+Date.now()+'_n',name:d.novoHabito,icon:'🎯',days:[0,1,2,3,4,5,6],time:'',since:today()});
+    if(novos.length){customHabits=customHabits.concat(novos);saveHabits();}
+  }
+
+  lsSet('ht:onboard_done','1');
+  _onbDraft=null;
+  flushOutbox();
+  showScreen('home');setBnavActive('hoje');
+  render();
+  showToast('Tudo pronto! Bem-vindo(a) 🎉');
+}
+function goalsBack(){showMais();}
 
 // ─── Recuperação de senha ────────────────────────────────────────
 let _forgotEmail=null;
@@ -3130,8 +3685,8 @@ const API_URL='__API_URL__';
 const USE_API=API_URL.startsWith('https://');
 
 // ─── OUTBOX — fila de gravações pendentes (sobrevive a offline/refresh) ──────
-function loadOutbox(){try{return JSON.parse(localStorage.getItem('ht:outbox')||'{}');}catch{return{};}}
-function saveOutbox(ob){try{localStorage.setItem('ht:outbox',JSON.stringify(ob));}catch{}}
+function loadOutbox(){try{return JSON.parse(lsGet('ht:outbox')||'{}');}catch{return{};}}
+function saveOutbox(ob){try{lsSet('ht:outbox',JSON.stringify(ob));}catch{}}
 function outboxHas(key){return !!loadOutbox()[key];}
 function queuePut(key,payload){
   if(!USE_API||!authToken) return;
@@ -3185,7 +3740,7 @@ function updateSyncStatus(){
 }
 
 function loadDay(date){
-  try{const s=localStorage.getItem('ht:'+date);return s?JSON.parse(s):makeEmpty(date);}
+  try{const s=lsGet('ht:'+date);return s?JSON.parse(s):makeEmpty(date);}
   catch{return makeEmpty(date);}
 }
 async function fetchRemote(date){
@@ -3199,7 +3754,7 @@ async function fetchRemote(date){
 }
 function saveDay(date,d){
   d._ts=Date.now();
-  try{localStorage.setItem('ht:'+date,JSON.stringify(d));}catch{}
+  try{lsSet('ht:'+date,JSON.stringify(d));}catch{}
   queuePut(date,d);
 }
 
@@ -3230,11 +3785,11 @@ async function syncGoals(){
   if(!USE_API||!authToken) return;
   try{
     const r=await fetch(`${API_URL}?date=__goals__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){goals={...DEFAULT_GOALS,...d};try{localStorage.setItem('ht:goals',JSON.stringify(goals));}catch{}}}
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)){goals={...DEFAULT_GOALS,...d};try{lsSet('ht:goals',JSON.stringify(goals));}catch{}}}
   }catch{}
   try{
     const r=await fetch(`${API_URL}?date=__csups__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){customSups=d;try{localStorage.setItem('ht:csups',JSON.stringify(d));}catch{}}}
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){customSups=d;try{lsSet('ht:csups',JSON.stringify(d));}catch{}}}
   }catch{}
   await syncBodyEntries();
   await syncGymPlan();
@@ -3249,12 +3804,12 @@ async function syncGoals(){
 async function syncGoalsDefs(){
   if(!USE_API||!authToken) return;
   try{const r=await fetch(`${API_URL}?date=__goalsdefs__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){goalsDefs=d;try{localStorage.setItem('ht:goalsdefs',JSON.stringify(d));}catch{}}}}catch{}
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){goalsDefs=d;try{lsSet('ht:goalsdefs',JSON.stringify(d));}catch{}}}}catch{}
 }
 async function syncGoalLogs(){
   if(!USE_API||!authToken) return;
   try{const r=await fetch(`${API_URL}?date=__goallogs__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){goalLogs=d;try{localStorage.setItem('ht:goallogs',JSON.stringify(d));}catch{}}}}catch{}
+    if(r.ok){const d=await r.json();if(Array.isArray(d)&&d.length>0){goalLogs=d;try{lsSet('ht:goallogs',JSON.stringify(d));}catch{}}}}catch{}
 }
 
 // ─── RENDER ──────────────────────────────────────────────────────────────────
@@ -3273,7 +3828,7 @@ async function render(syncG=false){
         // o remoto só vence se for mais novo E não houver gravação local pendente
         if(remoteTs>=localTs&&!outboxHas(currentDate)){
           dayData=remote;
-          try{localStorage.setItem('ht:'+currentDate,JSON.stringify(dayData));}catch{}
+          try{lsSet('ht:'+currentDate,JSON.stringify(dayData));}catch{}
           renderUI();
         }else{
           saveDay(currentDate,dayData);
@@ -3785,10 +4340,10 @@ const STREAK_MILESTONES=[7,30,100,365];
 function streakMilestoneCheck(s){
   if(!STREAK_MILESTONES.includes(s)) return;
   let done=[];
-  try{done=JSON.parse(localStorage.getItem('ht:streak_milestones')||'[]');}catch{}
+  try{done=JSON.parse(lsGet('ht:streak_milestones')||'[]');}catch{}
   if(done.includes(s)) return;
   done.push(s);
-  try{localStorage.setItem('ht:streak_milestones',JSON.stringify(done));}catch{}
+  try{lsSet('ht:streak_milestones',JSON.stringify(done));}catch{}
   triggerConfetti();
   showToast(`🔥 ${s} dias seguidos! Marco desbloqueado`);
 }
@@ -3904,7 +4459,7 @@ function showMealPlanConfig(){
   setBnavActive('mais');
 }
 function renderMealPlanConfigHtml(){
-  const plan=mealPlan||DEFAULT_MEAL_PLAN;
+  const plan=effectiveMealPlan()||BLANK_MEAL_PLAN;
   const triggerLabel={
     'isFds':'Final de semana',
     'almocoCarb':'Com carboidrato',
@@ -4002,7 +4557,7 @@ function mpSaveEdit(){
   const prot=parseInt(document.getElementById('mpe-prot')?.value)||0;
   const badge=(document.getElementById('mpe-badge')?.value||'').trim();
   if(!hint||!kcal||!prot){showToast('Preencha descrição, calorias e proteína');return;}
-  if(!mealPlan) mealPlan=JSON.parse(JSON.stringify(DEFAULT_MEAL_PLAN));
+  if(!mealPlan) mealPlan=starterMealPlan();
   if(!mealPlan[_mpEditMealId]) mealPlan[_mpEditMealId]={};
   if(_mpEditVariantIdx===null){
     mealPlan[_mpEditMealId].default={kcal,prot,hint,badge};
@@ -4014,7 +4569,7 @@ function mpSaveEdit(){
   saveMealPlan();mpCloseEdit();showMealPlanConfig();showToast('Refeição salva!');renderUI();
 }
 function mpAddVariant(mealId){
-  if(!mealPlan) mealPlan=JSON.parse(JSON.stringify(DEFAULT_MEAL_PLAN));
+  if(!mealPlan) mealPlan=starterMealPlan();
   if(!mealPlan[mealId]) mealPlan[mealId]={};
   if(!mealPlan[mealId].variants) mealPlan[mealId].variants=[];
   const newIdx=mealPlan[mealId].variants.length;
@@ -4029,7 +4584,7 @@ function mpDeleteVariant(){
 }
 function mpResetToDefault(){
   if(!confirm('Restaurar o plano alimentar padrão? As edições serão perdidas.')) return;
-  mealPlan=JSON.parse(JSON.stringify(DEFAULT_MEAL_PLAN));
+  mealPlan=starterMealPlan();
   saveMealPlan();showMealPlanConfig();showToast('Plano restaurado.');renderUI();
 }
 async function mpHandleFile(input){
@@ -4068,7 +4623,7 @@ function _mpRenderImportPreview(){
   return`<div style="margin-top:10px">${rows}<button onclick="mpConfirmImport()" style="width:100%;padding:12px;background:#16a34a;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-top:4px">Importar selecionados</button></div>`;
 }
 function mpConfirmImport(){
-  if(!mealPlan) mealPlan=JSON.parse(JSON.stringify(DEFAULT_MEAL_PLAN));
+  if(!mealPlan) mealPlan=starterMealPlan();
   let count=0;
   _mpImportPreview.forEach((item,i)=>{
     if(!document.getElementById('mpimp-'+i)?.checked) return;
@@ -4301,14 +4856,14 @@ async function hydrateRange(start,end){
       if(outboxHas(it.date)) continue; // gravação local pendente vence
       const isGymKey=it.date.startsWith('gym:');
       const key='ht:'+it.date;
-      const localS=localStorage.getItem(key);
+      const localS=lsGet(key);
       const remoteS=JSON.stringify(it.data);
       if(localS===remoteS) continue;
       let localTs=0;
       try{localTs=localS?(JSON.parse(localS)._ts||0):0;}catch{}
       const remoteTs=(it.data&&it.data._ts)||0;
       if(!localS||isGymKey||remoteTs>localTs){
-        try{localStorage.setItem(key,remoteS);changed=true;}catch{}
+        lsSet(key,remoteS);changed=true;
       }
     }
     return changed;
@@ -4963,7 +5518,7 @@ function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);ret
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){navigator.serviceWorker.register('sw.js').catch(()=>{});}
-if(authToken){showScreen('home');setBnavActive('hoje');render(true);flushOutbox();}else{showScreen('auth');}
+if(authToken){enterApp();}else{setUserScope(null);showScreen('auth');}
 </script>
 </body>
 </html>
