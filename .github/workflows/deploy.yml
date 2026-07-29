@@ -137,6 +137,37 @@ jobs:
             --function-name tracker-habitos-api \
             --region sa-east-1
 
+      # O AuthType do Function URL é a causa provável do 403 AccessDeniedException:
+      # os três statements da policy são condicionados a
+      # lambda:FunctionUrlAuthType == NONE, então se o AuthType real virar AWS_IAM
+      # nenhum Allow se aplica e toda requisição não assinada é negada — com
+      # exatamente a mensagem que aponta para urls-auth.html.
+      #
+      # O template declara NONE, mas o CloudFormation NÃO corrige drift: se o valor
+      # foi mudado fora dele, o template continua igual, nenhum update é emitido e
+      # o deploy passa verde sem consertar nada. Daí a correção via CLI.
+      - name: Garantir AuthType NONE no Function URL
+        if: steps.cfn.outcome == 'success'
+        run: |
+          AUTH=$(aws lambda get-function-url-config \
+            --function-name tracker-habitos-api \
+            --region sa-east-1 \
+            --query AuthType --output text 2>/dev/null || echo "ERRO")
+          echo "AuthType atual: $AUTH"
+          if [[ "$AUTH" == "NONE" ]]; then
+            echo "OK: já está NONE — o 403 não vem daqui."
+          elif [[ "$AUTH" == "ERRO" ]]; then
+            echo "::error::Não foi possível ler a config do Function URL."
+          else
+            echo "::warning::AuthType estava $AUTH (esperado NONE) — esta era a causa do 403. Corrigindo."
+            aws lambda update-function-url-config \
+              --function-name tracker-habitos-api \
+              --auth-type NONE \
+              --region sa-east-1 \
+              --query AuthType --output text
+            echo "AuthType corrigido para NONE."
+          fi
+
       # Diagnóstico: imprime a policy efetiva da função. Foi este passo que
       # provou que a permissão pública NÃO era a causa do 403 — a policy já tinha
       # dois statements de InvokeFunctionUrl antes de qualquer intervenção. Um
