@@ -3358,6 +3358,88 @@ function forgotMapError(type){
   if(type.includes('NotAuthorized')) return 'Operação não permitida. Tente novamente ou contate o suporte.';
   return 'Erro inesperado. Tente novamente.';
 }
+
+// ─── Alterar senha (já logada) ───────────────────────────────────
+// Renderiza dentro de #mais-body, como as outras subtelas de "Mais".
+function showChangePassword(){
+  const body=document.getElementById('mais-body');
+  if(!body) return;
+  body.innerHTML=renderChangePasswordHtml();
+  showScreen('mais');
+  setBnavActive('mais');
+  document.getElementById('chpwd-current')?.focus();
+}
+function renderChangePasswordHtml(){
+  if(!authToken){
+    return`<div class="card fade-in">
+      <div class="sec-hdr"><div class="sec-lbl"><span>🔒</span> ALTERAR SENHA</div></div>
+      <div style="font-size:13px;color:#78716C;line-height:1.6">Você precisa estar conectada para trocar a senha. Entre na sua conta e tente de novo.</div>
+      <button onclick="showMais()" style="width:100%;padding:10px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:13px;font-weight:500;margin-top:12px">← Voltar</button>
+    </div>`;
+  }
+  const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:12px 14px;color:#1C1917;font-size:14px;outline:none;box-sizing:border-box;margin-bottom:10px';
+  return`<div class="card fade-in">
+    <div class="sec-hdr"><div class="sec-lbl"><span>🔒</span> ALTERAR SENHA</div></div>
+    <div style="font-size:12px;color:#78716C;margin-bottom:12px;line-height:1.6">Informe a senha atual e escolha uma nova, com no mínimo 8 caracteres. Você continua conectada neste dispositivo.</div>
+    <input type="password" id="chpwd-current" placeholder="Senha atual" autocomplete="current-password" style="${inp}">
+    <input type="password" id="chpwd-new" placeholder="Nova senha (mínimo 8 caracteres)" autocomplete="new-password" style="${inp}">
+    <input type="password" id="chpwd-confirm" placeholder="Confirmar nova senha" autocomplete="new-password" style="${inp}">
+    <div id="chpwd-error" style="color:#DC2626;font-size:12px;margin-bottom:10px;display:none"></div>
+    <button onclick="changePassword()" id="btn-chpwd" style="width:100%;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:500">Salvar nova senha</button>
+    <div style="text-align:center;margin-top:14px">
+      <a href="#" onclick="chpwdForgotCurrent(event)" style="font-size:12px;color:var(--muted);text-decoration:underline">Não lembro a senha atual</a>
+    </div>
+  </div>
+  <button onclick="showMais()" style="width:100%;padding:10px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:13px;font-weight:500;margin-bottom:8px">← Voltar</button>`;
+}
+// Sem a senha atual o Cognito não deixa trocar — o caminho é sair e usar o fluxo por e-mail.
+function chpwdForgotCurrent(e){
+  e&&e.preventDefault();
+  signOut();
+  showForgotPassword(null);
+}
+async function changePassword(){
+  const cur=document.getElementById('chpwd-current').value;
+  const nw=document.getElementById('chpwd-new').value;
+  const conf=document.getElementById('chpwd-confirm').value;
+  const errEl=document.getElementById('chpwd-error');
+  const btn=document.getElementById('btn-chpwd');
+  const fail=msg=>{errEl.textContent=msg;errEl.style.display='block';};
+  errEl.style.display='none';
+  if(!cur){fail('Informe a senha atual.');return;}
+  if(nw.length<8){fail('A nova senha deve ter pelo menos 8 caracteres.');return;}
+  if(nw!==conf){fail('As senhas não coincidem.');return;}
+  if(nw===cur){fail('A nova senha precisa ser diferente da atual.');return;}
+  btn.textContent='Salvando...';btn.disabled=true;
+  let res;
+  try{
+    res=await cognito('ChangePassword',{AccessToken:authToken,PreviousPassword:cur,ProposedPassword:nw});
+    // AccessToken expirado (vale 24 h): renova pelo refresh token e tenta uma vez mais
+    if(res.__type&&res.__type.includes('NotAuthorized')&&/token/i.test(res.message||'')&&await tryRefresh()){
+      res=await cognito('ChangePassword',{AccessToken:authToken,PreviousPassword:cur,ProposedPassword:nw});
+    }
+  }catch{
+    btn.textContent='Salvar nova senha';btn.disabled=false;
+    fail('Sem conexão. Tente novamente quando estiver online.');
+    return;
+  }
+  btn.textContent='Salvar nova senha';btn.disabled=false;
+  if(res.__type){fail(chpwdMapError(res.__type,res.message));return;}
+  showMais();
+  showToast('✅ Senha alterada com sucesso!');
+}
+function chpwdMapError(type,message){
+  if(!type) return 'Erro inesperado. Tente novamente.';
+  if(type.includes('NotAuthorized')){
+    // O mesmo erro cobre senha atual errada e sessão vencida
+    if(/token/i.test(message||'')) return 'Sua sessão expirou. Saia e entre de novo para trocar a senha.';
+    return 'Senha atual incorreta.';
+  }
+  if(type.includes('InvalidPassword')) return 'Nova senha inválida. Use pelo menos 8 caracteres.';
+  if(type.includes('InvalidParameter')) return 'Senha inválida. Verifique os campos e tente novamente.';
+  if(type.includes('LimitExceeded')||type.includes('TooManyRequests')) return 'Muitas tentativas. Aguarde alguns minutos.';
+  return 'Erro inesperado. Tente novamente.';
+}
 // ─────────────────────────────────────────────────────────────────
 
 // ─── API ─────────────────────────────────────────────────────────────────────
@@ -4354,6 +4436,9 @@ function renderMais(){
       {icon:'📋',label:'Histórico',sub:'Seus últimos 60 dias',fn:"showHistory()",c:'#818cf8'},
       {icon:'📅',label:'Adicionar à Agenda',sub:'Levar hábitos, refeições e treinos para o seu calendário',fn:"showAgenda()",c:'#818cf8'},
       {icon:'💾',label:'Exportar dados',sub:'Baixar todos os seus registros em JSON',fn:"exportData()",c:'#fbbf24'},
+    ]},
+    {label:'CONTA',items:[
+      {icon:'🔒',label:'Alterar senha',sub:'Trocar a senha de acesso à sua conta',fn:"showChangePassword()",c:'#f472b6'},
     ]},
   ];
   const renderItem=it=>`
