@@ -58,8 +58,22 @@ mostra a instrução correspondente em vez de um "não suporta" sem saída:
 - **Inscrição antiga com outra chave VAPID**: reaproveitar manda o push para o
   vazio e um `subscribe()` novo estoura `InvalidStateError`. `sameServerKey()`
   compara os bytes e reinscreve quando difere
+- **Android/Chrome**: o `requestPermission()` pode devolver `denied` na hora, sem
+  mostrar prompt nenhum, quando o site já foi bloqueado antes (inclusive pelo
+  bloqueio automático do Chrome). `unblockSteps()` dá o caminho por plataforma —
+  no Android o do sistema também, que fica fora do navegador
 - Safari antigo devolve `requestPermission` por callback, sem promise — daí o
   wrapper `requestNotificationPermission()`
+
+Todo passo assíncrono da ativação passa por `withTimeout()`. Uma promise que
+nunca resolve (registro do SW, `ready`, `subscribe`) deixaria o botão preso em
+"Ativando…" para sempre — que é justamente a cara de "o app não deixa ativar".
+
+O botão "Enviar notificação de teste" (`testPushNotification()`) só aparece com
+os lembretes ativos e dispara `showNotification` local, sem servidor. Ele divide
+o problema em dois: se a notificação aparece, permissão e service worker estão de
+pé e o que falta está no envio (VAPID/push-sender); se não aparece, é do aparelho
+e não adianta investigar a Lambda.
 
 Erros de ativação vão para o `console` e para uma nota dentro do card
 (`_pushNote`), não para o toast: instrução de configuração não cabe em 3 segundos.

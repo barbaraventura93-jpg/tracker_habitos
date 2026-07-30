@@ -2931,15 +2931,49 @@ function renderPushCard(){
   // sem saída — melhor ensinar o caminho.
   const denied=Notification.permission==='denied';
   const hourOpts=Array.from({length:24},(_,h)=>`<option value="${h}" ${String(h)===hour?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('');
-  const deniedBox=denied?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11.5px;color:#991B1B;line-height:1.6">As notificações estão <b>bloqueadas</b> para este site. Para liberar: toque no cadeado/ícone à esquerda do endereço → Notificações → Permitir. No Android, também em Ajustes → Apps → o app → Notificações. Depois volte aqui e toque em Ativar.</div>`:'';
+  const deniedBox=denied?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11.5px;color:#991B1B;line-height:1.6">As notificações estão <b>bloqueadas</b> para este site.<br>${unblockSteps()}<br>Depois volte aqui e toque em Ativar.</div>`:'';
+  // Só aparece depois de ativado: prova a corrente inteira (permissão + service
+  // worker + exibição) na hora, sem esperar o horário do lembrete chegar.
+  const testBtn=enabled?`<button onclick="testPushNotification()" style="width:100%;padding:11px;background:#FAFAF9;border:1px solid #E7E5E4;color:#57534E;border-radius:10px;font-size:13px;font-weight:600;margin-bottom:8px">Enviar notificação de teste</button>`:'';
   return`<div class="card">
     ${hdr}
     <div style="font-size:12px;color:#78716C;margin-bottom:10px;line-height:1.6">Dois tipos de lembrete:<br>• <b>Diário</b> — no horário escolhido, com o resumo do seu dia (treino e hábitos), se ainda não tiver registrado nada.<br>• <b>Por hábito</b> — automático, na hora de cada hábito que tenha horário definido (configure em Meus Hábitos).</div>
     ${note}${deniedBox}
     <div style="font-size:11px;color:#78716C;margin-bottom:5px">Horário do lembrete diário</div>
     <select id="push-hour-select" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:10px">${hourOpts}</select>
+    ${testBtn}
     <button id="push-toggle-btn" onclick="${enabled?'disablePushReminders()':'enablePushReminders()'}" style="width:100%;padding:12px;background:${enabled?'#F0EFED':'#6C63FF'};color:${enabled?'#78716C':'#fff'};border-radius:10px;font-size:14px;font-weight:700">${enabled?'Desativar lembretes':'Ativar lembretes'}</button>
   </div>`;
+}
+// O caminho para destravar a permissão muda por plataforma, e mandar a pessoa
+// procurar "o cadeado" no Chrome do Android não ajuda: lá o ícone é outro, e
+// ainda existe o bloqueio no nível do sistema, fora do navegador.
+function unblockSteps(){
+  const ua=navigator.userAgent||'';
+  if(/Android/.test(ua)) return'No Chrome: toque no ícone à esquerda do endereço (cadeado ou ⓘ) → <b>Permissões</b> → Notificações → Permitir. Se o app está instalado na tela inicial, o caminho é <b>Configurações do Android → Apps → Rotina Diária (ou Chrome) → Notificações</b>.';
+  if(/iPad|iPhone|iPod/.test(ua)) return'Em <b>Ajustes do iPhone → Notificações</b>, procure o app na lista e permita.';
+  return'Toque no cadeado à esquerda do endereço → Notificações → Permitir.';
+}
+// Uma promise que nunca resolve deixaria o botão preso em "Ativando…" para
+// sempre — que é exatamente a cara de "o app não deixa ativar". Melhor falhar
+// com uma causa em mãos do que travar sem nenhuma.
+function withTimeout(p,ms,label){
+  return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label)),ms))]);
+}
+// Notificação local, sem passar pelo servidor. Se ESTA aparece, permissão e
+// service worker estão de pé e o que falta está no envio; se não aparece, o
+// problema é do lado do aparelho e nem adianta investigar a Lambda.
+async function testPushNotification(){
+  try{
+    if(Notification.permission!=='granted'){_pushNote='A permissão não está concedida — ative os lembretes primeiro.';showGoals();return;}
+    const reg=await navigator.serviceWorker.getRegistration()||await navigator.serviceWorker.register('sw.js');
+    await reg.showNotification('Rotina Diária',{body:'Notificação de teste — está funcionando! 🎉',icon:'icon.svg',badge:'icon.svg'});
+    showToast('Teste enviado');
+  }catch(e){
+    console.error('[push] falha no teste',e);
+    _pushNote=`O teste falhou: ${e&&(e.message||e.name)||'erro desconhecido'}. Se a permissão está concedida, verifique se as notificações do navegador não estão silenciadas nas configurações do aparelho.`;
+    showGoals();
+  }
 }
 // Safari antigo ainda usa a forma com callback, que não devolve promise — sem
 // isto o await entrega undefined e a ativação morre dizendo "permissão negada".
@@ -2972,18 +3006,20 @@ async function enablePushReminders(){
   try{
     const perm=await requestNotificationPermission();
     if(perm!=='granted'){
+      // O Chrome pode devolver 'denied' na hora, sem mostrar prompt nenhum, quando
+      // o site já foi bloqueado antes — inclusive pelo bloqueio automático dele.
       _pushNote=perm==='denied'
-        ?'Permissão negada. Libere as notificações deste site nas configurações do navegador (cadeado ao lado do endereço → Notificações → Permitir) e tente de novo.'
+        ?`Permissão negada — o navegador nem chegou a perguntar, porque este site já está bloqueado. ${unblockSteps()}`
         :'A permissão não foi concedida — o aviso do navegador precisa ser respondido com "Permitir".';
       showGoals();return;
     }
-    const reg=await navigator.serviceWorker.register('sw.js');
+    const reg=await withTimeout(navigator.serviceWorker.register('sw.js'),15000,'o service worker (sw.js) não registrou — verifique a conexão e recarregue a página');
     // Sem esperar o ready, o subscribe pode rodar antes do worker ativar e falhar.
-    await navigator.serviceWorker.ready;
+    await withTimeout(navigator.serviceWorker.ready,15000,'o service worker não ficou pronto — feche e reabra o app');
     const keyBytes=urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     let sub=await reg.pushManager.getSubscription();
     if(sub&&!sameServerKey(sub,keyBytes)){await sub.unsubscribe().catch(()=>{});sub=null;}
-    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes});
+    if(!sub) sub=await withTimeout(reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes}),20000,'o serviço de push do navegador não respondeu (no Android isso costuma ser o Google Play Services sem conexão) — tente de novo');
     const res=await fetch(`${API_URL}?action=save_push_subscription`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({subscription:sub.toJSON(),reminderHour:hour})});
     if(!res.ok){
       const detail=await res.text().catch(()=>'');
