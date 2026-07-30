@@ -64,11 +64,23 @@ jobs:
             --query "Stacks[0].StackStatus" \
             --output text \
             --region sa-east-1 2>/dev/null || echo "DOES_NOT_EXIST")
-          if [[ "$STATUS" == *"ROLLBACK_COMPLETE"* ]]; then
-            echo "Stack em $STATUS, deletando..."
+          echo "StackStatus: $STATUS"
+          # Comparação EXATA, nunca glob. ROLLBACK_COMPLETE (sem prefixo) é o
+          # estado de um stack cuja PRIMEIRA criação falhou: não tem recurso vivo
+          # e só sai do caminho sendo deletado.
+          #
+          # UPDATE_ROLLBACK_COMPLETE é coisa totalmente diferente — stack saudável
+          # que reverteu um update. O padrão antigo, *"ROLLBACK_COMPLETE"*, casava
+          # com os dois e mandava deletar a stack inteira: DynamoDB com todo o
+          # histórico, o User Pool do Cognito e o userId que é chave de partição.
+          # Um update falho passava a armar a destruição no push seguinte.
+          if [[ "$STATUS" == "ROLLBACK_COMPLETE" ]]; then
+            echo "Stack em ROLLBACK_COMPLETE (criação inicial falhou, sem recursos) — deletando para recriar."
             aws cloudformation delete-stack --stack-name tracker-habitos-backend --region sa-east-1
             aws cloudformation wait stack-delete-complete --stack-name tracker-habitos-backend --region sa-east-1
             echo "Stack deletado."
+          elif [[ "$STATUS" == *ROLLBACK* ]]; then
+            echo "Stack em $STATUS — reverteu um update, mas os recursos estão vivos. NÃO deletar; o deploy a seguir atualiza normalmente."
           fi
 
       - name: Deploy infraestrutura (Cognito + DynamoDB + Lambda)

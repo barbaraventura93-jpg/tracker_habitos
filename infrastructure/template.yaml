@@ -19,6 +19,10 @@ Resources:
   # ── Cognito ──────────────────────────────────────────────────────────────────
   UserPool:
     Type: AWS::Cognito::UserPool
+    # Retain: apagar o pool apaga os usuarios e os uid, que sao a chave de
+    # particao do DynamoDB — sem eles o dado remanescente fica orfao.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       UserPoolName: tracker-habitos-users
       UsernameAttributes:
@@ -51,6 +55,9 @@ Resources:
   # ── DynamoDB ─────────────────────────────────────────────────────────────────
   TrackerTable:
     Type: AWS::DynamoDB::Table
+    # Retain: esta tabela guarda o historico inteiro do usuario.
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: tracker-habitos-data
       BillingMode: PAY_PER_REQUEST
@@ -67,6 +74,8 @@ Resources:
 
   ExerciseCacheTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: exercise-cache
       BillingMode: PAY_PER_REQUEST
@@ -79,6 +88,8 @@ Resources:
 
   PushSubscriptionsTable:
     Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
     Properties:
       TableName: tracker-habitos-push-subscriptions
       BillingMode: PAY_PER_REQUEST
@@ -158,19 +169,15 @@ Resources:
         S3Bucket: tracker-habitos
         S3Key: lambda-builds/api.zip
 
-  # Logical ID trocado de TrackerFunctionUrl para ...V2 de propósito: isso força o
-  # CloudFormation a DELETAR e RECRIAR a URL, em vez de atualizar no lugar.
+  # ⚠️ NÃO renomeie este logical ID para forçar recriação da URL. Já tentado e
+  # impossível: uma Lambda aceita só UMA FunctionUrlConfig por qualifier, e o
+  # CloudFormation renomeia com CREATE antes de DELETE. A criação da segunda URL
+  # falha com 409 "FunctionUrlConfig exists for this Lambda function" e a stack
+  # inteira faz rollback.
   #
-  # Motivo: a URL antiga negava toda invocação com AccessDeniedException apontando
-  # para urls-auth.html, mesmo com AuthType NONE (verificado via
-  # get-function-url-config) e três statements Allow para Principal '*' na policy
-  # (verificado via get-policy). Sem Deny em lugar algum. Nenhum update corrigia,
-  # porque do ponto de vista do template nada havia mudado.
-  #
-  # Recriar gera uma URL nova, com policy e estado limpos. O endereço muda, mas o
-  # workflow lê ApiUrl dos outputs da stack e injeta no HTML no mesmo deploy, então
-  # o frontend acompanha sozinho.
-  TrackerFunctionUrlV2:
+  # Recriar de fato exigiria dois deploys — um removendo o recurso, outro
+  # re-adicionando — com a API fora do ar no intervalo.
+  TrackerFunctionUrl:
     Type: AWS::Lambda::Url
     Properties:
       AuthType: NONE
@@ -245,7 +252,7 @@ Resources:
 
 Outputs:
   ApiUrl:
-    Value: !GetAtt TrackerFunctionUrlV2.FunctionUrl
+    Value: !GetAtt TrackerFunctionUrl.FunctionUrl
     Description: Lambda Function URL
 
   UserPoolClientId:
