@@ -14,6 +14,9 @@ faz round-trip a cada request) e **`habit-tracker.html` com ~5k linhas**. A outr
 metade do gap de manutenibilidade foi fechada — o Lambda da API saiu de dentro do
 `template.yaml` e virou `infrastructure/api/index.py`.
 
+O isolamento do `localStorage` por usuário e o assistente de primeiro acesso estão
+entregues — ver as seções "Multi-usuário" e "Onboarding" abaixo.
+
 ## Arquitetura atual
 
 - **Frontend:** HTML/CSS/JS puro, single file (`habit-tracker.html`), hospedado em S3 + CloudFront
@@ -25,9 +28,50 @@ metade do gap de manutenibilidade foi fechada — o Lambda da API saiu de dentro
 
 ## Multi-usuário
 
-O app **já é multi-usuário**: cada request carrega `Bearer <token>`, o Lambda valida no Cognito e usa o `uid` retornado como PK no DynamoDB. Dados de usuários diferentes são isolados por design.
+Cada request carrega `Bearer <token>`, o Lambda valida no Cognito e usa o `uid`
+retornado como PK no DynamoDB. Do lado do servidor os dados sempre foram isolados.
 
-Único ponto cego: `localStorage` usa chaves sem prefixo de usuário (`ht:2026-06-18`, `ht:token`, etc.). Se dois usuários usarem o mesmo navegador, o segundo vê o cache do primeiro até a API responder. Aceitável para um app pessoal — não precisa corrigir agora.
+O `localStorage` **também é isolado agora**. Todo cache local vive sob
+`ht:u:<uid>:<chave>`; só `ht:token`, `ht:refresh` e `ht:legacy_claimed` são globais.
+Antes as chaves eram planas (`ht:goals`, `ht:2026-06-18`, `ht:outbox`), e dois logins
+no mesmo navegador compartilhavam tudo — o segundo usuário via o cache do primeiro
+até a API responder, e as coleções que só são sobrescritas quando o servidor devolve
+algo (`__csups__`, `__goalsdefs__`, `__workouts__`) nunca eram limpas. Pior: o
+`ht:outbox` do primeiro era enviado com o token do segundo.
+
+Como funciona:
+
+- `uidFromToken()` lê o `sub` direto do JWT do AccessToken — sem round-trip. Como o
+  pool usa `UsernameAttributes: email`, o `username` do Cognito é o próprio `sub`,
+  o mesmo valor que o Lambda usa como PK.
+- **Use `lsGet` / `lsSet` / `lsDel`, nunca `localStorage` direto** para dado de
+  usuário. Sem escopo definido eles viram no-op, então nada vaza antes do login.
+- `setUserScope()` + `reloadUserState()` rodam no login, no logout e no boot.
+  `reloadUserState()` relê todo `let` de estado do escopo novo — se você adicionar
+  um novo `let x=loadX()` no topo do arquivo, **precisa** incluí-lo lá.
+- `claimLegacyKeys()` migra as chaves planas da instalação antiga para o escopo do
+  usuário que já estava logado no boot. Num login novo essas chaves são
+  descartadas: são de outra pessoa, e o servidor tem tudo.
+
+Os defaults pessoais (`LEGACY_SUPS` com Oximetalona/DHEA, `DEFAULT_MEAL_PLAN` com o
+cardápio da Bárbara) só valem quando `_legacyInstall` é true. Conta nova começa com
+lista de suplementos vazia e sem plano alimentar — não com a rotina de outra pessoa.
+
+## Onboarding
+
+Assistente de 7 passos em `screen-onboarding`, disparado por `needsOnboarding()`
+dentro de `enterApp()`: boas-vindas → perfil → semana de treino → alimentação →
+suplementos → metas/hábitos → resumo. Só o perfil pede preenchimento; todo o resto
+tem "pular", e `onbFinish()` **só grava as etapas que não foram puladas** (`d.skipped`).
+
+Onde cada passo escreve: perfil e alimentação → `__goals__`; treino →
+`__workouts__` (weekDays) + `__weekplan__`; alimentação com "criar refeições" →
+`__mealplan__` (kcal/proteína distribuídos por `ONB_MEAL_SPLIT`, descrição em
+branco); suplementos → `__csups__`; hábitos → `__habits__`.
+
+As fórmulas nutricionais (`calcBMR`, `activityFactor`, `calorieAdjust`,
+`calcCalories`, `calcProtein`, `calcWaterCups`) são compartilhadas com a tela de
+Configurações de Saúde — as duas telas têm que chegar no mesmo número.
 
 ## Convenções do Lambda
 
@@ -41,17 +85,33 @@ Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
 | `week_suggestion` | sugestão de treino para os dias restantes da semana |
 | `history_range` | Query por `userId` com `date BETWEEN` — hidrata o histórico num dispositivo novo |
 | `export` | download de todos os dados do usuário |
+| `delete_account` (POST) | apaga todas as linhas do `userId` nas duas tabelas — exige `{"confirm":"EXCLUIR"}` no body |
 | `save_push_subscription` / `delete_push_subscription` | inscrição Web Push |
 
 "Datas especiais" no DynamoDB (não são datas reais, são chaves de config por usuário):
 `__gymplan__`, `__workouts__`, `__mealplan__`, `__csups__`, `__goals__`, `__goalsdefs__`,
 `__goallogs__`, `__body__`, `__habits__`, `__weekplan__`, `__periodization__`
 
+## Conta do usuário
+
+Tudo em `showAccount()`, dentro de Mais › Conta e senha:
+
+- **Alterar senha** — `ChangePassword` do Cognito, direto do cliente, sem backend.
+  `NotAuthorizedException` cobre senha errada *e* token vencido; só a `message`
+  separa os dois, e o código dá `tryRefresh()` antes de desistir no segundo caso.
+- **Refazer configuração inicial** — apaga `ht:onboard_done` e reabre o assistente.
+- **Excluir conta** — a ordem importa: primeiro `action=delete_account` (dados no
+  DynamoDB), depois `DeleteUser` no Cognito, por último `wipeUserScope()` no
+  `localStorage`. Ao contrário, o token morreria antes e as linhas do DynamoDB
+  ficariam órfãs, sem ninguém que consiga apagá-las. Se a API falhar, nada é
+  apagado e o Cognito nem é chamado.
+
 ## IAM
 
-Policy `DynamoDBAccess`: `GetItem`, `PutItem` e `Query`, nas duas tabelas
-(`tracker-habitos-data` e `exercise-cache`). O `Query` entrou junto com o
-`history_range`.
+Policy `DynamoDBAccess`: `GetItem`, `PutItem`, `DeleteItem`, `BatchWriteItem`,
+`Scan` e `Query`, nas três tabelas (`tracker-habitos-data`, `exercise-cache` e
+`tracker-habitos-push-subscriptions`). O `Query` entrou junto com o
+`history_range`; o `BatchWriteItem`, junto com o `delete_account`.
 
 Policy `BedrockAccess`: `bedrock:InvokeModel` com `"*"`.
 

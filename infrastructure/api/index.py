@@ -308,6 +308,26 @@ def _dispatch(event,context):
       return{'statusCode':200,'body':json.dumps({'ok':True})}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+  if action=='delete_account' and method=='POST':
+    # Apaga tudo que existe deste uid nas tabelas. O usuario do Cognito quem
+    # remove e o proprio cliente, com o AccessToken, depois desta chamada dar
+    # certo — se fosse ao contrario o token morreria antes e as linhas do
+    # DynamoDB ficariam orfas, sem ninguem que consiga apaga-las.
+    try:
+      body=json.loads(event.get('body') or '{}')
+      if body.get('confirm')!='EXCLUIR':
+        return{'statusCode':400,'body':json.dumps({'error':'confirmation required'})}
+      items=query_days(uid)
+      with table.batch_writer() as batch:
+        for it in items:
+          batch.delete_item(Key={'userId':uid,'date':it['date']})
+      try:
+        sub_table.delete_item(Key={'userId':uid})
+      except Exception:
+        pass  # sem inscricao de push nao ha o que apagar
+      return{'statusCode':200,'body':json.dumps({'ok':True,'deleted':len(items)})}
+    except Exception as e:
+      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
   if action=='history_range' and method=='GET':
     start=params.get('start','');end=params.get('end','')
     if not re.match(r'^\d{4}-\d{2}-\d{2}$',start) or not re.match(r'^\d{4}-\d{2}-\d{2}$',end):

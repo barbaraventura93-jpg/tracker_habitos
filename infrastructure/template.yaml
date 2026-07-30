@@ -113,6 +113,7 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
                   - dynamodb:DeleteItem
+                  - dynamodb:BatchWriteItem
                   - dynamodb:Scan
                   - dynamodb:Query
                 Resource:
@@ -158,7 +159,19 @@ Resources:
         S3Bucket: tracker-habitos
         S3Key: lambda-builds/api.zip
 
-  TrackerFunctionUrl:
+  # Logical ID trocado de TrackerFunctionUrl para ...V2 de propósito: isso força o
+  # CloudFormation a DELETAR e RECRIAR a URL, em vez de atualizar no lugar.
+  #
+  # Motivo: a URL antiga negava toda invocação com AccessDeniedException apontando
+  # para urls-auth.html, mesmo com AuthType NONE (verificado via
+  # get-function-url-config) e três statements Allow para Principal '*' na policy
+  # (verificado via get-policy). Sem Deny em lugar algum. Nenhum update corrigia,
+  # porque do ponto de vista do template nada havia mudado.
+  #
+  # Recriar gera uma URL nova, com policy e estado limpos. O endereço muda, mas o
+  # workflow lê ApiUrl dos outputs da stack e injeta no HTML no mesmo deploy, então
+  # o frontend acompanha sozinho.
+  TrackerFunctionUrlV2:
     Type: AWS::Lambda::Url
     Properties:
       AuthType: NONE
@@ -233,7 +246,7 @@ Resources:
 
 Outputs:
   ApiUrl:
-    Value: !GetAtt TrackerFunctionUrl.FunctionUrl
+    Value: !GetAtt TrackerFunctionUrlV2.FunctionUrl
     Description: Lambda Function URL
 
   UserPoolClientId:
