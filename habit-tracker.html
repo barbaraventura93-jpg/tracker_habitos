@@ -4719,6 +4719,9 @@ function renderAccountHtml(){
       <input id="acc-pw-conf" type="password" autocomplete="new-password" placeholder="Repita a nova senha" style="${inp}">
       <div id="acc-pw-msg" style="font-size:12px;min-height:17px;margin-bottom:6px"></div>
       <button onclick="accChangePassword()" id="acc-pw-btn" style="width:100%;padding:12px;background:var(--accent);border-radius:10px;color:#fff;font-size:14px;font-weight:600">Alterar senha</button>
+      <div style="text-align:center;margin-top:12px">
+        <a href="#" onclick="accForgotCurrentPassword(event)" style="font-size:12px;color:var(--muted);text-decoration:underline">Não lembro a senha atual</a>
+      </div>
     </div>`:'';
   const excluir=_accPanel==='excluir'?`
     <div style="border-top:1px solid #FECACA;margin-top:10px;padding-top:12px">
@@ -4755,6 +4758,13 @@ function renderAccountHtml(){
   </div>
   <button onclick="showMais()" style="width:100%;padding:10px;background:#F0EFED;border-radius:10px;color:#1C1917;font-size:13px;font-weight:500;margin-bottom:8px">← Voltar</button>`;
 }
+// Sem a senha atual o Cognito não troca — o único caminho é sair e redefinir por
+// e-mail, que é justamente o fluxo que só aparece na tela de login.
+function accForgotCurrentPassword(e){
+  e&&e.preventDefault();
+  signOut();
+  showForgotPassword(null);
+}
 function accRestartOnboarding(){
   lsDel('ht:onboard_done');
   startOnboarding();
@@ -4771,16 +4781,26 @@ async function accChangePassword(){
   if(nova!==conf){fail('A confirmação não bate com a nova senha.');return;}
   if(nova===atual){fail('A nova senha é igual à atual.');return;}
   btn.disabled=true;btn.textContent='Alterando…';msg.textContent='';
-  let res=await cognito('ChangePassword',{AccessToken:authToken,PreviousPassword:atual,ProposedPassword:nova});
-  // NotAuthorized cobre tanto senha errada quanto token vencido — só a mensagem
-  // do Cognito separa os dois casos.
-  if(res.__type&&/expired/i.test(res.message||'')&&await tryRefresh()){
+  let res;
+  try{
     res=await cognito('ChangePassword',{AccessToken:authToken,PreviousPassword:atual,ProposedPassword:nova});
+    // NotAuthorized cobre tanto senha errada quanto token vencido — só a mensagem
+    // do Cognito separa os dois casos.
+    if(res.__type&&/expired/i.test(res.message||'')&&await tryRefresh()){
+      res=await cognito('ChangePassword',{AccessToken:authToken,PreviousPassword:atual,ProposedPassword:nova});
+    }
+  }catch{
+    // sem rede o fetch rejeita: sem este catch o botão ficava travado em "Alterando…"
+    btn.disabled=false;btn.textContent='Alterar senha';
+    fail('Sem conexão. Tente novamente quando estiver online.');
+    return;
   }
   btn.disabled=false;btn.textContent='Alterar senha';
   if(res.__type){
     const t=res.__type;
-    if(t.includes('NotAuthorized')) fail('Senha atual incorreta.');
+    // se o refresh acima não resolveu, o erro é de sessão, não de senha
+    if(/expired/i.test(res.message||'')) fail('Sua sessão expirou. Saia e entre de novo para trocar a senha.');
+    else if(t.includes('NotAuthorized')) fail('Senha atual incorreta.');
     else if(t.includes('InvalidPassword')) fail('Senha fraca. Use pelo menos 8 caracteres.');
     else if(t.includes('LimitExceeded')) fail('Muitas tentativas. Aguarde alguns minutos.');
     else fail(forgotMapError(t));
