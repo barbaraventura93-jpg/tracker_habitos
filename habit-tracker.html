@@ -3006,48 +3006,152 @@ function urlBase64ToUint8Array(base64String){
   for(let i=0;i<rawData.length;i++) outputArray[i]=rawData.charCodeAt(i);
   return outputArray;
 }
+// Mensagem do último erro/aviso de push, renderizada dentro do próprio card.
+// O toast some em 3s e é curto demais para instruções de "vá em Ajustes e...".
+let _pushNote=null;
+
+// Diagnóstico do suporte a push. Um único "não suporta" escondia três causas
+// diferentes — a mais comum de longe é iPhone com o site aberto no Safari em vez
+// do app instalado na Tela de Início, que TEM solução e precisa ser dita.
+function pushSupport(){
+  const ua=navigator.userAgent||'';
+  const isIOS=/iPad|iPhone|iPod/.test(ua)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
+  const standalone=window.matchMedia?.('(display-mode: standalone)').matches||navigator.standalone===true;
+  if(!window.isSecureContext) return{ok:false,reason:'insecure',msg:'Notificações só funcionam em HTTPS. Abra o app pelo endereço oficial (https://…).'};
+  if(!('serviceWorker' in navigator)) return{ok:false,reason:'nosw',msg:'Este navegador não expõe service workers — em modo anônimo/privado isso é normal. Abra o app numa janela normal.'};
+  if(isIOS&&!standalone) return{ok:false,reason:'ios-install',msg:'No iPhone e no iPad os lembretes só funcionam com o app instalado na Tela de Início. Toque em Compartilhar (⬆️) → "Adicionar à Tela de Início", abra o app pelo ícone e ative os lembretes por lá.'};
+  if(!('Notification' in window)||!('PushManager' in window)) return{ok:false,reason:'unsupported',msg:'Este navegador não suporta notificações push. No computador funciona no Chrome, Edge, Firefox e Safari 16.4+.'};
+  return{ok:true};
+}
 function renderPushCard(){
-  const supported='serviceWorker' in navigator && 'PushManager' in window;
+  const sup=pushSupport();
   const enabled=lsGet('ht:push_enabled')==='1';
   const hour=lsGet('ht:push_hour')||'19';
-  if(!supported){
-    return`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🔔</span> LEMBRETES</div></div><div style="font-size:12px;color:#78716C">Seu navegador não suporta notificações push.</div></div>`;
+  const note=_pushNote?`<div style="background:#FEF7EC;border:1px solid #FBE2BC;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11.5px;color:#92400E;line-height:1.6">${_pushNote}</div>`:'';
+  const hdr=`<div class="sec-hdr"><div class="sec-lbl"><span>🔔</span> LEMBRETES</div><span style="font-size:10px;color:${enabled&&sup.ok?'#16A34A':'#78716C'}">${enabled&&sup.ok?'ativado':'desativado'}</span></div>`;
+  if(!sup.ok){
+    return`<div class="card">${hdr}<div style="font-size:12px;color:#78716C;line-height:1.6">${sup.msg}</div></div>`;
   }
+  // Permissão negada não abre prompt de novo: o navegador só volta a perguntar
+  // depois que a pessoa limpa o bloqueio na mão. Botão "Ativar" aqui é um beco
+  // sem saída — melhor ensinar o caminho.
+  const denied=Notification.permission==='denied';
   const hourOpts=Array.from({length:24},(_,h)=>`<option value="${h}" ${String(h)===hour?'selected':''}>${String(h).padStart(2,'0')}:00</option>`).join('');
+  const deniedBox=denied?`<div style="background:#FEF2F2;border:1px solid #FECACA;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11.5px;color:#991B1B;line-height:1.6">As notificações estão <b>bloqueadas</b> para este site.<br>${unblockSteps()}<br>Depois volte aqui e toque em Ativar.</div>`:'';
+  // Só aparece depois de ativado: prova a corrente inteira (permissão + service
+  // worker + exibição) na hora, sem esperar o horário do lembrete chegar.
+  const testBtn=enabled?`<button onclick="testPushNotification()" style="width:100%;padding:11px;background:#FAFAF9;border:1px solid #E7E5E4;color:#57534E;border-radius:10px;font-size:13px;font-weight:600;margin-bottom:8px">Enviar notificação de teste</button>`:'';
   return`<div class="card">
-    <div class="sec-hdr"><div class="sec-lbl"><span>🔔</span> LEMBRETES</div><span style="font-size:10px;color:${enabled?'#16A34A':'#78716C'}">${enabled?'ativado':'desativado'}</span></div>
+    ${hdr}
     <div style="font-size:12px;color:#78716C;margin-bottom:10px;line-height:1.6">Dois tipos de lembrete:<br>• <b>Diário</b> — no horário escolhido, com o resumo do seu dia (treino e hábitos), se ainda não tiver registrado nada.<br>• <b>Por hábito</b> — automático, na hora de cada hábito que tenha horário definido (configure em Meus Hábitos).</div>
+    ${note}${deniedBox}
     <div style="font-size:11px;color:#78716C;margin-bottom:5px">Horário do lembrete diário</div>
     <select id="push-hour-select" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:14px;outline:none;margin-bottom:10px">${hourOpts}</select>
-    <button onclick="${enabled?'disablePushReminders()':'enablePushReminders()'}" style="width:100%;padding:12px;background:${enabled?'#F0EFED':'#6C63FF'};color:${enabled?'#78716C':'#fff'};border-radius:10px;font-size:14px;font-weight:700">${enabled?'Desativar lembretes':'Ativar lembretes'}</button>
+    ${testBtn}
+    <button id="push-toggle-btn" onclick="${enabled?'disablePushReminders()':'enablePushReminders()'}" style="width:100%;padding:12px;background:${enabled?'#F0EFED':'#6C63FF'};color:${enabled?'#78716C':'#fff'};border-radius:10px;font-size:14px;font-weight:700">${enabled?'Desativar lembretes':'Ativar lembretes'}</button>
   </div>`;
 }
-async function enablePushReminders(){
-  if(!('serviceWorker' in navigator)||!('PushManager' in window)){showToast('Seu navegador não suporta notificações push');return;}
-  const hour=parseInt(document.getElementById('push-hour-select')?.value)||19;
-  const perm=await Notification.requestPermission();
-  if(perm!=='granted'){showToast('Permissão de notificação negada');return;}
+// O caminho para destravar a permissão muda por plataforma, e mandar a pessoa
+// procurar "o cadeado" no Chrome do Android não ajuda: lá o ícone é outro, e
+// ainda existe o bloqueio no nível do sistema, fora do navegador.
+function unblockSteps(){
+  const ua=navigator.userAgent||'';
+  if(/Android/.test(ua)) return'No Chrome: toque no ícone à esquerda do endereço (cadeado ou ⓘ) → <b>Permissões</b> → Notificações → Permitir. Se o app está instalado na tela inicial, o caminho é <b>Configurações do Android → Apps → Rotina Diária (ou Chrome) → Notificações</b>.';
+  if(/iPad|iPhone|iPod/.test(ua)) return'Em <b>Ajustes do iPhone → Notificações</b>, procure o app na lista e permita.';
+  return'Toque no cadeado à esquerda do endereço → Notificações → Permitir.';
+}
+// Uma promise que nunca resolve deixaria o botão preso em "Ativando…" para
+// sempre — que é exatamente a cara de "o app não deixa ativar". Melhor falhar
+// com uma causa em mãos do que travar sem nenhuma.
+function withTimeout(p,ms,label){
+  return Promise.race([p,new Promise((_,rej)=>setTimeout(()=>rej(new Error(label)),ms))]);
+}
+// Notificação local, sem passar pelo servidor. Se ESTA aparece, permissão e
+// service worker estão de pé e o que falta está no envio; se não aparece, o
+// problema é do lado do aparelho e nem adianta investigar a Lambda.
+async function testPushNotification(){
   try{
-    const reg=await navigator.serviceWorker.register('sw.js');
+    if(Notification.permission!=='granted'){_pushNote='A permissão não está concedida — ative os lembretes primeiro.';showGoals();return;}
+    const reg=await navigator.serviceWorker.getRegistration()||await navigator.serviceWorker.register('sw.js');
+    await reg.showNotification('Rotina Diária',{body:'Notificação de teste — está funcionando! 🎉',icon:'icon.svg',badge:'icon.svg'});
+    showToast('Teste enviado');
+  }catch(e){
+    console.error('[push] falha no teste',e);
+    _pushNote=`O teste falhou: ${e&&(e.message||e.name)||'erro desconhecido'}. Se a permissão está concedida, verifique se as notificações do navegador não estão silenciadas nas configurações do aparelho.`;
+    showGoals();
+  }
+}
+// Safari antigo ainda usa a forma com callback, que não devolve promise — sem
+// isto o await entrega undefined e a ativação morre dizendo "permissão negada".
+function requestNotificationPermission(){
+  try{
+    const r=Notification.requestPermission(p=>{});
+    return r&&typeof r.then==='function'?r:new Promise(res=>Notification.requestPermission(res));
+  }catch(e){ return Promise.resolve('denied'); }
+}
+// A inscrição guardada pode ter sido criada com outra chave VAPID (chave trocada
+// no servidor, ou o app aberto em outro deploy). Reaproveitá-la faz o push sair
+// do servidor e nunca chegar; e um subscribe() novo com chave diferente estoura
+// InvalidStateError. Nos dois casos a saída é a mesma: descartar e reinscrever.
+function sameServerKey(sub,keyBytes){
+  const raw=sub?.options?.applicationServerKey;
+  if(!raw) return false;
+  const cur=new Uint8Array(raw);
+  if(cur.length!==keyBytes.length) return false;
+  for(let i=0;i<cur.length;i++) if(cur[i]!==keyBytes[i]) return false;
+  return true;
+}
+async function enablePushReminders(){
+  _pushNote=null;
+  const sup=pushSupport();
+  if(!sup.ok){_pushNote=sup.msg;showGoals();return;}
+  if(!authToken){showToast('Faça login para ativar os lembretes');return;}
+  const hour=parseInt(document.getElementById('push-hour-select')?.value)||19;
+  const btn=document.getElementById('push-toggle-btn');
+  if(btn){btn.textContent='Ativando…';btn.disabled=true;}
+  try{
+    const perm=await requestNotificationPermission();
+    if(perm!=='granted'){
+      // O Chrome pode devolver 'denied' na hora, sem mostrar prompt nenhum, quando
+      // o site já foi bloqueado antes — inclusive pelo bloqueio automático dele.
+      _pushNote=perm==='denied'
+        ?`Permissão negada — o navegador nem chegou a perguntar, porque este site já está bloqueado. ${unblockSteps()}`
+        :'A permissão não foi concedida — o aviso do navegador precisa ser respondido com "Permitir".';
+      showGoals();return;
+    }
+    const reg=await withTimeout(navigator.serviceWorker.register('sw.js'),15000,'o service worker (sw.js) não registrou — verifique a conexão e recarregue a página');
+    // Sem esperar o ready, o subscribe pode rodar antes do worker ativar e falhar.
+    await withTimeout(navigator.serviceWorker.ready,15000,'o service worker não ficou pronto — feche e reabra o app');
+    const keyBytes=urlBase64ToUint8Array(VAPID_PUBLIC_KEY);
     let sub=await reg.pushManager.getSubscription();
-    if(!sub) sub=await reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:urlBase64ToUint8Array(VAPID_PUBLIC_KEY)});
+    if(sub&&!sameServerKey(sub,keyBytes)){await sub.unsubscribe().catch(()=>{});sub=null;}
+    if(!sub) sub=await withTimeout(reg.pushManager.subscribe({userVisibleOnly:true,applicationServerKey:keyBytes}),20000,'o serviço de push do navegador não respondeu (no Android isso costuma ser o Google Play Services sem conexão) — tente de novo');
     const res=await fetch(`${API_URL}?action=save_push_subscription`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({subscription:sub.toJSON(),reminderHour:hour})});
-    if(!res.ok) throw new Error('falha ao salvar no servidor');
+    if(!res.ok){
+      const detail=await res.text().catch(()=>'');
+      if(res.status===401){throw new Error('sua sessão expirou — saia e entre de novo');}
+      throw new Error(`o servidor recusou (HTTP ${res.status})${detail?': '+detail.slice(0,120):''}`);
+    }
     lsSet('ht:push_enabled','1');
     lsSet('ht:push_hour',String(hour));
     showToast('Lembretes ativados! 🔔');
   }catch(e){
-    showToast('Não foi possível ativar os lembretes agora');
+    console.error('[push] falha ao ativar',e);
+    const m=e&&(e.message||e.name)||'erro desconhecido';
+    _pushNote=/NotAllowedError/.test(m)
+      ?'O navegador bloqueou a inscrição. Verifique a permissão de notificações deste site e tente de novo.'
+      :`Não foi possível ativar: ${m}`;
   }
   showGoals();
 }
 async function disablePushReminders(){
+  _pushNote=null;
   try{
     await fetch(`${API_URL}?action=delete_push_subscription`,{method:'POST',headers:{authorization:'Bearer '+authToken}});
     const reg=await navigator.serviceWorker.getRegistration();
     const sub=reg&&await reg.pushManager.getSubscription();
     if(sub) await sub.unsubscribe();
-  }catch{}
+  }catch(e){console.error('[push] falha ao desativar',e);}
   lsDel('ht:push_enabled');
   showToast('Lembretes desativados');
   showGoals();

@@ -88,6 +88,41 @@ Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
 | `delete_account` (POST) | apaga todas as linhas do `userId` nas duas tabelas — exige `{"confirm":"EXCLUIR"}` no body |
 | `save_push_subscription` / `delete_push_subscription` | inscrição Web Push |
 
+### Notificações push — por que "não deixa ativar"
+
+O botão de ativar depende de coisas fora do nosso código, e cada uma falha de um
+jeito diferente. `pushSupport()` no frontend separa os casos e o card de LEMBRETES
+mostra a instrução correspondente em vez de um "não suporta" sem saída:
+
+- **iPhone/iPad**: Web Push só existe com o app **instalado na Tela de Início**.
+  No Safari em aba, `PushManager` nem aparece — não é bug, é a plataforma. O
+  `manifest.json` já declara `display: standalone`
+- **Permissão negada**: o navegador não pergunta de novo. Só destravando na mão
+  (cadeado → Notificações → Permitir). Por isso o card detecta
+  `Notification.permission==='denied'` e ensina o caminho
+- **Inscrição antiga com outra chave VAPID**: reaproveitar manda o push para o
+  vazio e um `subscribe()` novo estoura `InvalidStateError`. `sameServerKey()`
+  compara os bytes e reinscreve quando difere
+- **Android/Chrome**: o `requestPermission()` pode devolver `denied` na hora, sem
+  mostrar prompt nenhum, quando o site já foi bloqueado antes (inclusive pelo
+  bloqueio automático do Chrome). `unblockSteps()` dá o caminho por plataforma —
+  no Android o do sistema também, que fica fora do navegador
+- Safari antigo devolve `requestPermission` por callback, sem promise — daí o
+  wrapper `requestNotificationPermission()`
+
+Todo passo assíncrono da ativação passa por `withTimeout()`. Uma promise que
+nunca resolve (registro do SW, `ready`, `subscribe`) deixaria o botão preso em
+"Ativando…" para sempre — que é justamente a cara de "o app não deixa ativar".
+
+O botão "Enviar notificação de teste" (`testPushNotification()`) só aparece com
+os lembretes ativos e dispara `showNotification` local, sem servidor. Ele divide
+o problema em dois: se a notificação aparece, permissão e service worker estão de
+pé e o que falta está no envio (VAPID/push-sender); se não aparece, é do aparelho
+e não adianta investigar a Lambda.
+
+Erros de ativação vão para o `console` e para uma nota dentro do card
+(`_pushNote`), não para o toast: instrução de configuração não cabe em 3 segundos.
+
 "Datas especiais" no DynamoDB (não são datas reais, são chaves de config por usuário):
 `__gymplan__`, `__workouts__`, `__mealplan__`, `__csups__`, `__goals__`, `__goalsdefs__`,
 `__goallogs__`, `__body__`, `__habits__`, `__weekplan__`, `__periodization__`
