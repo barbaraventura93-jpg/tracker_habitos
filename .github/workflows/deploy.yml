@@ -83,6 +83,33 @@ jobs:
             echo "Stack em $STATUS — reverteu um update, mas os recursos estão vivos. NÃO deletar; o deploy a seguir atualiza normalmente."
           fi
 
+      # Uma Lambda só aceita UM Function URL. Se existir um Function URL FÍSICO que
+      # não está no estado da stack (ex.: recriado por CLI fora do CloudFormation, ou
+      # deixado para trás por um rollback anterior), o próximo deploy tenta criar o
+      # TrackerFunctionUrl e bate 409 "FunctionUrlConfig exists" — a stack reverte em
+      # loop e a permissão pública nunca chega a ser aplicada. Isso já travou a esteira
+      # e exigiu deleção manual. Aqui detectamos o órfão (físico existe, mas a stack não
+      # o gerencia) e o removemos para o CloudFormation recriá-lo limpo. Quando a stack
+      # já é dona da URL, não tocamos em nada — o endereço não muda.
+      - name: Reconciliar Function URL órfão (evita 409 no CloudFormation)
+        run: |
+          MANAGED=$(aws cloudformation describe-stack-resources \
+            --stack-name tracker-habitos-backend \
+            --logical-resource-id TrackerFunctionUrl \
+            --region sa-east-1 \
+            --query "StackResources[0].PhysicalResourceId" --output text 2>/dev/null || echo "NONE")
+          PHYS=$(aws lambda get-function-url-config \
+            --function-name tracker-habitos-api \
+            --region sa-east-1 \
+            --query FunctionUrl --output text 2>/dev/null || echo "NONE")
+          echo "Function URL gerenciado pela stack: $MANAGED | físico na função: $PHYS"
+          if [[ ( -z "$MANAGED" || "$MANAGED" == "NONE" || "$MANAGED" == "None" ) && "$PHYS" != "NONE" ]]; then
+            echo "::warning::Function URL órfão (existe físico, fora do estado da stack). Removendo para o CloudFormation recriar sem 409."
+            aws lambda delete-function-url-config --function-name tracker-habitos-api --region sa-east-1
+          else
+            echo "OK: sem órfão — a stack já gerencia o Function URL (ou não há nenhum físico)."
+          fi
+
       - name: Deploy infraestrutura (Cognito + DynamoDB + Lambda)
         id: cfn
         continue-on-error: true
@@ -198,9 +225,15 @@ jobs:
             echo "::error::A função NÃO tem policy — toda chamada à API responde 403."
           else
             echo "$POLICY" | python3 -m json.tool
+            # Desde out/2025 um Function URL NONE exige AS DUAS permissões. Conferir só
+            # InvokeFunctionUrl deixava passar exatamente o 403 que derrubou a API.
             echo "$POLICY" | grep -q "InvokeFunctionUrl" \
               && echo "OK: existe statement de lambda:InvokeFunctionUrl" \
-              || echo "::error::Policy existe mas SEM lambda:InvokeFunctionUrl — isso causa o 403."
+              || echo "::error::Policy SEM lambda:InvokeFunctionUrl — causa 403."
+            # grep de InvokeFunction que não case com InvokeFunctionUrl
+            echo "$POLICY" | grep -qE '"lambda:InvokeFunction"' \
+              && echo "OK: existe statement de lambda:InvokeFunction (exigido desde out/2025)" \
+              || echo "::error::Policy SEM lambda:InvokeFunction — desde out/2025 isto sozinho causa 403 no Function URL NONE."
           fi
 
       - name: Obter outputs do stack
@@ -295,15 +328,24 @@ jobs:
         run: |
           URL="${{ steps.stack.outputs.api_url }}"
           echo "Testando $URL"
-          CODE=$(curl -sS -o /tmp/probe.txt -D /tmp/probe-h.txt -w "%{http_code}" \
-                   --max-time 20 "${URL%/}/?date=__probe__" || echo "000")
-          echo "HTTP $CODE"
+          # Retry porque uma permissão de Function URL recém-criada leva alguns
+          # segundos para valer — sem isso um 403 de propagação reprovaria um deploy
+          # que na verdade está correto. 5 tentativas com espera crescente.
+          CODE=000; TIPO=""
+          for i in 1 2 3 4 5; do
+            CODE=$(curl -sS -o /tmp/probe.txt -D /tmp/probe-h.txt -w "%{http_code}" \
+                     --max-time 20 "${URL%/}/?date=__probe__" || echo "000")
+            TIPO=$(grep -i "^x-amzn-errortype" /tmp/probe-h.txt | tr -d '\r' | cut -d' ' -f2- || true)
+            echo "tentativa $i: HTTP $CODE"
+            [[ "$CODE" == "401" ]] && break
+            [[ $i -lt 5 ]] && sleep $((i*5))
+          done
+          echo "HTTP final: $CODE"
           head -c 400 /tmp/probe.txt; echo
-          TIPO=$(grep -i "^x-amzn-errortype" /tmp/probe-h.txt | tr -d '\r' | cut -d' ' -f2- || true)
           if [[ "$CODE" == "401" ]]; then
             echo "OK: a função respondeu (401 unauthorized é o esperado sem token)."
           elif [[ "$CODE" == "403" ]]; then
-            echo "::error::403 no Function URL (${TIPO:-sem x-amzn-errortype}) — a requisição não chegou à função. Confira se o endereço $URL ainda existe (get-function-url-config), o AuthType e a policy."
+            echo "::error::403 no Function URL (${TIPO:-sem x-amzn-errortype}) — a requisição não chegou à função. Desde out/2025 a causa mais comum é a resource policy faltar lambda:InvokeFunction (além de InvokeFunctionUrl). Confira também se o endereço $URL existe (get-function-url-config) e o AuthType."
             exit 1
           else
             echo "::error::Resposta inesperada do Function URL: HTTP $CODE. Esperado 401."
