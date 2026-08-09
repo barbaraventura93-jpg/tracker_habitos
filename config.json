@@ -1,0 +1,4 @@
+{
+  "apiUrl": "__API_URL__",
+  "cognitoClientId": "__COGNITO_CLIENT_ID__"
+}

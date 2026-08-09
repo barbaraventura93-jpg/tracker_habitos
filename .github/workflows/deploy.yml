@@ -225,11 +225,18 @@ jobs:
       # HTML com placeholders (__API_URL__/__COGNITO_CLIENT_ID__) não substituídos.
       # Roda independente do backend: se só a parte de EventBridge falhar mas a
       # stack anterior tiver rollback para um estado válido, o site ainda sobe.
-      - name: Injetar configurações no HTML
+      # O config.json recebe os mesmos valores do HTML e é publicado com
+      # no-store. É ele que o app relê a cada boot: se o endereço do Function URL
+      # mudar, um aparelho com HTML velho no cache ainda descobre o endereço novo
+      # em vez de bater para sempre num endpoint morto (403 AccessDeniedException).
+      - name: Injetar configurações no HTML e no config.json
         if: steps.stack.outputs.api_url != '' && steps.stack.outputs.client_id != ''
         run: |
-          sed -i "s|__API_URL__|${{ steps.stack.outputs.api_url }}|g" habit-tracker.html
-          sed -i "s|__COGNITO_CLIENT_ID__|${{ steps.stack.outputs.client_id }}|g" habit-tracker.html
+          sed -i "s|__API_URL__|${{ steps.stack.outputs.api_url }}|g" habit-tracker.html config.json
+          sed -i "s|__COGNITO_CLIENT_ID__|${{ steps.stack.outputs.client_id }}|g" habit-tracker.html config.json
+          grep -q "__API_URL__\|__COGNITO_CLIENT_ID__" habit-tracker.html config.json \
+            && { echo "::error::Sobrou placeholder não substituído"; exit 1; } || true
+          cat config.json
 
       - name: Sincronizar arquivos com o S3
         if: steps.stack.outputs.api_url != '' && steps.stack.outputs.client_id != ''
@@ -247,12 +254,61 @@ jobs:
             --exclude "lambda-builds/*" \
             --delete
 
+      # O `s3 sync` sobe sem Cache-Control nenhum, e aí o navegador guarda o
+      # arquivo por heurística (uma fração da idade do Last-Modified) — a
+      # invalidação do CloudFront limpa a CDN, mas não o cache do aparelho. Foi
+      # assim que o celular continuou dias com o HTML antigo, chamando um
+      # Function URL que já não existia. Os arquivos de configuração agora
+      # exigem revalidação a cada carga; o ícone, esse sim, pode ficar em cache.
+      - name: Definir cache dos arquivos mutáveis
+        if: steps.stack.outputs.api_url != '' && steps.stack.outputs.client_id != ''
+        run: |
+          put() {
+            aws s3 cp "$1" "s3://tracker-habitos/$1" \
+              --cache-control "$2" --content-type "$3"
+          }
+          put config.json          "no-store"                 "application/json"
+          put habit-tracker.html   "no-cache, must-revalidate" "text/html; charset=utf-8"
+          put sw.js                "no-cache, must-revalidate" "application/javascript; charset=utf-8"
+          put manifest.json        "no-cache, must-revalidate" "application/manifest+json"
+          aws s3 cp icon.svg s3://tracker-habitos/icon.svg \
+            --cache-control "public, max-age=604800" --content-type "image/svg+xml"
+
       - name: Invalidar cache do CloudFront
         if: steps.stack.outputs.api_url != '' && steps.stack.outputs.client_id != ''
         run: |
           aws cloudfront create-invalidation \
             --distribution-id E2ILQ9T2EA1B14 \
             --paths "/*"
+
+      # Prova de fogo do endpoint, do lado de fora da AWS: sem Authorization o
+      # NOSSO código responde 401 {"error":"unauthorized"}. Se em vez disso vier
+      # 403 [AccessDeniedException], a requisição nem chegou à função — endereço
+      # inexistente, AuthType errado ou policy sem InvokeFunctionUrl.
+      #
+      # Roda depois do deploy do frontend, de propósito: o site sobe de qualquer
+      # jeito e só o resultado do teste decide a cor do workflow. Os dois deploys
+      # anteriores passaram verdes com a API respondendo 403 para tudo, e o erro
+      # só apareceu no celular — este passo fecha essa lacuna.
+      - name: Testar o Function URL de fora
+        if: steps.stack.outputs.api_url != ''
+        run: |
+          URL="${{ steps.stack.outputs.api_url }}"
+          echo "Testando $URL"
+          CODE=$(curl -sS -o /tmp/probe.txt -D /tmp/probe-h.txt -w "%{http_code}" \
+                   --max-time 20 "${URL%/}/?date=__probe__" || echo "000")
+          echo "HTTP $CODE"
+          head -c 400 /tmp/probe.txt; echo
+          TIPO=$(grep -i "^x-amzn-errortype" /tmp/probe-h.txt | tr -d '\r' | cut -d' ' -f2- || true)
+          if [[ "$CODE" == "401" ]]; then
+            echo "OK: a função respondeu (401 unauthorized é o esperado sem token)."
+          elif [[ "$CODE" == "403" ]]; then
+            echo "::error::403 no Function URL (${TIPO:-sem x-amzn-errortype}) — a requisição não chegou à função. Confira se o endereço $URL ainda existe (get-function-url-config), o AuthType e a policy."
+            exit 1
+          else
+            echo "::error::Resposta inesperada do Function URL: HTTP $CODE. Esperado 401."
+            exit 1
+          fi
 
       # Mantém o workflow VERMELHO se o backend falhou, mesmo que o frontend tenha
       # sido publicado — assim a falha de infra (ex.: permissão EventBridge ausente)

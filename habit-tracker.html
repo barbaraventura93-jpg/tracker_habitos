@@ -3389,7 +3389,9 @@ function reloadUserState(){
 }
 
 // ─── AUTH ─────────────────────────────────────────────────────────────────────
-const COGNITO_CLIENT_ID='__COGNITO_CLIENT_ID__';
+// `let`, não `const`: o valor injetado no deploy é só o ponto de partida —
+// `loadRuntimeConfig()` (seção API) sobrescreve com o que o config.json diz.
+let COGNITO_CLIENT_ID='__COGNITO_CLIENT_ID__';
 const COGNITO_URL='https://cognito-idp.sa-east-1.amazonaws.com/';
 
 let authToken=localStorage.getItem('ht:token')||null;
@@ -4020,8 +4022,77 @@ function forgotMapError(type){
 // ─────────────────────────────────────────────────────────────────
 
 // ─── API ─────────────────────────────────────────────────────────────────────
-const API_URL='__API_URL__';
-const USE_API=API_URL.startsWith('https://');
+// O endereço do Function URL é injetado no deploy, mas NÃO pode ser a única
+// fonte da verdade: ele muda quando a URL é recriada (já aconteceu), e um
+// aparelho rodando HTML de cache continua chamando o endereço antigo. A AWS
+// responde a um Function URL inexistente com 403 [AccessDeniedException] e o
+// texto que aponta para urls-auth.html — exatamente o erro que travou 21
+// gravações na fila, sem nada de errado na policy nem no AuthType.
+//
+// Por isso o valor abaixo é só o ponto de partida: `loadRuntimeConfig()` lê o
+// config.json (publicado com no-store) e sobrescreve. Assim uma troca de
+// endereço se propaga sem depender de o HTML sair do cache do navegador.
+let API_URL='__API_URL__';
+let USE_API=API_URL.startsWith('https://');
+
+let _cfgLoadedAt=0;
+// Lê config.json fora de qualquer cache. Nunca rejeita: sem rede (ou com a
+// resposta velha do CloudFront) o app segue com o valor embutido no HTML.
+// Devolve true quando o endereço da API mudou de fato.
+async function loadRuntimeConfig(force){
+  // sem force, uma leitura por minuto basta — evita rajada de fetch quando
+  // várias chamadas falham juntas
+  if(!force&&_cfgLoadedAt&&Date.now()-_cfgLoadedAt<60000) return false;
+  let cfg=null;
+  try{
+    const ctl=new AbortController();
+    // boot não pode ficar preso esperando rede ruim
+    const to=setTimeout(()=>ctl.abort(),3000);
+    const r=await fetch('config.json?t='+Date.now(),{cache:'no-store',signal:ctl.signal});
+    clearTimeout(to);
+    if(r.ok) cfg=await r.json();
+  }catch(_){}
+  _cfgLoadedAt=Date.now();
+  if(!cfg) return false;
+  let moved=false;
+  const api=cfg.apiUrl;
+  if(typeof api==='string'&&api.startsWith('https://')&&api!==API_URL){
+    console.info('[config] endpoint da API atualizado');
+    API_URL=api;USE_API=true;moved=true;
+  }
+  const cid=cfg.cognitoClientId;
+  // o client id do Cognito só troca se o pool for recriado; aceitar o novo
+  // aqui evita que login/refresh fiquem presos num id morto
+  if(typeof cid==='string'&&cid&&!cid.startsWith('__')&&cid!==COGNITO_CLIENT_ID) COGNITO_CLIENT_ID=cid;
+  return moved;
+}
+
+// 403 vindo do porteiro do Function URL (a requisição nem chegou ao nosso
+// código): ou o endereço não existe mais, ou o AuthType/policy mudou. Nos dois
+// casos insistir com o mesmo endereço é inútil — vale reler o config.json.
+function isFrontDoorDenial(r,d){
+  if(!r||r.status!==403) return false;
+  try{
+    const tipo=r.headers&&r.headers.get('x-amzn-errortype');
+    if(tipo&&tipo.indexOf('AccessDenied')>=0) return true;
+  }catch(_){}
+  const msg=String((d&&(d.Message||d.message||d._raw))||'');
+  return msg.indexOf('urls-auth')>=0||/^Forbidden/.test(msg);
+}
+
+// Último recurso quando o endereço embutido está morto e o config.json também
+// não resolve (HTML velho preso no cache do aparelho): apaga os caches do
+// service worker, desregistra e recarrega do servidor.
+async function forceAppUpdate(){
+  try{
+    if('caches' in window){const ks=await caches.keys();await Promise.all(ks.map(k=>caches.delete(k)));}
+    if('serviceWorker' in navigator){
+      const rs=await navigator.serviceWorker.getRegistrations();
+      await Promise.all(rs.map(r=>r.unregister()));
+    }
+  }catch(_){}
+  location.reload();
+}
 
 // ─── OUTBOX — fila de gravações pendentes (sobrevive a offline/refresh) ──────
 function loadOutbox(){try{return JSON.parse(lsGet('ht:outbox')||'{}');}catch{return{};}}
@@ -4040,9 +4111,13 @@ let _flushing=false;
 // em silêncio: a fila parava de subir, o indicador ficava em "sincronizando…"
 // para sempre e nada dizia que os dados não estavam chegando ao servidor.
 let _syncErr='';
+// true quando a fila parou por 403 do porteiro do Function URL mesmo depois de
+// reler o config.json — aí o indicador vira botão de "atualizar app".
+let _syncStale=false;
 async function flushOutbox(){
   if(_flushing||!USE_API||!authToken||!navigator.onLine) return;
   _flushing=true;
+  let recovered=false; // uma única tentativa de reler o endereço por flush
   try{
     for(let guard=0;guard<100;guard++){
       const ob=loadOutbox();
@@ -4054,8 +4129,20 @@ async function flushOutbox(){
         r=await fetch(`${API_URL}?date=${encodeURIComponent(key)}`,{method:'PUT',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:entry.body});
       }catch(e){_syncErr=(e&&e.message)||'sem conexão com a API';break;}
       if(r.status===401){const ok=await tryRefresh();if(ok)continue;_syncErr='sessão expirada — entre de novo';break;}
-      if(!r.ok){_syncErr=apiErr(r,await readApiBody(r),'falha ao sincronizar');break;}
-      _syncErr='';
+      if(!r.ok){
+        const body=await readApiBody(r);
+        if(isFrontDoorDenial(r,body)&&!recovered){
+          // endereço da API pode ter mudado: relê o config.json e tenta de novo
+          recovered=true;
+          if(await loadRuntimeConfig(true)) continue;
+          _syncStale=true;
+          _syncErr='app desatualizado — toque para atualizar';
+          break;
+        }
+        if(isFrontDoorDenial(r,body)){_syncStale=true;_syncErr='app desatualizado — toque para atualizar';break;}
+        _syncErr=apiErr(r,body,'falha ao sincronizar');break;
+      }
+      _syncErr='';_syncStale=false;
       const cur=loadOutbox();
       if(cur[key]&&cur[key].ts===entry.ts) delete cur[key];
       saveOutbox(cur);
@@ -4071,6 +4158,9 @@ function updateSyncStatus(){
   if(!el) return;
   if(!USE_API||!authToken){el.textContent='';return;}
   const pending=Object.keys(loadOutbox()).length;
+  // só o erro de endereço morto tem ação de conserto do lado do usuário
+  el.style.cursor=_syncStale?'pointer':'';
+  el.onclick=_syncStale?forceAppUpdate:null;
   if(!navigator.onLine){
     el.textContent=pending?`⚡ offline · ${pending} na fila`:'⚡ offline';
     el.style.color='#D97706';
@@ -6005,7 +6095,13 @@ function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);ret
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){navigator.serviceWorker.register('sw.js').catch(()=>{});}
-if(authToken){enterApp();}else{setUserScope(null);showScreen('auth');}
+// O config.json vem antes de qualquer chamada à API: é ele que diz o endereço
+// atual do Function URL, mesmo que este HTML tenha saído do cache do aparelho.
+// `finally` porque a leitura nunca deve bloquear a entrada no app — offline ou
+// com o arquivo indisponível, seguimos com o endereço embutido no deploy.
+loadRuntimeConfig(true).finally(()=>{
+  if(authToken){enterApp();}else{setUserScope(null);showScreen('auth');}
+});
 </script>
 </body>
 </html>
