@@ -205,6 +205,14 @@ Resources:
   # Acesso público ao Function URL declarado como recurso (idempotente).
   # Substitui o antigo passo CLI remove/add do workflow, que criava janela de
   # outage e quebrava sob deploys concorrentes.
+  #
+  # DESDE OUTUBRO/2025 um Function URL com AuthType NONE exige DUAS permissões
+  # na resource policy: lambda:InvokeFunctionUrl E lambda:InvokeFunction. Faltando
+  # a segunda, o front door da AWS nega toda requisição com 403 AccessDeniedException
+  # ("Forbidden", link para urls-auth.html) ANTES de o código rodar — mesmo com o
+  # AuthType e a primeira permissão corretos. Foi a causa real do 403 que #30/#32/#36
+  # perseguiram mexendo só na permissão de InvokeFunctionUrl.
+  # Ref: https://docs.aws.amazon.com/lambda/latest/dg/urls-auth.html (Using the NONE auth type)
   TrackerFunctionUrlPublicPermission:
     Type: AWS::Lambda::Permission
     Properties:
@@ -212,6 +220,17 @@ Resources:
       Action: lambda:InvokeFunctionUrl
       Principal: '*'
       FunctionUrlAuthType: NONE
+
+  # Segundo statement exigido desde out/2025 (ver comentário acima). InvokedViaFunctionUrl
+  # gera a condição lambda:InvokedViaFunctionUrl == true, restringindo o InvokeFunction
+  # público a chamadas vindas pelo Function URL — não abre invocação por outros caminhos.
+  TrackerFunctionInvokePublicPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref TrackerFunction
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
 
   # ── Push notifications (lembretes diários) ──────────────────────────────────
   PushSenderFunction:
