@@ -4911,6 +4911,9 @@ function renderAccountHtml(){
       <input id="acc-pw-atual" type="password" autocomplete="current-password" placeholder="Senha atual" style="${inp}">
       <input id="acc-pw-nova" type="password" autocomplete="new-password" placeholder="Nova senha (mínimo 8 caracteres)" style="${inp}">
       <input id="acc-pw-conf" type="password" autocomplete="new-password" placeholder="Repita a nova senha" style="${inp}">
+      <div style="text-align:right;margin:-2px 0 8px">
+        <a href="#" id="acc-pw-toggle" onclick="accTogglePw(event)" style="font-size:12px;color:var(--muted);text-decoration:none">👁 Mostrar senhas</a>
+      </div>
       <div id="acc-pw-msg" style="font-size:12px;min-height:17px;margin-bottom:6px"></div>
       <button onclick="accChangePassword()" id="acc-pw-btn" style="width:100%;padding:12px;background:var(--accent);border-radius:10px;color:#fff;font-size:14px;font-weight:600">Alterar senha</button>
       <div style="text-align:center;margin-top:12px">
@@ -4958,6 +4961,16 @@ function accForgotCurrentPassword(e){
   e&&e.preventDefault();
   signOut();
   showForgotPassword(null);
+}
+// Mostra/oculta os três campos de senha de uma vez — ajuda a conferir que a nova
+// senha e a confirmação batem. Volta a ocultar sempre que o painel re-renderiza.
+function accTogglePw(e){
+  e&&e.preventDefault();
+  const ids=['acc-pw-atual','acc-pw-nova','acc-pw-conf'];
+  const showing=document.getElementById('acc-pw-atual').type==='text';
+  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.type=showing?'password':'text';});
+  const t=document.getElementById('acc-pw-toggle');
+  if(t)t.textContent=showing?'👁 Mostrar senhas':'🙈 Ocultar senhas';
 }
 function accRestartOnboarding(){
   lsDel('ht:onboard_done');
