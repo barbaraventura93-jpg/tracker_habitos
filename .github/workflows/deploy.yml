@@ -49,14 +49,6 @@ jobs:
           zip -j build/api.zip infrastructure/api/index.py
           aws s3 cp build/api.zip s3://tracker-habitos/lambda-builds/api.zip --region sa-east-1
 
-      - name: Registrar identidade SES para e-mails do Cognito
-        run: |
-          aws ses verify-email-identity \
-            --email-address pulso457@gmail.com \
-            --region sa-east-1 \
-          && echo "E-mail de verificação enviado para pulso457@gmail.com" \
-          || echo "Aviso: não foi possível (re)enviar verificação SES (permissão ausente ou identidade já verificada) — seguindo com o deploy"
-
       - name: Limpar stack em ROLLBACK_COMPLETE se necessário
         run: |
           STATUS=$(aws cloudformation describe-stacks \
