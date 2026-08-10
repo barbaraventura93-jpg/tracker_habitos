@@ -706,11 +706,11 @@ async function syncMealPlan(){
 // usuário. Ele só continua servindo de fallback para essa instalação — para
 // qualquer conta nova o plano começa vazio, e não com a comida de outra pessoa.
 const BLANK_MEAL_PLAN={
-  cafe:  {default:{kcal:0,prot:0,hint:'',badge:''}},
-  almoco:{default:{kcal:0,prot:0,hint:'',badge:''}},
-  lanche:{default:{kcal:0,prot:0,hint:'',badge:''}},
-  jantar:{default:{kcal:0,prot:0,hint:'',badge:''}},
-  ceia:  {default:{kcal:0,prot:0,hint:'',badge:''}},
+  cafe:  {default:{kcal:0,prot:0,carb:0,fat:0,hint:'',badge:''}},
+  almoco:{default:{kcal:0,prot:0,carb:0,fat:0,hint:'',badge:''}},
+  lanche:{default:{kcal:0,prot:0,carb:0,fat:0,hint:'',badge:''}},
+  jantar:{default:{kcal:0,prot:0,carb:0,fat:0,hint:'',badge:''}},
+  ceia:  {default:{kcal:0,prot:0,carb:0,fat:0,hint:'',badge:''}},
 };
 function effectiveMealPlan(){return mealPlan||(_legacyInstall?DEFAULT_MEAL_PLAN:null);}
 function starterMealPlan(){return JSON.parse(JSON.stringify(_legacyInstall?DEFAULT_MEAL_PLAN:BLANK_MEAL_PLAN));}
@@ -737,7 +737,7 @@ function _getMealSlotRaw(mealId,variantIdx){
 function getMealDetail(id,d){
   const slot=getMealSlot(id,d);
   if(slot&&(slot.hint||slot.kcal)) return{
-    macro:slot.kcal?`~${slot.kcal} kcal · ~${slot.prot||0}g prot`:'',
+    macro:slot.kcal?`~${slot.kcal} kcal · ~${slot.prot||0}g prot`+((slot.carb||slot.fat)?` · ~${slot.carb||0}g carbo · ~${slot.fat||0}g gord`:''):'',
     hint:slot.hint||'Sem descrição — edite em Nutrição › Plano Alimentar',
     badge:slot.badge||''};
   return{macro:'',hint:'Monte esta refeição em Nutrição › Plano Alimentar',badge:''};
@@ -2739,6 +2739,8 @@ function gymUngroup(groupId){
 // ─── BODY COMPOSITION ────────────────────────────────────────────────────────
 let bodyEntries=loadBodyEntries();
 let _bodyMetric='weight';
+let _bodyFormDate=null;   // data selecionada no formulário (null = hoje)
+let _bioPreview=[];       // entradas extraídas de um exame, aguardando importação
 function loadBodyEntries(){try{return JSON.parse(lsGet('ht:body')||'[]');}catch{return[];}}
 function saveBodyEntries(){
   try{lsSet('ht:body',JSON.stringify(bodyEntries));}catch{}
@@ -2835,16 +2837,17 @@ function renderBodyComp(){
   const tabBtns=metrics.map(m=>{const sel=_bodyMetric===m.id;return`<button onclick="setBodyMetric('${m.id}')" style="flex:1;padding:8px 4px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?m.c+'20':'transparent'};color:${sel?m.c:'#78716C'};border:1px solid ${sel?m.c+'60':'#E7E5E4'}">${m.l}</button>`;}).join('');
 
   const todayStr=today();
-  const todayEntry=bodyEntries.find(e=>e.date===todayStr);
-  const hasToday=!!todayEntry;
+  const formDate=_bodyFormDate||todayStr;
+  const formEntry=bodyEntries.find(e=>e.date===formDate);
+  const hasEntry=!!formEntry;
   const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:11px 13px;color:#1C1917;font-size:15px;outline:none';
-  const leanPreview=todayEntry?.lean!=null?todayEntry.lean.toFixed(1)+' kg':'—';
+  const leanPreview=formEntry?.lean!=null?formEntry.lean.toFixed(1)+' kg':'—';
 
   const histRows=[...bodyEntries].sort((a,b)=>b.date.localeCompare(a.date)).slice(0,30).map(e=>{
     const{day,date:d}=dispDate(e.date);
     return`<div style="display:flex;align-items:center;gap:8px;padding:9px 10px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;margin-bottom:6px">
-      <div style="flex:1;min-width:0">
-        <span style="font-size:12px;font-weight:700;color:#1C1917">${day} ${d}</span>
+      <div onclick="bcDateChange('${e.date}')" style="flex:1;min-width:0;cursor:pointer">
+        <span style="font-size:12px;font-weight:700;color:#1C1917">${day} ${d} <span style="font-size:10px;color:#A8A29E;font-weight:400">✏️</span></span>
         <div style="display:flex;gap:10px;margin-top:3px">
           ${e.weight!=null?`<span style="font-size:11px;color:#38bdf8;font-family:'DM Mono',monospace">${e.weight.toFixed(1)} kg</span>`:''}
           ${e.fat!=null?`<span style="font-size:11px;color:#fb923c;font-family:'DM Mono',monospace">${e.fat.toFixed(1)}%</span>`:''}
@@ -2864,15 +2867,26 @@ function renderBodyComp(){
       ${renderBodyChart(sorted,_bodyMetric)}
     </div>
     <div class="card">
-      <div class="sec-hdr"><div class="sec-lbl"><span>${hasToday?'✏️':'➕'}</span> ${hasToday?'ATUALIZAR HOJE':'NOVO REGISTRO'}</div><span style="font-size:11px;color:#78716C">${todayStr}</span></div>
+      <div class="sec-hdr"><div class="sec-lbl"><span>📄</span> IMPORTAR EXAME</div></div>
+      <div style="font-size:12px;color:#78716C;margin-bottom:10px">Envie o PDF ou a foto do seu exame de bioimpedância (InBody e similares). A IA lê o resultado atual <b>e o histórico</b> presentes no laudo.</div>
+      <label style="display:block;width:100%;padding:12px;background:#38bdf815;border:1px dashed #38bdf8;border-radius:10px;color:#0284c7;font-size:14px;font-weight:700;text-align:center;cursor:pointer">
+        📄 Escolher exame (PDF ou imagem)
+        <input type="file" id="bio-file-input" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleBioFile(this)">
+      </label>
+      <div id="bio-status" style="font-size:12px;margin-top:10px"></div>
+      <div id="bio-preview"></div>
+    </div>
+    <div class="card">
+      <div class="sec-hdr"><div class="sec-lbl"><span>${hasEntry?'✏️':'➕'}</span> ${hasEntry?'ATUALIZAR REGISTRO':'NOVO REGISTRO'}</div></div>
+      <div style="margin-bottom:12px"><div style="font-size:11px;color:#78716C;margin-bottom:5px">Data</div><input type="date" id="bc-date" value="${formDate}" max="${todayStr}" onchange="bcDateChange(this.value)" style="${inp}"></div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
-        <div><div style="font-size:11px;color:#78716C;margin-bottom:5px">Peso (kg) *</div><input type="number" id="bc-weight" step="0.1" placeholder="ex: 68.5" value="${todayEntry?.weight||''}" oninput="bcUpdateLean()" style="${inp}"></div>
-        <div><div style="font-size:11px;color:#78716C;margin-bottom:5px">% Gordura</div><input type="number" id="bc-fat" step="0.1" placeholder="ex: 22.0" value="${todayEntry?.fat||''}" oninput="bcUpdateLean()" style="${inp}"></div>
+        <div><div style="font-size:11px;color:#78716C;margin-bottom:5px">Peso (kg) *</div><input type="number" id="bc-weight" step="0.1" placeholder="ex: 68.5" value="${formEntry?.weight??''}" oninput="bcUpdateLean()" style="${inp}"></div>
+        <div><div style="font-size:11px;color:#78716C;margin-bottom:5px">% Gordura</div><input type="number" id="bc-fat" step="0.1" placeholder="ex: 22.0" value="${formEntry?.fat??''}" oninput="bcUpdateLean()" style="${inp}"></div>
       </div>
       <div style="background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 13px;margin-bottom:12px;font-size:12px">
         <span style="color:#78716C">Massa magra: </span><span id="bc-lean-preview" style="color:#16A34A;font-weight:700">${leanPreview}</span><span style="font-size:10px;color:#A8A29E;margin-left:6px">= peso × (1 − %gordura)</span>
       </div>
-      <button onclick="saveBodyEntry()" style="width:100%;padding:13px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">${hasToday?'Atualizar registro':'Salvar registro'}</button>
+      <button onclick="saveBodyEntry()" style="width:100%;padding:13px;background:#6C63FF;border-radius:10px;color:#fff;font-size:14px;font-weight:700">${hasEntry?'Atualizar registro':'Salvar registro'}</button>
     </div>
     ${histRows?`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>📋</span> HISTÓRICO</div><span style="font-size:11px;color:#78716C">${bodyEntries.length} registro${bodyEntries.length!==1?'s':''}</span></div>${histRows}</div>`:''}`;
 }
@@ -2883,29 +2897,113 @@ function bcUpdateLean(){
   if(el) el.textContent=w>0&&f>0&&f<100?(w*(1-f/100)).toFixed(1)+' kg':'—';
 }
 
+function bcDateChange(date){
+  _bodyFormDate=date&&date<=today()?date:today();
+  renderBodyComp();
+}
+
+// pesoAtual das metas só acompanha o registro mais recente — editar uma data
+// antiga não deve reescrever o peso "atual" com um valor do passado.
+function bcIsLatestDate(date){
+  return !bodyEntries.some(e=>e.date>date);
+}
+
 function saveBodyEntry(){
   const w=parseFloat(document.getElementById('bc-weight')?.value);
   if(!w||w<=0){if(document.getElementById('bc-weight'))document.getElementById('bc-weight').style.borderColor='#f87171';return;}
   const f=parseFloat(document.getElementById('bc-fat')?.value)||null;
   const lean=w>0&&f!=null&&f>0?+(w*(1-f/100)).toFixed(2):null;
-  const date=today();
+  const date=document.getElementById('bc-date')?.value||_bodyFormDate||today();
   const entry={date,weight:+w.toFixed(2),fat:f!=null?+f.toFixed(2):null,lean};
   const idx=bodyEntries.findIndex(e=>e.date===date);
   if(idx>=0) bodyEntries[idx]=entry; else bodyEntries.push(entry);
   saveBodyEntries();
-  saveGoals({...goals,pesoAtual:String(w)});
+  if(bcIsLatestDate(date)) saveGoals({...goals,pesoAtual:String(w)});
+  _bodyFormDate=null;
   renderBodyComp();
 }
 
 function deleteBodyEntry(date){
   if(!confirm('Excluir registro de '+date+'?')) return;
   bodyEntries=bodyEntries.filter(e=>e.date!==date);
+  if(_bodyFormDate===date) _bodyFormDate=null;
   saveBodyEntries();
   renderBodyComp();
 }
 
+// ── Importação de exame de bioimpedância ──────────────────────────────────────
+async function analyzeBioViaLambda(file){
+  const base64=await new Promise((res,rej)=>{const r=new FileReader();r.onload=e=>res(e.target.result.split(',')[1]);r.onerror=rej;r.readAsDataURL(file);});
+  const resp=await fetch(`${API_URL}?action=analyze_bio`,{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+authToken},
+    body:JSON.stringify({file:base64,mimeType:file.type})
+  });
+  const data=await resp.json();
+  if(!resp.ok) throw new Error(data.error||'Erro ao analisar exame');
+  return data.items||[];
+}
+
+async function handleBioFile(input){
+  const file=input.files[0];if(!file) return;
+  input.value='';
+  const statusEl=document.getElementById('bio-status');
+  if(!USE_API||!authToken){statusEl.innerHTML='<span style="color:#f87171">Entre na sua conta para importar exames.</span>';return;}
+  statusEl.innerHTML='<span style="color:#D97706">⏳ Lendo o exame com IA — aguarde...</span>';
+  document.getElementById('bio-preview').innerHTML='';
+  try{
+    const entries=await analyzeBioViaLambda(file);
+    if(!entries.length){statusEl.innerHTML='<span style="color:#f87171">Nenhuma medição encontrada no exame.</span>';return;}
+    // marca por padrão só as datas que ainda não existem; as demais ficam
+    // desmarcadas para não sobrescrever sem querer um registro já anotado
+    _bioPreview=entries.map((e,i)=>({...e,id:'bio_'+i,_checked:!bodyEntries.some(b=>b.date===e.date)}));
+    document.getElementById('bio-preview').innerHTML=renderBioPreviewHtml();
+    const novos=_bioPreview.filter(e=>e._checked).length;
+    statusEl.innerHTML=`<span style="color:#16A34A">✓ ${entries.length} medição(ões) lida(s)${novos<entries.length?` · ${entries.length-novos} já existe(m)`:''} — confira e importe</span>`;
+  }catch(e){
+    statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
+  }
+}
+
+function renderBioPreviewHtml(){
+  if(!_bioPreview.length) return '';
+  const rows=[..._bioPreview].sort((a,b)=>b.date.localeCompare(a.date)).map(e=>{
+    const{day,date:d}=dispDate(e.date);
+    const exists=bodyEntries.some(b=>b.date===e.date);
+    return`<label style="display:flex;align-items:center;gap:10px;padding:9px 11px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:9px;margin-bottom:6px;cursor:pointer">
+      <input type="checkbox" id="bimp-${e.id}" ${e._checked?'checked':''} style="width:15px;height:15px;accent-color:#38bdf8;flex-shrink:0">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:700;color:#1C1917">${day} ${d} ${exists?'<span style="font-size:10px;color:#D97706;font-weight:400">· substitui existente</span>':''}</div>
+        <div style="display:flex;gap:10px;margin-top:3px">
+          ${e.weight!=null?`<span style="font-size:11px;color:#38bdf8;font-family:'DM Mono',monospace">${e.weight.toFixed(1)} kg</span>`:''}
+          ${e.fat!=null?`<span style="font-size:11px;color:#fb923c;font-family:'DM Mono',monospace">${e.fat.toFixed(1)}%</span>`:''}
+          ${e.lean!=null?`<span style="font-size:11px;color:#16A34A;font-family:'DM Mono',monospace">${e.lean.toFixed(1)} kg</span>`:''}
+        </div>
+      </div>
+    </label>`;}).join('');
+  return`<div style="margin-top:10px">${rows}<button onclick="importSelectedBio()" style="width:100%;padding:12px;background:#16a34a;border-radius:10px;color:#fff;font-size:14px;font-weight:700;margin-top:4px">Importar selecionados</button></div>`;
+}
+
+function importSelectedBio(){
+  let count=0;
+  _bioPreview.forEach(e=>{
+    if(!document.getElementById('bimp-'+e.id)?.checked) return;
+    const{_checked,id,...entry}=e;
+    const idx=bodyEntries.findIndex(b=>b.date===entry.date);
+    if(idx>=0) bodyEntries[idx]=entry; else bodyEntries.push(entry);
+    count++;
+  });
+  if(!count){document.getElementById('bio-status').innerHTML='<span style="color:#78716C">Selecione ao menos uma medição.</span>';return;}
+  const latest=[...bodyEntries].sort((a,b)=>a.date.localeCompare(b.date)).pop();
+  saveBodyEntries();
+  if(latest&&latest.weight!=null) saveGoals({...goals,pesoAtual:String(latest.weight)});
+  _bioPreview=[];
+  renderBodyComp();
+  document.getElementById('bio-status').innerHTML=`<span style="color:#16A34A">✓ ${count} medição(ões) importada(s)!</span>`;
+}
+
 // ─── GOALS ───────────────────────────────────────────────────────────────────
-const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5};
+const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,regiao:'',restricoes:''};
 // Fórmulas nutricionais compartilhadas entre a tela de Configurações de Saúde e
 // o assistente de primeiro acesso — as duas precisam chegar no mesmo número.
 const ACTIVITY_FACTORS=[[1,1.2,'sedentário'],[3,1.375,'leve'],[5,1.55,'moderado'],[7,1.725,'intenso']];
@@ -2997,6 +3095,15 @@ function showGoals(){
           <div style="font-size:11px;color:#78716C;margin-bottom:5px">Altura (cm)</div>
           <input type="number" id="g-altura" value="${g.altura}" placeholder="ex: 165" oninput="goalsCalcUpdate()" style="${inp}">
         </div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="font-size:11px;color:#78716C;margin-bottom:5px">Região onde você mora (cidade/estado ou país)</div>
+        <input type="text" id="g-regiao" value="${g.regiao||''}" placeholder="ex: Recife/PE" style="${inp}">
+        <div style="font-size:10px;color:#A8A29E;margin-top:4px">Ajuda a IA a sugerir alimentos acessíveis na sua região.</div>
+      </div>
+      <div style="margin-top:12px">
+        <div style="font-size:11px;color:#78716C;margin-bottom:5px">Restrições alimentares (opcional)</div>
+        <input type="text" id="g-restricoes" value="${g.restricoes||''}" placeholder="ex: sem lactose, vegetariana" style="${inp}">
       </div>
     </div>
     <div class="card">
@@ -3318,6 +3425,8 @@ function saveGoalsForm(){
     calorias:parseInt(document.getElementById('g-calorias').value)||1800,
     aguaCopos:goals.aguaCopos,
     treinosSemana:goals.treinosSemana,
+    regiao:(document.getElementById('g-regiao')?.value||'').trim(),
+    restricoes:(document.getElementById('g-restricoes')?.value||'').trim(),
   };
   saveGoals(g);
   showMais();
@@ -3592,6 +3701,8 @@ function startOnboarding(){
     pesoAtual:goals.pesoAtual||'',
     pesoMeta:goals.pesoMeta||'',
     objetivo:goals.objetivo||'manutencao',
+    regiao:goals.regiao||'',
+    restricoes:goals.restricoes||'',
     dias:{0:'descanso',1:'musculacao',2:'aerobico',3:'musculacao',4:'aerobico',5:'musculacao',6:'descanso'},
     aguaCopos:goals.aguaCopos||8,
     calorias:0,
@@ -3656,6 +3767,8 @@ function onbCapture(){
     d.altura=val('onb-altura')??d.altura;
     d.pesoAtual=val('onb-peso')??d.pesoAtual;
     d.pesoMeta=val('onb-peso-meta')??d.pesoMeta;
+    d.regiao=val('onb-regiao')??d.regiao;
+    d.restricoes=val('onb-restricoes')??d.restricoes;
   }else if(step==='dieta'){
     const c=parseInt(val('onb-cal'));
     if(c>0) d.calorias=c;
@@ -3768,6 +3881,11 @@ perfil:()=>{
     <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Peso meta (kg)</div>
       <input id="onb-peso-meta" type="number" inputmode="decimal" step="0.1" value="${onbEsc(d.pesoMeta)}" oninput="onbPerfilPreview()" placeholder="63" style="${ONB_INPUT}"></div>
   </div>
+  ${onbSection('ALIMENTAÇÃO','Ajuda a IA a sugerir alimentos acessíveis na sua região.')}
+  <div style="margin-bottom:9px"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Região onde você mora</div>
+    <input id="onb-regiao" type="text" value="${onbEsc(d.regiao)}" placeholder="ex: Recife/PE" style="${ONB_INPUT}"></div>
+  <div style="margin-bottom:18px"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Restrições alimentares (opcional)</div>
+    <input id="onb-restricoes" type="text" value="${onbEsc(d.restricoes)}" placeholder="ex: sem lactose, vegetariana" style="${ONB_INPUT}"></div>
   ${onbSection('OBJETIVO')}
   ${objCards}
   <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px;margin-top:14px" id="onb-perfil-preview"></div>`;
@@ -3914,6 +4032,9 @@ function onbFinish(){
   const d=_onbDraft;
   const peso=onbNum(d.pesoAtual);
   const g={...goals,sexo:d.sexo};
+  if(!d.skipped.perfil){
+    g.regiao=d.regiao||'';g.restricoes=d.restricoes||'';
+  }
   if(!d.skipped.perfil&&peso>0){
     g.idade=d.idade;g.altura=d.altura;g.pesoAtual=d.pesoAtual;g.pesoMeta=d.pesoMeta;
     g.objetivo=d.objetivo;
@@ -3945,7 +4066,9 @@ function onbFinish(){
     const cal=g.calorias||0,prot=g.protMeta||0;
     const plan={};
     for(const [id,frac] of ONB_MEAL_SPLIT){
-      plan[id]={default:{kcal:Math.round(cal*frac/5)*5,prot:Math.round(prot*frac),hint:'',badge:''}};
+      const kc=Math.round(cal*frac/5)*5,pr=Math.round(prot*frac);
+      const ft=Math.max(0,Math.round(kc*0.25/9)),cb=Math.max(0,Math.round((kc-pr*4-ft*9)/4));
+      plan[id]={default:{kcal:kc,prot:pr,carb:cb,fat:ft,hint:'',badge:''}};
     }
     mealPlan=plan;saveMealPlan();
   }
@@ -4531,12 +4654,16 @@ function renderNutricaoResumo(){
     protIngerida=refeicoesDone*Math.round(protMeta/MEALS.length);
   }
 
-  let calIngerida=0;
+  let calIngerida=0,planCarb=0,planFat=0;
   MEALS.forEach(m=>{
     if(!dayData.meals[m.id]) return;
     const det=getMealDetail(m.id,dayData);
-    const match=det?.macro?.match(/~?(\d+)\s*kcal/);
-    if(match) calIngerida+=parseInt(match[1]);
+    const mk=det?.macro?.match(/~?(\d+)\s*kcal/);
+    if(mk) calIngerida+=parseInt(mk[1]);
+    const mc=det?.macro?.match(/~?(\d+)g carbo/);
+    if(mc) planCarb+=parseInt(mc[1]);
+    const mf=det?.macro?.match(/~?(\d+)g gord/);
+    if(mf) planFat+=parseInt(mf[1]);
   });
 
   // Refeições livres (Dieta 2.0) — entram nos totais e trazem carbo/gordura
@@ -4546,7 +4673,7 @@ function renderNutricaoResumo(){
   // metas de carbo/gordura derivadas da meta calórica (proteína ocupa 4 kcal/g, gordura 25% das kcal)
   const fatMeta=Math.max(0,Math.round(calMeta*0.25/9));
   const carbMeta=Math.max(0,Math.round((calMeta-protMeta*4-fatMeta*9)/4));
-  const carbIngerida=fT.carb, fatIngerida=fT.fat;
+  const carbIngerida=fT.carb+planCarb, fatIngerida=fT.fat+planFat;
 
   function barHtml(val,meta,unit,color){
     const pct=meta>0?Math.min(100,Math.round(val/meta*100)):0;
@@ -5124,6 +5251,8 @@ function renderMealPlanConfigHtml(){
           <div style="display:flex;gap:10px;margin-top:6px;align-items:center">
             <span style="font-size:11px;font-weight:700;color:#fb923c;font-family:'DM Mono',monospace">${slot.kcal} kcal</span>
             <span style="font-size:11px;font-weight:700;color:#818cf8;font-family:'DM Mono',monospace">${slot.prot}g prot</span>
+            ${slot.carb?`<span style="font-size:11px;font-weight:700;color:#34d399;font-family:'DM Mono',monospace">${slot.carb}g carb</span>`:''}
+            ${slot.fat?`<span style="font-size:11px;font-weight:700;color:#fbbf24;font-family:'DM Mono',monospace">${slot.fat}g gord</span>`:''}
             <span style="font-size:10px;color:#A8A29E;background:#F0EFED;border-radius:4px;padding:1px 6px">${slot.badge}</span>
           </div>
         </div>
@@ -5180,7 +5309,7 @@ function renderMealPlanConfigHtml(){
 function mpOpenEdit(mealId,variantIdx){
   _mpEditMealId=mealId;_mpEditVariantIdx=variantIdx;
   const m=MEALS.find(x=>x.id===mealId);
-  const slot=_getMealSlotRaw(mealId,variantIdx)||(variantIdx===null?{kcal:0,prot:0,hint:'',badge:''}:{kcal:0,prot:0,hint:'',badge:'',trigger:''});
+  const slot=_getMealSlotRaw(mealId,variantIdx)||(variantIdx===null?{kcal:0,prot:0,carb:0,fat:0,hint:'',badge:''}:{kcal:0,prot:0,carb:0,fat:0,hint:'',badge:'',trigger:''});
   const inp='width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;color:#1C1917;font-size:14px;outline:none';
   const isVariant=variantIdx!==null;
   const triggerOpts=[
@@ -5203,6 +5332,8 @@ function mpOpenEdit(mealId,variantIdx){
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
       <div><div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">CALORIAS (kcal)</div><input type="number" id="mpe-kcal" value="${slot.kcal||''}" placeholder="ex: 380" style="${inp}"></div>
       <div><div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">PROTEÍNA (g)</div><input type="number" id="mpe-prot" value="${slot.prot||''}" placeholder="ex: 35" style="${inp}"></div>
+      <div><div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">CARBOIDRATO (g)</div><input type="number" id="mpe-carb" value="${slot.carb||''}" placeholder="ex: 40" style="${inp}"></div>
+      <div><div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">GORDURA (g)</div><input type="number" id="mpe-fat" value="${slot.fat||''}" placeholder="ex: 12" style="${inp}"></div>
     </div>
     <div style="font-size:11px;color:#78716C;margin-bottom:5px;font-weight:600">BADGE (rótulo)</div>
     <input type="text" id="mpe-badge" value="${slot.badge||''}" placeholder="ex: Semana" style="${inp};margin-bottom:18px">
@@ -5219,16 +5350,18 @@ function mpSaveEdit(){
   const hint=(document.getElementById('mpe-hint')?.value||'').trim();
   const kcal=parseInt(document.getElementById('mpe-kcal')?.value)||0;
   const prot=parseInt(document.getElementById('mpe-prot')?.value)||0;
+  const carb=parseInt(document.getElementById('mpe-carb')?.value)||0;
+  const fat=parseInt(document.getElementById('mpe-fat')?.value)||0;
   const badge=(document.getElementById('mpe-badge')?.value||'').trim();
   if(!hint||!kcal||!prot){showToast('Preencha descrição, calorias e proteína');return;}
   if(!mealPlan) mealPlan=starterMealPlan();
   if(!mealPlan[_mpEditMealId]) mealPlan[_mpEditMealId]={};
   if(_mpEditVariantIdx===null){
-    mealPlan[_mpEditMealId].default={kcal,prot,hint,badge};
+    mealPlan[_mpEditMealId].default={kcal,prot,carb,fat,hint,badge};
   } else {
     if(!mealPlan[_mpEditMealId].variants) mealPlan[_mpEditMealId].variants=[];
     const trigger=document.getElementById('mpe-trigger')?.value||'';
-    mealPlan[_mpEditMealId].variants[_mpEditVariantIdx]={trigger,kcal,prot,hint,badge};
+    mealPlan[_mpEditMealId].variants[_mpEditVariantIdx]={trigger,kcal,prot,carb,fat,hint,badge};
   }
   saveMealPlan();mpCloseEdit();showMealPlanConfig();showToast('Refeição salva!');renderUI();
 }
@@ -5237,7 +5370,7 @@ function mpAddVariant(mealId){
   if(!mealPlan[mealId]) mealPlan[mealId]={};
   if(!mealPlan[mealId].variants) mealPlan[mealId].variants=[];
   const newIdx=mealPlan[mealId].variants.length;
-  mealPlan[mealId].variants.push({trigger:'isFds',kcal:0,prot:0,hint:'',badge:''});
+  mealPlan[mealId].variants.push({trigger:'isFds',kcal:0,prot:0,carb:0,fat:0,hint:'',badge:''});
   mpOpenEdit(mealId,newIdx);
 }
 function mpDeleteVariant(){
@@ -5293,7 +5426,7 @@ async function genMealPlan(){
   try{
     const resp=await fetch(`${API_URL}?action=generate_meal_plan`,{
       method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},
-      body:JSON.stringify({objetivo:goals.objetivo||'manutencao',calorias:parseInt(goals.calorias)||0,protein:prot,meals:['cafe','almoco','lanche','jantar','ceia']})
+      body:JSON.stringify({objetivo:goals.objetivo||'manutencao',calorias:parseInt(goals.calorias)||0,protein:prot,regiao:goals.regiao||'',restricoes:goals.restricoes||'',meals:['cafe','almoco','lanche','jantar','ceia']})
     });
     const data=await resp.json();
     if(!resp.ok||data.error) throw new Error(data.error||'Erro ao gerar plano');
@@ -5322,6 +5455,8 @@ function _mpRenderImportPreview(){
         <div style="display:flex;gap:10px;margin-top:4px">
           <span style="font-size:11px;font-weight:700;color:#fb923c;font-family:'DM Mono',monospace">${item.kcal||0} kcal</span>
           <span style="font-size:11px;font-weight:700;color:#818cf8;font-family:'DM Mono',monospace">${item.prot||0}g prot</span>
+          ${item.carb?`<span style="font-size:11px;font-weight:700;color:#34d399;font-family:'DM Mono',monospace">${item.carb}g carb</span>`:''}
+          ${item.fat?`<span style="font-size:11px;font-weight:700;color:#fbbf24;font-family:'DM Mono',monospace">${item.fat}g gord</span>`:''}
           ${item.badge?`<span style="font-size:10px;color:#A8A29E;background:#F0EFED;border-radius:4px;padding:1px 6px">${item.badge}</span>`:''}
         </div>
       </div>
