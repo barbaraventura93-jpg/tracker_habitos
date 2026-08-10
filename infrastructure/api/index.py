@@ -199,6 +199,73 @@ def week_suggestion(week_summary,untrained,remaining_days):
   )
   txt=bedrock_text([{'text':prompt}],200)
   return [s.strip() for s in txt.strip().split('\n') if s.strip()]
+def generate_workout_plan(payload):
+  """Gera um plano de treino (varios treinos) a partir do objetivo, bioimpedancia
+  e series ja feitas na semana. Retorna itens na mesma forma do import de plano
+  (name/group/sets/reps/obs) para o frontend reusar o pipeline de preview."""
+  grupos='Peito, Costas, Ombro, Bíceps, Tríceps, Perna, Core, Glúteo, Cardio, Outro'
+  obj=payload.get('objetivo') or 'manutencao'
+  n=max(1,min(7,int(payload.get('workoutsPerWeek') or 3)))
+  mins=max(20,min(120,int(payload.get('minutesPerWorkout') or 60)))
+  ex_alvo=max(3,min(10,round(mins/9)))
+  body=payload.get('body') or {}
+  goals=payload.get('goals') or {}
+  week=payload.get('weekSummary') or {}
+  obj_txt={'cutting':'perda de gordura (deficit calorico)',
+           'bulking':'ganho de massa muscular (superavit)',
+           'manutencao':'manutencao de peso e composicao'}.get(obj,'manutencao')
+  ctx=[]
+  if body.get('weight'): ctx.append('peso '+str(body['weight'])+'kg')
+  if body.get('fat') is not None: ctx.append('gordura '+str(body['fat'])+'%')
+  if body.get('lean') is not None: ctx.append('massa magra '+str(body['lean'])+'kg')
+  if goals.get('idade'): ctx.append(str(goals['idade'])+' anos')
+  if goals.get('sexo'): ctx.append('sexo '+('feminino' if goals.get('sexo')=='f' else 'masculino'))
+  ctx_txt=', '.join(ctx) if ctx else 'nao informado'
+  prompt=(
+    'Voce e um profissional de educacao fisica. Monte um plano de treino de musculacao seguro, '
+    'baseado em principios consolidados de treinamento de forca: volume semanal de ~10 a 20 series '
+    'por grupo muscular, frequencia de ~2x por semana por grupo quando os dias permitirem, faixa de '
+    'repeticoes adequada ao objetivo (hipertrofia 6-12; em deficit pode incluir algumas series de '
+    'reps mais altas), e sobrecarga progressiva.\n\n'
+    'Objetivo do usuario: '+obj_txt+'\n'
+    'Composicao corporal / perfil: '+ctx_txt+'\n'
+    'Series ja concluidas por grupo nesta semana: '+json.dumps(week,ensure_ascii=False)+'\n'
+    'Treinos por semana desejados: '+str(n)+'\n'
+    'Duracao por treino: '+str(mins)+' minutos (cerca de '+str(ex_alvo)+' exercicios por treino)\n\n'
+    'Divida os grupos numa estrutura adequada ao numero de treinos '
+    '(ex.: 2 treinos = corpo inteiro; 3 = empurrar/puxar/pernas ou A/B/C; 4 = superior/inferior). '
+    'Use apenas exercicios comuns e seguros. O campo "group" deve ser EXATAMENTE um destes '
+    '(com acento): '+grupos+'.\n\n'
+    'Responda APENAS com um JSON valido, sem markdown, no formato:\n'
+    '{"workouts":[{"name":"Treino A - Empurrar","exercises":['
+    '{"name":"Supino reto","group":"Peito","sets":4,"reps":"8-12","obs":""}]}],'
+    '"notes":"1 frase curta de orientacao geral"}'
+  )
+  txt=bedrock_text([{'text':prompt}],2000,NOVA_MIN_TEMP)
+  m=re.search(r'\{[\s\S]*\}',txt)
+  if not m:
+    log.warning('generate_workout_plan: resposta sem JSON: %r',txt[:200])
+    return {'workouts':[],'error':'Nao foi possivel gerar o treino'}
+  try:
+    data=json.loads(m.group())
+  except Exception:
+    log.warning('generate_workout_plan: JSON invalido: %r',txt[:300])
+    return {'workouts':[],'error':'Resposta invalida da IA'}
+  def _i(v,d=3):
+    try: return max(1,int(round(float(v))))
+    except: return d
+  out=[]
+  for w in (data.get('workouts') or [])[:7]:
+    exs=[]
+    for e in (w.get('exercises') or [])[:15]:
+      nm=str(e.get('name','')).strip()[:80]
+      if not nm: continue
+      exs.append({'name':nm,'group':str(e.get('group','')).strip()[:20],
+                  'sets':_i(e.get('sets')),'reps':str(e.get('reps','')).strip()[:20],
+                  'obs':str(e.get('obs','')).strip()[:120]})
+    if exs:
+      out.append({'name':str(w.get('name','Treino')).strip()[:40],'exercises':exs})
+  return {'workouts':out,'notes':str(data.get('notes','')).strip()[:200]}
 def estimate_food(text,file_b64,mime):
   instr=(
     'Voce e um nutricionista. Estime os macros da refeicao/alimento descrito'
@@ -278,6 +345,13 @@ def _dispatch(event,context):
       body=json.loads(event.get('body') or '{}')
       suggestions=week_suggestion(body.get('weekSummary',{}),body.get('untrainedGroups',[]),body.get('remainingDays',0))
       return{'statusCode':200,'body':json.dumps({'suggestions':suggestions})}
+    except Exception as e:
+      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+  if action=='generate_workout_plan' and method=='POST':
+    try:
+      body=json.loads(event.get('body') or '{}')
+      res=generate_workout_plan(body)
+      return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}
   if action=='estimate_food' and method=='POST':
