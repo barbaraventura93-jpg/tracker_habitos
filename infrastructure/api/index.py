@@ -488,7 +488,10 @@ def _dispatch(event,context):
     data=resp.get('Item',{}).get('data')
     return{'statusCode':200,'body':json.dumps(data,cls=Dec)}
   if method=='PUT':
-    body=json.loads(event.get('body') or '{}')
+    # parse_float=Decimal: o DynamoDB recusa float ("Float types are not
+    # supported"); qualquer numero decimal do cliente (peso, %, macros) tem que
+    # virar Decimal antes do put_item, senao a fila do outbox trava inteira.
+    body=json.loads(event.get('body') or '{}',parse_float=decimal.Decimal)
     table.put_item(Item={'userId':uid,'date':date,'data':body})
     return{'statusCode':200,'body':json.dumps({'ok':True})}
   return{'statusCode':405,'body':json.dumps({'error':'not allowed'})}
