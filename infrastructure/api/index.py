@@ -71,13 +71,15 @@ def call_ai(file_b64,mime,ctx,text=None):
   elif ctx=='meal_plan':
     prompt=(
       'Extraia o plano alimentar com macros por refeição. Retorne APENAS um array JSON, sem markdown:\n'
-      '[{"id":"cafe","hint":"descrição dos alimentos","kcal":380,"prot":35,"badge":"Semana","trigger":null}]\n'
+      '[{"id":"cafe","hint":"descrição dos alimentos","kcal":380,"prot":35,"carb":40,"fat":10,"badge":"Semana","trigger":null}]\n'
       'Ids válidos: cafe, almoco, lanche, jantar, ceia.\n'
       'Se houver variantes (fim de semana, com carboidrato, versões do jantar), inclua com o campo trigger:\n'
       '"isFds" para final de semana | "almocoCarb" para almoço com carboidrato\n'
       '"jantarV=hamburguer" ou "jantarV=rap10" para variantes do jantar.\n'
       'Para refeições sem variante, trigger deve ser null.\n'
-      'Extraia kcal e prot (proteína em gramas) de cada refeição. Somente o JSON.'
+      'Extraia kcal, prot (proteína em g), carb (carboidrato em g) e fat (gordura em g) de cada '
+      'refeição, com números inteiros. Se algum não estiver no texto, estime a partir dos alimentos. '
+      'Somente o JSON.'
     )
   else:
     prompt='Extraia todos os exercicios deste plano de treino. Retorne APENAS um array JSON: [{"name":"exercicio","group":"Peito|Costas|Ombro|Bíceps|Tríceps|Perna|Core|Glúteo|Cardio|Outro","sets":3,"reps":"12","obs":""}]. Use os acentos exatamente como escritos. Somente o JSON, sem markdown.'
@@ -278,20 +280,26 @@ def generate_meal_plan(payload):
   valid=['cafe','almoco','lanche','jantar','ceia']
   meals=[m for m in (payload.get('meals') or valid) if m in valid] or valid
   restr=(payload.get('restricoes') or '').strip()[:200]
+  regiao=(payload.get('regiao') or '').strip()[:120]
   obj_txt={'cutting':'perda de gordura (deficit calorico)',
            'bulking':'ganho de massa muscular (superavit)',
            'manutencao':'manutencao de peso e composicao'}.get(obj,'manutencao')
   prompt=(
     'Voce e um nutricionista. Monte um plano alimentar diario, saudavel e pratico, '
-    'com alimentos comuns e acessiveis no Brasil, adequado ao objetivo do usuario.\n\n'
+    'adequado ao objetivo do usuario.\n\n'
     'Objetivo: '+obj_txt+'\n'
+    +('Regiao onde a pessoa mora: '+regiao+' — priorize alimentos comuns, acessiveis e '
+      'facilmente encontrados nos mercados dessa regiao.\n' if regiao
+      else 'Priorize alimentos comuns e acessiveis no Brasil.\n')
     +('Meta diaria aproximada: '+str(kcal)+' kcal e '+str(prot)+' g de proteina.\n' if kcal else '')
-    +('Restricoes/preferencias: '+restr+'\n' if restr else '')
+    +('Restricoes/preferencias alimentares (respeite rigorosamente): '+restr+'\n' if restr else '')
     +'Refeicoes desejadas (use exatamente estes ids): '+', '.join(meals)+'\n\n'
     'Distribua as calorias e a proteina entre as refeicoes de forma coerente e realista, '
-    'com quantidades (gramas/porcoes) na descricao. Responda APENAS com um array JSON valido, '
-    'sem markdown:\n'
-    '[{"id":"cafe","hint":"descricao dos alimentos com quantidades","kcal":380,"prot":35,"trigger":null}]\n'
+    'com quantidades (gramas/porcoes) na descricao. Para CADA refeicao preencha os quatro '
+    'macros com numeros inteiros, sempre maiores que zero: kcal, prot (proteina em g), '
+    'carb (carboidrato em g) e fat (gordura em g). Nunca deixe um macro em 0 ou vazio.\n'
+    'Responda APENAS com um array JSON valido, sem markdown:\n'
+    '[{"id":"cafe","hint":"descricao dos alimentos com quantidades","kcal":380,"prot":35,"carb":40,"fat":10,"trigger":null}]\n'
     'Use somente os ids informados; trigger sempre null.'
   )
   txt=bedrock_text([{'text':prompt}],1500,NOVA_MIN_TEMP)
@@ -313,7 +321,8 @@ def generate_meal_plan(payload):
     if mid not in valid: continue
     hint=str(it.get('hint','')).strip()[:220]
     if not hint: continue
-    out.append({'id':mid,'hint':hint,'kcal':_i(it.get('kcal')),'prot':_i(it.get('prot')),'trigger':None})
+    out.append({'id':mid,'hint':hint,'kcal':_i(it.get('kcal')),'prot':_i(it.get('prot')),
+                'carb':_i(it.get('carb')),'fat':_i(it.get('fat')),'trigger':None})
   return {'items':out}
 def estimate_food(text,file_b64,mime):
   instr=(
@@ -339,6 +348,68 @@ def estimate_food(text,file_b64,mime):
     try: return max(0,int(round(float(v))))
     except: return 0
   return {'name':str(d.get('name','')).strip()[:60],'kcal':_i(d.get('kcal')),'prot':_i(d.get('prot')),'carb':_i(d.get('carb')),'fat':_i(d.get('fat'))}
+def _bio_num(v):
+  try:
+    if v is None or v=='': return None
+    return round(float(str(v).replace(',','.')),2)
+  except: return None
+def _bio_date(s):
+  """Normaliza a data de uma medição para ISO YYYY-MM-DD.
+
+  A IA já recebe instrução de devolver ISO, mas laudos de bioimpedância (InBody)
+  imprimem `dd.mm.yy.` — este fallback cobre esse e outros formatos dia-primeiro
+  comuns no Brasil, para não descartar uma medição só por causa do formato."""
+  s=str(s or '').strip().rstrip('.')
+  if re.match(r'^\d{4}-\d{2}-\d{2}$',s): return s
+  m=re.match(r'^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$',s)
+  if m:
+    d,mo,y=int(m.group(1)),int(m.group(2)),int(m.group(3))
+    if y<100: y+=2000
+    if 1<=mo<=12 and 1<=d<=31:
+      return '%04d-%02d-%02d'%(y,mo,d)
+  return None
+def analyze_bio(file_b64,mime):
+  """Extrai a série de composição corporal de um exame de bioimpedância.
+
+  Laudos como o do InBody trazem o resultado atual E uma tabela de histórico com
+  medições anteriores — daí a extração devolver um array, uma entrada por data."""
+  prompt=(
+    'Este documento e um exame de bioimpedancia / composicao corporal (ex.: InBody). '
+    'Extraia TODAS as medicoes, incluindo a TABELA DE HISTORICO com resultados de datas '
+    'anteriores (as linhas de Peso, Massa Muscular Esqueletica e Percentual de Gordura ao '
+    'longo das varias datas). Cada data e uma medicao separada e deve virar um item.\n\n'
+    'Para cada data retorne: "date" no formato YYYY-MM-DD, "weight" (peso corporal em kg) e '
+    '"fat" (percentual de gordura corporal / PBF, em %). Se um valor nao existir para uma '
+    'data, use null. Nao invente datas nem valores.\n\n'
+    'Responda APENAS com um array JSON valido, sem markdown, ordenado por data crescente:\n'
+    '[{"date":"2026-05-23","weight":82.9,"fat":35.7}]'
+  )
+  file_bytes=base64.b64decode(file_b64)
+  if (mime or '')=='application/pdf':
+    content=[{'document':{'format':'pdf','name':'exame','source':{'bytes':file_bytes}}},{'text':prompt}]
+  else:
+    fmt=(mime or 'image/jpeg').split('/')[-1].replace('jpg','jpeg')
+    content=[{'image':{'format':fmt,'source':{'bytes':file_bytes}}},{'text':prompt}]
+  txt=bedrock_text(content,2000)
+  m=re.search(r'\[[\s\S]*\]',txt)
+  if not m:
+    log.warning('analyze_bio: resposta sem JSON: %r',txt[:200])
+    return []
+  data=json.loads(m.group())
+  out,seen=[],set()
+  for it in (data if isinstance(data,list) else []):
+    if not isinstance(it,dict): continue
+    d=_bio_date(it.get('date'))
+    if not d or d in seen: continue
+    w=_bio_num(it.get('weight'));f=_bio_num(it.get('fat'))
+    if w is not None and not(20<=w<=400): w=None
+    if f is not None and not(1<=f<=75): f=None
+    if w is None and f is None: continue
+    lean=round(w*(1-f/100),2) if(w is not None and f is not None) else None
+    seen.add(d)
+    out.append({'date':d,'weight':w,'fat':f,'lean':lean})
+  out.sort(key=lambda e:e['date'])
+  return out
 def query_days(uid,cond_key=None):
   items=[]
   kwargs={'KeyConditionExpression':Key('userId').eq(uid)&cond_key if cond_key else Key('userId').eq(uid)}
@@ -424,6 +495,16 @@ def _dispatch(event,context):
         return{'statusCode':400,'body':json.dumps({'error':'missing text or file'})}
       res=estimate_food(text,file_b64,body.get('mimeType','image/jpeg'))
       return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
+    except Exception as e:
+      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+  if action=='analyze_bio' and method=='POST':
+    try:
+      body=json.loads(event.get('body') or '{}')
+      file_b64=body.get('file')
+      if not file_b64:
+        return{'statusCode':400,'body':json.dumps({'error':'missing file'})}
+      items=analyze_bio(file_b64,body.get('mimeType','application/pdf'))
+      return{'statusCode':200,'body':json.dumps({'items':items},cls=Dec)}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}
   if action=='save_push_subscription' and method=='POST':
