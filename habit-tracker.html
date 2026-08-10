@@ -685,6 +685,7 @@ let mealPlan=loadMealPlan();
 let _mpEditMealId=null;
 let _mpEditVariantIdx=null;
 let _mpImportPreview=[];
+let _mpAiGen=false;
 function loadMealPlan(){
   try{const s=lsGet('ht:mealplan');return s?JSON.parse(s):null;}
   catch{return null;}
@@ -1187,6 +1188,16 @@ async function analyzeViaLambda(file,context){
   });
   const data=await resp.json();
   if(!resp.ok) throw new Error(data.error||'Erro ao analisar arquivo');
+  return data.items;
+}
+async function analyzeTextViaLambda(text,context){
+  const resp=await fetch(`${API_URL}?action=analyze`,{
+    method:'POST',
+    headers:{'content-type':'application/json',authorization:'Bearer '+authToken},
+    body:JSON.stringify({text,context})
+  });
+  const data=await resp.json();
+  if(!resp.ok) throw new Error(data.error||'Erro ao analisar texto');
   return data.items;
 }
 
@@ -2502,6 +2513,8 @@ function renderGymPlan(gymBody){
         <div style="border-top:1px solid #E7E5E4;margin-top:10px;padding-top:12px">
           <input type="file" id="gym-plan-file-${w.id}" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleGymPlanFile(this,'${w.id}')">
           <button type="button" onclick="document.getElementById('gym-plan-file-${w.id}').click()" style="width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:12px;text-align:center;color:#78716C;font-size:12px;cursor:pointer;margin-bottom:8px">📄 Importar plano de PDF ou imagem</button>
+          <textarea id="gym-import-text" rows="3" placeholder="Ou cole o treino em texto (ex.: Supino reto 4x10, Agachamento 3x12, Rosca direta 3x12...) — a IA separa exercício, séries e reps" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:9px 11px;color:#1C1917;font-size:12px;outline:none;resize:none;margin-bottom:6px"></textarea>
+          <button type="button" onclick="handleGymPlanText('${w.id}')" style="width:100%;background:#fff;border:1px solid #818cf8;border-radius:10px;padding:10px;text-align:center;color:#6C63FF;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px">✍️ Importar do texto</button>
           <div id="gym-import-status" style="font-size:12px;min-height:14px;margin-bottom:4px"></div>
           <div id="gym-import-preview">${previewHtml}</div>
           ${exListHtml}
@@ -2626,6 +2639,21 @@ async function handleGymPlanFile(input,tr){
   statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando plano com IA — aguarde...</span>';
   try{
     const items=await analyzeViaLambda(file,'gym_plan');
+    _gymPlanPreview=items.map((ex,i)=>({...ex,group:canonGroup(ex.group)||'Outro',id:'ex_'+Date.now()+i,_checked:true}));
+    document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
+    statusEl.innerHTML=`<span style="color:#16A34A">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
+  }catch(e){
+    statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
+  }
+}
+async function handleGymPlanText(tr){
+  const ta=document.getElementById('gym-import-text');const text=(ta?.value||'').trim();
+  if(!text){showToast('Cole o texto do treino primeiro.');return;}
+  if(tr) _gymPlanTr=tr;
+  const statusEl=document.getElementById('gym-import-status');
+  statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando texto com IA — aguarde...</span>';
+  try{
+    const items=await analyzeTextViaLambda(text,'gym_plan');
     _gymPlanPreview=items.map((ex,i)=>({...ex,group:canonGroup(ex.group)||'Outro',id:'ex_'+Date.now()+i,_checked:true}));
     document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
     statusEl.innerHTML=`<span style="color:#16A34A">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
@@ -5118,12 +5146,29 @@ function renderMealPlanConfigHtml(){
     </div>`;
   }).join('');
   const prevHtml=_mpImportPreview.length?_mpRenderImportPreview():'';
+  const _mut='color:#A8A29E;font-size:12px;line-height:1.5';
+  const _mdisc='As sugestões são geradas por IA com base em princípios gerais de nutrição e <b>não substituem a avaliação de um nutricionista</b>. Valide o plano com um profissional. O app não se responsabiliza pelo uso indiscriminado desta ferramenta.';
+  let _mgen;
+  if(!goals.aiMealOk){
+    _mgen=`<div style="${_mut};margin:2px 0 8px">${_mdisc}</div><button onclick="mgenAccept()" style="width:100%;padding:11px;background:#34d399;border-radius:10px;color:#fff;font-size:13px;font-weight:700">Li e concordo — gerar minha dieta</button>`;
+  } else if((goals.lastAiMealGen||'')===wgenMonthKey()){
+    _mgen=`<div style="${_mut};margin:2px 0 8px">${_mdisc}</div><div style="padding:11px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;text-align:center;color:#78716C;font-size:12px">Você já gerou um plano este mês.<br>Disponível novamente em <b>${wgenNextMonthLabel()}</b>.</div>`;
+  } else {
+    _mgen=`<div style="${_mut};margin:2px 0 8px">${_mdisc}</div><button id="mgen-go" onclick="genMealPlan()" style="width:100%;padding:12px;background:#34d399;border-radius:10px;color:#fff;font-size:13px;font-weight:700">Gerar plano com IA</button>`;
+  }
   return`<div class="card fade-in">
     <div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> PLANO ALIMENTAR</div></div>
     <div style="font-size:12px;color:#78716C;margin-bottom:10px;line-height:1.6">Configure as refeições e macros do seu plano. Os valores de proteína e calorias serão usados no Resumo Nutricional.</div>
     <input type="file" id="mp-file-input" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="mpHandleFile(this)">
     <button onclick="document.getElementById('mp-file-input').click()" style="display:block;width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:14px;text-align:center;color:#78716C;font-size:13px;margin-bottom:8px">📄 Importar plano da nutricionista (PDF ou foto)</button>
-    <div id="mp-import-status" style="font-size:12px;min-height:14px;margin-bottom:4px"></div>
+    <textarea id="mp-import-text" rows="3" placeholder="Ou cole o plano em texto (ex.: Café: 2 ovos + pão; Almoço: 100g frango + arroz + salada; Lanche: ...) — a IA separa por refeição e quantidade" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:9px 11px;color:#1C1917;font-size:12px;outline:none;resize:none;margin-bottom:6px"></textarea>
+    <button onclick="mpHandleText()" style="display:block;width:100%;background:#fff;border:1px solid #34d399;border-radius:10px;padding:11px;text-align:center;color:#16A34A;font-size:13px;font-weight:600;margin-bottom:12px">✍️ Importar do texto</button>
+    <div style="border-top:1px solid #F0EFED;padding-top:12px">
+      <div style="font-size:13px;font-weight:600;color:#1C1917;margin-bottom:6px">🤖 Gerar dieta com IA</div>
+      <div style="${_mut};margin-bottom:10px">Criamos uma sugestão com base no seu objetivo e nas suas metas de calorias e proteína. Sempre valide com um nutricionista.</div>
+      ${_mgen}
+    </div>
+    <div id="mp-import-status" style="font-size:12px;min-height:14px;margin:8px 0 4px"></div>
     <div id="mp-import-preview">${prevHtml}</div>
   </div>
   ${mealBlocks}
@@ -5220,6 +5265,49 @@ async function mpHandleFile(input){
     if(statusEl)statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
   }
 }
+async function mpHandleText(){
+  const ta=document.getElementById('mp-import-text');const text=(ta?.value||'').trim();
+  if(!text){showToast('Cole o texto do plano primeiro.');return;}
+  _mpAiGen=false;
+  const statusEl=document.getElementById('mp-import-status');
+  if(statusEl)statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando texto com IA — aguarde...</span>';
+  try{
+    const items=await analyzeTextViaLambda(text,'meal_plan');
+    _mpImportPreview=items.filter(i=>i.id&&MEALS.find(m=>m.id===i.id)).map(i=>({...i,_checked:true}));
+    const prevEl=document.getElementById('mp-import-preview');if(prevEl)prevEl.innerHTML=_mpRenderImportPreview();
+    if(statusEl)statusEl.innerHTML=`<span style="color:#16A34A">✓ ${_mpImportPreview.length} refeição(ões) identificada(s) — selecione as que deseja importar</span>`;
+  }catch(e){
+    if(statusEl)statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
+  }
+}
+function mgenAccept(){saveGoals({...goals,aiMealOk:true});showMealPlanConfig();}
+async function genMealPlan(){
+  if(!USE_API||!authToken){showToast('Faça login para usar esta função.');return;}
+  if(!goals.aiMealOk){showToast('Aceite o aviso primeiro.');return;}
+  if((goals.lastAiMealGen||'')===wgenMonthKey()){showToast('Você já gerou um plano este mês.');return;}
+  if(!navigator.onLine){showToast('Sem conexão — tente novamente online');return;}
+  const peso=parseFloat(goals.pesoAtual)||0;
+  const prot=peso?Math.round(calcProtein(peso,goals.objetivo||'manutencao')):0;
+  const btn=document.getElementById('mgen-go');if(btn){btn.disabled=true;btn.textContent='Gerando plano… aguarde';}
+  const statusEl=document.getElementById('mp-import-status');
+  try{
+    const resp=await fetch(`${API_URL}?action=generate_meal_plan`,{
+      method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},
+      body:JSON.stringify({objetivo:goals.objetivo||'manutencao',calorias:parseInt(goals.calorias)||0,protein:prot,meals:['cafe','almoco','lanche','jantar','ceia']})
+    });
+    const data=await resp.json();
+    if(!resp.ok||data.error) throw new Error(data.error||'Erro ao gerar plano');
+    const items=(data.items||[]).filter(i=>i.id&&MEALS.find(m=>m.id===i.id));
+    if(!items.length) throw new Error('A IA não retornou refeições. Tente novamente.');
+    _mpImportPreview=items.map(i=>({...i,_checked:true}));
+    _mpAiGen=true;
+    showMealPlanConfig();
+    const st=document.getElementById('mp-import-status');if(st)st.innerHTML=`<span style="color:#16A34A">✓ ${items.length} refeição(ões) geradas — selecione e importe abaixo</span>`;
+  }catch(e){
+    showToast(e.message||'Erro ao gerar plano');
+    if(btn){btn.disabled=false;btn.textContent='Gerar plano com IA';}
+  }
+}
 function _mpRenderImportPreview(){
   if(!_mpImportPreview.length) return '';
   const mealLabel={cafe:'Café da manhã',almoco:'Almoço',lanche:'Lanche',jantar:'Jantar',ceia:'Ceia'};
@@ -5258,7 +5346,12 @@ function mpConfirmImport(){
     }
     count++;
   });
-  if(count){saveMealPlan();renderUI();}
+  if(count){
+    saveMealPlan();
+    if(_mpAiGen) saveGoals({...goals,lastAiMealGen:wgenMonthKey()});
+    renderUI();
+  }
+  _mpAiGen=false;
   _mpImportPreview=[];
   showMealPlanConfig();
   const st=document.getElementById('mp-import-status');

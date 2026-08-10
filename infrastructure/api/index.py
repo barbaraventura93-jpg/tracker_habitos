@@ -65,9 +65,7 @@ def bedrock_text(content,max_tokens,temperature=None):
     log.error('bedrock falhou (nao-AWS) em %.1fs: %s: %s',time.time()-t0,type(e).__name__,e)
     raise
   return resp['output']['message']['content'][0]['text']
-def call_ai(file_b64,mime,ctx):
-  file_bytes=base64.b64decode(file_b64)
-  is_pdf=mime=='application/pdf'
+def call_ai(file_b64,mime,ctx,text=None):
   if ctx=='supplements':
     prompt='Extraia todos os suplementos, vitaminas e medicamentos. Retorne APENAS um array JSON: [{"label":"nome e dose","sub":"horario e instrucao","icon":"emoji","showOn":"always"}]. Use showOn=treino para pre/pos-treino, descanso para descanso, always para os demais. Somente o JSON, sem markdown.'
   elif ctx=='meal_plan':
@@ -83,9 +81,13 @@ def call_ai(file_b64,mime,ctx):
     )
   else:
     prompt='Extraia todos os exercicios deste plano de treino. Retorne APENAS um array JSON: [{"name":"exercicio","group":"Peito|Costas|Ombro|Bíceps|Tríceps|Perna|Core|Glúteo|Cardio|Outro","sets":3,"reps":"12","obs":""}]. Use os acentos exatamente como escritos. Somente o JSON, sem markdown.'
-  if is_pdf:
+  if text:
+    content=[{'text':prompt+'\n\nConteudo enviado pelo usuario (segmente tudo conforme as instrucoes acima):\n'+text}]
+  elif (mime or '')=='application/pdf':
+    file_bytes=base64.b64decode(file_b64)
     content=[{'document':{'format':'pdf','name':'arquivo','source':{'bytes':file_bytes}}},{'text':prompt}]
   else:
+    file_bytes=base64.b64decode(file_b64)
     fmt=mime.split('/')[-1].replace('jpg','jpeg')
     content=[{'image':{'format':fmt,'source':{'bytes':file_bytes}}},{'text':prompt}]
   txt=bedrock_text(content,3000)
@@ -266,6 +268,53 @@ def generate_workout_plan(payload):
     if exs:
       out.append({'name':str(w.get('name','Treino')).strip()[:40],'exercises':exs})
   return {'workouts':out,'notes':str(data.get('notes','')).strip()[:200]}
+def generate_meal_plan(payload):
+  """Gera um plano alimentar diario a partir do objetivo e das metas de kcal/proteina.
+  Retorna itens na mesma forma da extracao de plano (id/hint/kcal/prot/trigger) para
+  o frontend reusar o pipeline de preview de refeicoes."""
+  obj=payload.get('objetivo') or 'manutencao'
+  kcal=int(payload.get('calorias') or 0)
+  prot=int(payload.get('protein') or 0)
+  valid=['cafe','almoco','lanche','jantar','ceia']
+  meals=[m for m in (payload.get('meals') or valid) if m in valid] or valid
+  restr=(payload.get('restricoes') or '').strip()[:200]
+  obj_txt={'cutting':'perda de gordura (deficit calorico)',
+           'bulking':'ganho de massa muscular (superavit)',
+           'manutencao':'manutencao de peso e composicao'}.get(obj,'manutencao')
+  prompt=(
+    'Voce e um nutricionista. Monte um plano alimentar diario, saudavel e pratico, '
+    'com alimentos comuns e acessiveis no Brasil, adequado ao objetivo do usuario.\n\n'
+    'Objetivo: '+obj_txt+'\n'
+    +('Meta diaria aproximada: '+str(kcal)+' kcal e '+str(prot)+' g de proteina.\n' if kcal else '')
+    +('Restricoes/preferencias: '+restr+'\n' if restr else '')
+    +'Refeicoes desejadas (use exatamente estes ids): '+', '.join(meals)+'\n\n'
+    'Distribua as calorias e a proteina entre as refeicoes de forma coerente e realista, '
+    'com quantidades (gramas/porcoes) na descricao. Responda APENAS com um array JSON valido, '
+    'sem markdown:\n'
+    '[{"id":"cafe","hint":"descricao dos alimentos com quantidades","kcal":380,"prot":35,"trigger":null}]\n'
+    'Use somente os ids informados; trigger sempre null.'
+  )
+  txt=bedrock_text([{'text':prompt}],1500,NOVA_MIN_TEMP)
+  m=re.search(r'\[[\s\S]*\]',txt)
+  if not m:
+    log.warning('generate_meal_plan: resposta sem JSON: %r',txt[:200])
+    return {'items':[],'error':'Nao foi possivel gerar o plano'}
+  try:
+    data=json.loads(m.group())
+  except Exception:
+    log.warning('generate_meal_plan: JSON invalido: %r',txt[:300])
+    return {'items':[],'error':'Resposta invalida da IA'}
+  def _i(v):
+    try: return max(0,int(round(float(v))))
+    except: return 0
+  out=[]
+  for it in (data if isinstance(data,list) else []):
+    mid=str(it.get('id','')).strip()
+    if mid not in valid: continue
+    hint=str(it.get('hint','')).strip()[:220]
+    if not hint: continue
+    out.append({'id':mid,'hint':hint,'kcal':_i(it.get('kcal')),'prot':_i(it.get('prot')),'trigger':None})
+  return {'items':out}
 def estimate_food(text,file_b64,mime):
   instr=(
     'Voce e um nutricionista. Estime os macros da refeicao/alimento descrito'
@@ -327,7 +376,12 @@ def _dispatch(event,context):
   if action=='analyze' and method=='POST':
     try:
       body=json.loads(event.get('body') or '{}')
-      items=call_ai(body['file'],body['mimeType'],body.get('context','gym_plan'))
+      ctx=body.get('context','gym_plan')
+      text=(body.get('text') or '').strip()
+      if text:
+        items=call_ai(None,None,ctx,text=text)
+      else:
+        items=call_ai(body['file'],body['mimeType'],ctx)
       return{'statusCode':200,'body':json.dumps({'items':items})}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}
@@ -351,6 +405,13 @@ def _dispatch(event,context):
     try:
       body=json.loads(event.get('body') or '{}')
       res=generate_workout_plan(body)
+      return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
+    except Exception as e:
+      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+  if action=='generate_meal_plan' and method=='POST':
+    try:
+      body=json.loads(event.get('body') or '{}')
+      res=generate_meal_plan(body)
       return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}
