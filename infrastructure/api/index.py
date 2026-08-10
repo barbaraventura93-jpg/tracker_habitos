@@ -339,6 +339,68 @@ def estimate_food(text,file_b64,mime):
     try: return max(0,int(round(float(v))))
     except: return 0
   return {'name':str(d.get('name','')).strip()[:60],'kcal':_i(d.get('kcal')),'prot':_i(d.get('prot')),'carb':_i(d.get('carb')),'fat':_i(d.get('fat'))}
+def _bio_num(v):
+  try:
+    if v is None or v=='': return None
+    return round(float(str(v).replace(',','.')),2)
+  except: return None
+def _bio_date(s):
+  """Normaliza a data de uma medição para ISO YYYY-MM-DD.
+
+  A IA já recebe instrução de devolver ISO, mas laudos de bioimpedância (InBody)
+  imprimem `dd.mm.yy.` — este fallback cobre esse e outros formatos dia-primeiro
+  comuns no Brasil, para não descartar uma medição só por causa do formato."""
+  s=str(s or '').strip().rstrip('.')
+  if re.match(r'^\d{4}-\d{2}-\d{2}$',s): return s
+  m=re.match(r'^(\d{1,2})[./-](\d{1,2})[./-](\d{2,4})$',s)
+  if m:
+    d,mo,y=int(m.group(1)),int(m.group(2)),int(m.group(3))
+    if y<100: y+=2000
+    if 1<=mo<=12 and 1<=d<=31:
+      return '%04d-%02d-%02d'%(y,mo,d)
+  return None
+def analyze_bio(file_b64,mime):
+  """Extrai a série de composição corporal de um exame de bioimpedância.
+
+  Laudos como o do InBody trazem o resultado atual E uma tabela de histórico com
+  medições anteriores — daí a extração devolver um array, uma entrada por data."""
+  prompt=(
+    'Este documento e um exame de bioimpedancia / composicao corporal (ex.: InBody). '
+    'Extraia TODAS as medicoes, incluindo a TABELA DE HISTORICO com resultados de datas '
+    'anteriores (as linhas de Peso, Massa Muscular Esqueletica e Percentual de Gordura ao '
+    'longo das varias datas). Cada data e uma medicao separada e deve virar um item.\n\n'
+    'Para cada data retorne: "date" no formato YYYY-MM-DD, "weight" (peso corporal em kg) e '
+    '"fat" (percentual de gordura corporal / PBF, em %). Se um valor nao existir para uma '
+    'data, use null. Nao invente datas nem valores.\n\n'
+    'Responda APENAS com um array JSON valido, sem markdown, ordenado por data crescente:\n'
+    '[{"date":"2026-05-23","weight":82.9,"fat":35.7}]'
+  )
+  file_bytes=base64.b64decode(file_b64)
+  if (mime or '')=='application/pdf':
+    content=[{'document':{'format':'pdf','name':'exame','source':{'bytes':file_bytes}}},{'text':prompt}]
+  else:
+    fmt=(mime or 'image/jpeg').split('/')[-1].replace('jpg','jpeg')
+    content=[{'image':{'format':fmt,'source':{'bytes':file_bytes}}},{'text':prompt}]
+  txt=bedrock_text(content,2000)
+  m=re.search(r'\[[\s\S]*\]',txt)
+  if not m:
+    log.warning('analyze_bio: resposta sem JSON: %r',txt[:200])
+    return []
+  data=json.loads(m.group())
+  out,seen=[],set()
+  for it in (data if isinstance(data,list) else []):
+    if not isinstance(it,dict): continue
+    d=_bio_date(it.get('date'))
+    if not d or d in seen: continue
+    w=_bio_num(it.get('weight'));f=_bio_num(it.get('fat'))
+    if w is not None and not(20<=w<=400): w=None
+    if f is not None and not(1<=f<=75): f=None
+    if w is None and f is None: continue
+    lean=round(w*(1-f/100),2) if(w is not None and f is not None) else None
+    seen.add(d)
+    out.append({'date':d,'weight':w,'fat':f,'lean':lean})
+  out.sort(key=lambda e:e['date'])
+  return out
 def query_days(uid,cond_key=None):
   items=[]
   kwargs={'KeyConditionExpression':Key('userId').eq(uid)&cond_key if cond_key else Key('userId').eq(uid)}
@@ -424,6 +486,16 @@ def _dispatch(event,context):
         return{'statusCode':400,'body':json.dumps({'error':'missing text or file'})}
       res=estimate_food(text,file_b64,body.get('mimeType','image/jpeg'))
       return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
+    except Exception as e:
+      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+  if action=='analyze_bio' and method=='POST':
+    try:
+      body=json.loads(event.get('body') or '{}')
+      file_b64=body.get('file')
+      if not file_b64:
+        return{'statusCode':400,'body':json.dumps({'error':'missing file'})}
+      items=analyze_bio(file_b64,body.get('mimeType','application/pdf'))
+      return{'statusCode':200,'body':json.dumps({'items':items},cls=Dec)}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}
   if action=='save_push_subscription' and method=='POST':
