@@ -627,14 +627,14 @@ async function syncWeekPlan(){
   }catch{}
 }
 // treino previsto para um dia da semana (plano explícito tem prioridade sobre weekDays)
-function plannedTrForDow(dow){
+function plannedTrsForDow(dow){
   const p=weekPlan[String(dow)];
   if(p!==undefined&&p!==null&&p!==''){
-    if(p==='descanso') return 'descanso';
-    if(userWorkouts.find(w=>w.id===p)) return p;
+    return (Array.isArray(p)?p:[p]).filter(x=>x&&x!=='descanso'&&userWorkouts.find(w=>w.id===x));
   }
-  return (userWorkouts.find(w=>w.weekDays.includes(dow))||{}).id||'descanso';
+  return userWorkouts.filter(w=>w.weekDays.includes(dow)).map(w=>w.id);
 }
+function plannedTrForDow(dow){return plannedTrsForDow(dow)[0]||'descanso';}
 function saveUserWorkouts(){
   try{lsSet('ht:workouts',JSON.stringify(userWorkouts));}catch{}
   if(!USE_API||!authToken) return;
@@ -873,14 +873,16 @@ function buildDayPlanItems(){
   MEALS.forEach(m=>{
     items.push({kind:'meal',time:m.time,min:_toMin(m.time),icon:m.icon,label:m.label,done:!!dayData.meals[m.id],action:`toggleMeal('${m.id}')`});
   });
-  const tr=dayData.tr, wk=getWorkoutById(tr);
-  if(wk&&wk.type&&wk.type!=='descanso'){
+  const _trs=(dayData.trs&&dayData.trs.length)?dayData.trs:(dayData.tr&&dayData.tr!=='descanso'?[dayData.tr]:[]);
+  _trs.forEach(tr=>{
+    const wk=getWorkoutById(tr);
+    if(!wk||!wk.type||wk.type==='descanso') return;
     const isGym=isGymType(tr);
     let done=false;
     if(isGym){const sess=loadGymSession(currentDate,tr);done=!!(sess&&sess.some(ex=>ex.sets.some(s=>s.done)));}
     else{done=(dayData.gymDurMin||0)>0;}
     items.push({kind:'train',time:wk.time||'',min:_toMin(wk.time)??(18*60),icon:wk.icon||'🏋️',label:'Treino — '+(wk.name||''),done,action:`showBnav('gym')`});
-  }
+  });
   habitsDueOn(currentDate).forEach(h=>{
     items.push({kind:'habit',time:h.time||'',min:_toMin(h.time),icon:h.icon||'🌱',label:h.name,done:!!(dayData.habits||{})[h.id],action:`toggleHabit('${h.id}')`,streak:habitStreak(h.id,currentDate)});
   });
@@ -1524,13 +1526,23 @@ function gymTogglePlan(){
   renderGym();
 }
 function gymPlanSetTr(tr){_gymPlanTr=tr==='none'?null:tr;_gymPlanPreview=[];renderGym();}
-function gymSetDay(id){
-  dayData.tr=id;save();
-  const wk=getWorkoutById(id);
+function gymPickDay(id){
+  if(!Array.isArray(dayData.trs)) dayData.trs=(dayData.tr&&dayData.tr!=='descanso')?[dayData.tr]:[];
+  if(id==='descanso'){ dayData.trs=[]; dayData.tr='descanso'; }
+  else { if(!dayData.trs.includes(id)) dayData.trs.push(id); dayData.tr=id; }
+  save();
+  const wk=getWorkoutById(dayData.tr);
   const hEl=document.getElementById('gym-hdr-info');
-  if(hEl){const{day}=dispDate(currentDate);hEl.textContent=day+' · '+(wk?.name||id);}
+  if(hEl){const{day}=dispDate(currentDate);hEl.textContent=day+' · '+(wk?.name||dayData.tr);}
   renderGym();
 }
+function gymRemoveDay(id){
+  if(!Array.isArray(dayData.trs)) return;
+  dayData.trs=dayData.trs.filter(t=>t!==id);
+  if(dayData.tr===id) dayData.tr=dayData.trs[0]||'descanso';
+  save();renderGym();
+}
+function gymSetDay(id){gymPickDay(id);}
 function gymPlanDelEx(tr,i){if(!gymPlan[tr]) return;gymPlan[tr].splice(i,1);saveGymPlan();renderGym();}
 function gymPlanClearAll(tr){if(!confirm('Limpar todos os exercícios do plano?')) return;gymPlan[tr]=[];saveGymPlan();renderGym();}
 function gymCreateWorkout(){
@@ -1570,21 +1582,22 @@ function renderSemanaScreen(){
   const weekDays=[];
   for(let i=0;i<7;i++){
     const d=addDays(mon,i);
-    const dd=d===currentDate?dayData:loadDay(d);
+    const dd=normDay(d===currentDate?dayData:loadDay(d));
+    const trsD=(dd.trs&&dd.trs.length)?dd.trs:(dd.tr&&dd.tr!=='descanso'?[dd.tr]:[]);
+    const sessions=trsD.map(t=>loadGymSession(d,t)).filter(Boolean);
     const tr=dd.tr||'descanso';
     const trObj=getWorkoutById(tr)||null;
-    const session=tr!=='descanso'?loadGymSession(d,tr):null;
-    weekDays.push({date:d,tr,trObj,session,dd,label:DAY_LABELS[i]});
+    const session=sessions[0]||null;
+    weekDays.push({date:d,tr,trs:trsD,trObj,session,sessions,dd,label:DAY_LABELS[i]});
   }
 
   const muscleSets={};
-  weekDays.forEach(({session})=>{
-    if(!session) return;
-    session.forEach(ex=>{
+  weekDays.forEach(({sessions})=>{
+    sessions.forEach(session=>session.forEach(ex=>{
       if(!ex.group||ex.group==='Outro'||ex.group==='Cardio') return;
       const done=ex.sets.filter(s=>s.done).length;
       if(done>0) muscleSets[ex.group]=(muscleSets[ex.group]||0)+done;
-    });
+    }));
   });
   const cardioMin=weekDays.reduce((s,{dd})=>s+(dd.gymDurMin||0),0);
   // Macros da semana (refeições livres) — Dieta 2.0
@@ -1829,11 +1842,16 @@ function renderGym(){
 
   if(_gymViewPlan){renderGymPlan(gymBody);return;}
 
+  const trs=Array.isArray(dd.trs)?dd.trs:[];
   const selectorHtml='<div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;-webkit-overflow-scrolling:touch">'+
     getAllDayOptions().map(t=>{
-      const sel=tr===t.id;
-      return`<button onclick="gymSetDay('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${sel?t.color+'20':'#FAFAF9'};color:${sel?t.color:'#78716C'};border:1px solid ${sel?t.color+'60':'#E7E5E4'};flex-shrink:0">${t.icon} ${t.name}</button>`;
-    }).join('')+'</div>';
+      const isRest=t.id==='descanso';
+      const inDay=isRest?trs.length===0:trs.includes(t.id);
+      const focused=tr===t.id;
+      const rm=(!isRest&&inDay)?`<span onclick="event.stopPropagation();gymRemoveDay('${t.id}')" style="margin-left:6px;opacity:.65">✕</span>`:'';
+      return`<button onclick="gymPickDay('${t.id}')" style="white-space:nowrap;padding:7px 12px;border-radius:8px;font-size:11px;font-weight:700;background:${inDay?t.color+'20':'#FAFAF9'};color:${inDay?t.color:'#78716C'};border:1px solid ${focused?t.color:(inDay?t.color+'60':'#E7E5E4')};${focused?'box-shadow:0 0 0 1px '+t.color+';':''}flex-shrink:0">${t.icon} ${t.name}${rm}</button>`;
+    }).join('')+'</div>'+
+    (trs.length>1?`<div style="font-size:10px;color:#A8A29E;margin:-4px 0 10px">Vários treinos hoje — toque num treino para focar o log; ✕ remove.</div>`:'');
 
   if(tr==='descanso'){
     gymBody.innerHTML=selectorHtml+`<div class="card fade-in" style="text-align:center;padding:32px 20px"><div style="font-size:40px;margin-bottom:12px">🛌</div><div style="font-size:15px;font-weight:700;color:#1C1917;margin-bottom:6px">Dia de Descanso Ativo</div><div style="font-size:12px;color:#78716C">Sem musculação hoje. Recuperação é parte do treino.</div></div>`;
@@ -2513,8 +2531,6 @@ function renderGymPlan(gymBody){
         <div style="border-top:1px solid #E7E5E4;margin-top:10px;padding-top:12px">
           <input type="file" id="gym-plan-file-${w.id}" accept=".pdf,image/*" style="position:absolute;opacity:0;pointer-events:none;width:1px;height:1px" onchange="handleGymPlanFile(this,'${w.id}')">
           <button type="button" onclick="document.getElementById('gym-plan-file-${w.id}').click()" style="width:100%;background:#FAFAF9;border:2px dashed #D4D0CE;border-radius:10px;padding:12px;text-align:center;color:#78716C;font-size:12px;cursor:pointer;margin-bottom:8px">📄 Importar plano de PDF ou imagem</button>
-          <textarea id="gym-import-text" rows="3" placeholder="Ou cole o treino em texto (ex.: Supino reto 4x10, Agachamento 3x12, Rosca direta 3x12...) — a IA separa exercício, séries e reps" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:9px 11px;color:#1C1917;font-size:12px;outline:none;resize:none;margin-bottom:6px"></textarea>
-          <button type="button" onclick="handleGymPlanText('${w.id}')" style="width:100%;background:#fff;border:1px solid #818cf8;border-radius:10px;padding:10px;text-align:center;color:#6C63FF;font-size:12px;font-weight:600;cursor:pointer;margin-bottom:8px">✍️ Importar do texto</button>
           <div id="gym-import-status" style="font-size:12px;min-height:14px;margin-bottom:4px"></div>
           <div id="gym-import-preview">${previewHtml}</div>
           ${exListHtml}
@@ -2639,21 +2655,6 @@ async function handleGymPlanFile(input,tr){
   statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando plano com IA — aguarde...</span>';
   try{
     const items=await analyzeViaLambda(file,'gym_plan');
-    _gymPlanPreview=items.map((ex,i)=>({...ex,group:canonGroup(ex.group)||'Outro',id:'ex_'+Date.now()+i,_checked:true}));
-    document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
-    statusEl.innerHTML=`<span style="color:#16A34A">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
-  }catch(e){
-    statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
-  }
-}
-async function handleGymPlanText(tr){
-  const ta=document.getElementById('gym-import-text');const text=(ta?.value||'').trim();
-  if(!text){showToast('Cole o texto do treino primeiro.');return;}
-  if(tr) _gymPlanTr=tr;
-  const statusEl=document.getElementById('gym-import-status');
-  statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando texto com IA — aguarde...</span>';
-  try{
-    const items=await analyzeTextViaLambda(text,'gym_plan');
     _gymPlanPreview=items.map((ex,i)=>({...ex,group:canonGroup(ex.group)||'Outro',id:'ex_'+Date.now()+i,_checked:true}));
     document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
     statusEl.innerHTML=`<span style="color:#16A34A">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
@@ -3505,7 +3506,8 @@ function suggestCat(t){
 function makeEmpty(date){
   const dow=getDow(date);
   const isFds=dow===0||dow===6;
-  return{tr:plannedTrForDow(dow),isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
+  const trs=plannedTrsForDow(dow);
+  return{trs,tr:trs[0]||'descanso',isPerna:false,isFds,almocoCarb:false,jantarV:'refeicao',
          meals:{},sups:{},habits:{},foods:[],water:0,sleep:null,sleepOk:null,notes:'',gymDurMin:0};
 }
 
@@ -4340,8 +4342,15 @@ function updateSyncStatus(){
   }
 }
 
+function normDay(d){
+  if(!d||typeof d!=='object') return d;
+  if(!Array.isArray(d.trs)) d.trs=(d.tr&&d.tr!=='descanso')?[d.tr]:[];
+  if(!d.trs.length) d.tr='descanso';
+  else if(!d.tr||!d.trs.includes(d.tr)) d.tr=d.trs[0];
+  return d;
+}
 function loadDay(date){
-  try{const s=lsGet('ht:'+date);return s?JSON.parse(s):makeEmpty(date);}
+  try{const s=lsGet('ht:'+date);return normDay(s?JSON.parse(s):makeEmpty(date));}
   catch{return makeEmpty(date);}
 }
 async function fetchRemote(date){
@@ -5587,7 +5596,7 @@ function renderWorkoutGen(){
     }).join('');
     body.innerHTML=`<div class="fade-in">
       <div style="${card};background:#F5F3FF;border-color:#C7D2FE">
-        <div style="font-size:13px;color:#4338CA;font-weight:600;margin-bottom:4px">✓ Treino gerado — revise e ajuste</div>
+        <div style="font-size:13px;color:#4338CA;font-weight:600;margin-bottom:4px">✓ Treino ${_wgenIsImport?'lido do texto':'gerado'} — revise e ajuste</div>
         ${_wgenNotes?`<div style="font-size:12px;color:#4338CA;line-height:1.5">${_wgenNotes}</div>`:''}
       </div>
       ${secs}
@@ -5620,8 +5629,10 @@ function renderWorkoutGen(){
   body.innerHTML=`<div class="fade-in">
     <div style="${card}">
       <div style="font-family:'Fraunces',serif;font-size:16px;color:#1C1917;margin-bottom:6px">📄 Já tenho treino do meu personal</div>
-      <div style="${muted};margin-bottom:12px">Importe o treino prescrito pelo seu personal (PDF ou foto) e ajuste no app.</div>
-      <button onclick="wgenImportPersonal()" style="width:100%;padding:12px;background:#fff;border:1px solid #818cf8;border-radius:11px;color:#6C63FF;font-size:14px;font-weight:600">Importar treino do personal</button>
+      <div style="${muted};margin-bottom:10px">Cole o treino em texto (pode ser a semana toda, vários treinos/dias) e a IA separa em treinos. Ou importe um PDF/foto no editor de plano.</div>
+      <textarea id="wgen-import-text" rows="4" placeholder="Ex.: Treino A (Peito/Tríceps): Supino reto 4x10, Crucifixo 3x12...  Treino B (Costas/Bíceps): Puxada 4x12, Rosca 3x12..." style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;color:#1C1917;font-size:13px;outline:none;resize:none;margin-bottom:8px"></textarea>
+      <button id="wgen-import-go" onclick="importWorkoutText()" style="width:100%;padding:11px;background:#818cf8;border-radius:11px;color:#fff;font-size:14px;font-weight:600;margin-bottom:8px">✍️ Ler treino do texto</button>
+      <button onclick="wgenImportPersonal()" style="width:100%;padding:10px;background:#fff;border:1px solid #818cf8;border-radius:11px;color:#6C63FF;font-size:13px;font-weight:500">📄 Importar PDF/foto no editor de plano</button>
     </div>
     <div style="${card}">
       <div style="font-family:'Fraunces',serif;font-size:16px;color:#1C1917;margin-bottom:6px">🤖 Pedir treino ao nosso agente de IA</div>
@@ -5648,6 +5659,7 @@ function renderWorkoutGen(){
 function wgenAccept(){saveGoals({...goals,aiWorkoutOk:true});renderWorkoutGen();}
 function wgenImportPersonal(){showGym();gymTogglePlan();showToast('Use "Importar plano de PDF ou imagem" no treino desejado.');}
 async function genWorkoutPlan(){
+  _wgenIsImport=false;
   if(!USE_API||!authToken){showToast('Faça login para usar esta função.');return;}
   if(!goals.aiWorkoutOk){showToast('Aceite o aviso primeiro.');return;}
   if((goals.lastAiWorkoutGen||'')===wgenMonthKey()){showToast('Você já gerou um treino este mês.');return;}
@@ -5679,6 +5691,28 @@ async function genWorkoutPlan(){
     if(btn){btn.disabled=false;btn.textContent='Gerar treino';}
   }
 }
+let _wgenIsImport=false;
+async function importWorkoutText(){
+  if(!USE_API||!authToken){showToast('Faça login para usar esta função.');return;}
+  const ta=document.getElementById('wgen-import-text');const text=(ta?.value||'').trim();
+  if(!text){showToast('Cole o texto do treino primeiro.');return;}
+  if(!navigator.onLine){showToast('Sem conexão — tente novamente online');return;}
+  const btn=document.getElementById('wgen-import-go');if(btn){btn.disabled=true;btn.textContent='Lendo treino… aguarde';}
+  try{
+    const resp=await fetch(`${API_URL}?action=extract_workout_plan`,{method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},body:JSON.stringify({text})});
+    const data=await resp.json();
+    if(!resp.ok||data.error) throw new Error(data.error||'Erro ao ler o treino');
+    const ws=(data.workouts||[]).filter(w=>w.exercises&&w.exercises.length);
+    if(!ws.length) throw new Error('Não consegui separar treinos do texto. Tente detalhar mais.');
+    _wgenIsImport=true;
+    _wgenPreview=ws.map((w,wi)=>({name:w.name||('Treino '+String.fromCharCode(65+wi)),exercises:w.exercises.map((e,ei)=>({...e,group:canonGroup(e.group)||'Outro',id:'ex_'+Date.now()+'_'+wi+'_'+ei,_checked:true}))}));
+    _wgenNotes='';
+    renderWorkoutGen();
+  }catch(e){
+    showToast(e.message||'Erro ao ler o treino');
+    if(btn){btn.disabled=false;btn.textContent='✍️ Ler treino do texto';}
+  }
+}
 function wgenApply(){
   if(!_wgenPreview) return;
   const applied=[];
@@ -5687,7 +5721,7 @@ function wgenApply(){
     if(exs.length) applied.push({name:w.name,exercises:exs});
   });
   if(!applied.length){showToast('Selecione ao menos um exercício.');return;}
-  if(!confirm('Isso vai criar os treinos gerados e agendá-los na semana, podendo alterar sua agenda atual. Continuar?')) return;
+  if(!confirm('Isso vai criar os treinos e agendá-los na semana, podendo alterar sua agenda atual. Continuar?')) return;
   const days=wgenPickDays(applied.length);
   let firstId=null;
   applied.forEach((w,i)=>{
@@ -5699,7 +5733,8 @@ function wgenApply(){
     weekPlan[String(dow)]=id;
   });
   saveUserWorkouts();saveGymPlan();saveWeekPlan();
-  saveGoals({...goals,lastAiWorkoutGen:wgenMonthKey()});
+  if(!_wgenIsImport) saveGoals({...goals,lastAiWorkoutGen:wgenMonthKey()});
+  _wgenIsImport=false;
   _wgenPreview=null;_wgenNotes='';
   if(typeof renderUI==='function') renderUI();
   showToast('Treino aplicado! Edite à vontade no plano.');

@@ -270,6 +270,47 @@ def generate_workout_plan(payload):
     if exs:
       out.append({'name':str(w.get('name','Treino')).strip()[:40],'exercises':exs})
   return {'workouts':out,'notes':str(data.get('notes','')).strip()[:200]}
+def extract_workout_plan(payload):
+  """Segmenta um texto livre (possivelmente com varios treinos/dias) em treinos
+  estruturados, na mesma forma do generate_workout_plan, para o frontend reusar o
+  preview multi-treino."""
+  text=(payload.get('text') or '').strip()
+  if not text: return {'workouts':[]}
+  prompt=(
+    'Voce recebe um treino em texto livre, possivelmente com varios treinos ou dias. '
+    'Segmente em treinos separados. Para cada treino, extraia o nome (ex.: "Treino A", '
+    '"Peito e Triceps", "Segunda-feira") e a lista de exercicios com series e repeticoes.\n'
+    'O campo group deve ser EXATAMENTE um destes (com acento): '
+    'Peito, Costas, Ombro, B\u00edceps, Tr\u00edceps, Perna, Core, Gl\u00fateo, Cardio, Outro.\n'
+    'Responda APENAS um JSON valido, sem markdown:\n'
+    '{"workouts":[{"name":"Treino A","exercises":[{"name":"Supino reto","group":"Peito","sets":4,"reps":"8-12","obs":""}]}]}\n\n'
+    'Texto:\n'+text
+  )
+  txt=bedrock_text([{'text':prompt}],2000,NOVA_MIN_TEMP)
+  m=re.search(r'\{[\s\S]*\}',txt)
+  if not m:
+    log.warning('extract_workout_plan: resposta sem JSON: %r',txt[:200])
+    return {'workouts':[],'error':'Nao foi possivel ler o treino do texto'}
+  try:
+    data=json.loads(m.group())
+  except Exception:
+    log.warning('extract_workout_plan: JSON invalido: %r',txt[:300])
+    return {'workouts':[],'error':'Resposta invalida da IA'}
+  def _i(v,d=3):
+    try: return max(1,int(round(float(v))))
+    except: return d
+  out=[]
+  for w in (data.get('workouts') or [])[:10]:
+    exs=[]
+    for e in (w.get('exercises') or [])[:20]:
+      nm=str(e.get('name','')).strip()[:80]
+      if not nm: continue
+      exs.append({'name':nm,'group':str(e.get('group','')).strip()[:20],
+                  'sets':_i(e.get('sets')),'reps':str(e.get('reps','')).strip()[:20],
+                  'obs':str(e.get('obs','')).strip()[:120]})
+    if exs:
+      out.append({'name':str(w.get('name','Treino')).strip()[:40],'exercises':exs})
+  return {'workouts':out}
 def generate_meal_plan(payload):
   """Gera um plano alimentar diario a partir do objetivo e das metas de kcal/proteina.
   Retorna itens na mesma forma da extracao de plano (id/hint/kcal/prot/trigger) para
@@ -476,6 +517,13 @@ def _dispatch(event,context):
     try:
       body=json.loads(event.get('body') or '{}')
       res=generate_workout_plan(body)
+      return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
+    except Exception as e:
+      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+  if action=='extract_workout_plan' and method=='POST':
+    try:
+      body=json.loads(event.get('body') or '{}')
+      res=extract_workout_plan(body)
       return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}
