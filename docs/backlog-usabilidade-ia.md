@@ -6,10 +6,10 @@
 >
 > Legenda: ✅ entregue · 🟡 entregue com ressalva/gap menor · ⬜ aberto
 
-Resumo: dos 11 pontos anotados, **7 já estão entregues**, **2 estão entregues com um
-gap menor** e **2 continuam abertos** (itens 8 e 9, ambos sobre a relação
-treino ↔ semana). Boa parte foi entregue nos PRs #41–#46 e ainda **não está refletida
-no `CLAUDE.md`** — ver "Dívida de documentação" no fim.
+Resumo: dos 11 pontos anotados, **8 já estão entregues** (o item 8 foi entregue neste
+ramo), **2 estão entregues com um gap menor** e **1 continua aberto** (item 9, sobre a
+relação treino ↔ semana). Boa parte foi entregue nos PRs #41–#46 e ainda **não estava
+refletida no `CLAUDE.md`** — ver "Dívida de documentação" no fim.
 
 ---
 
@@ -97,19 +97,25 @@ exibe a mensagem (sessão expirada, app desatualizado, falha de rede…).
 **Ação:** se o erro voltar a aparecer, anotar **a mensagem exata** do indicador — ela
 aponta a causa (auth / versão / rede / API), o que era impossível antes.
 
-## 8. Importação de treino por texto FORA do bloco do treino (um texto com vários dias) — ⬜ Aberto
+## 8. Importação de treino por texto FORA do bloco do treino (um texto com vários dias) — ✅ Entregue (neste ramo)
 
-Hoje o importador de texto está **preso a um treino** (`gym-import-text` é renderizado por
-`w.id`, `habit-tracker.html:2516`) e a IA devolve uma lista plana. Se a pessoa cola "Treino A
-Segunda… / Treino B Quarta…", tudo cai num treino só.
+O importador por texto de **vários dias** agora vive na tela do Gerador de Treino
+(`showWorkoutGen`), **fora** de qualquer card de treino específico, no cartão "📄 Já tenho
+treino do meu personal". A pessoa cola um bloco único (ex.: "Treino A segunda… / Treino B
+quarta…"), a IA **segmenta em treinos distintos** e o resultado passa pelo **mesmo preview
+e apply** do gerador de IA — criando vários treinos de uma vez e agendando-os na semana.
 
-**O que falta:**
-1. Um importador de texto **global** (fora dos cards), no topo da tela de plano.
-2. O backend segmentar por **treino/dia**, não por exercício solto — reaproveitar o formato
-   `{"workouts":[{"name","exercises":[…]}]}` que o `generate_workout_plan` já produz
-   (`index.py:243`), em vez do array plano do `call_ai`. Um novo `context='gym_plan_multi'`
-   (ou um parâmetro no `analyze`) resolve sem tocar no import de arquivo atual.
-3. Preview reusando o mesmo componente multi-treino do gerador de IA (`_wgenPreview`).
+- Backend: `segment_workout_text` (`infrastructure/api/index.py`) + action
+  `segment_workout_text`; devolve `{"workouts":[{name,exercises}]}` reusando o saneamento
+  `_clean_workouts` compartilhado com `generate_workout_plan`. O prompt **não inventa**
+  exercícios — só organiza o que está no texto.
+- Frontend: `wgenImportText()` + textarea global no cartão do personal (`habit-tracker.html`,
+  `renderWorkoutGen`); reusa `_wgenPreview`/`wgenApply`. Importar o próprio treino **não
+  gasta** a cota de 1×/mês da geração por IA (flag `_wgenIsImport`).
+
+O importador por texto **dentro** de um treino específico (`gym-import-text`,
+`habit-tracker.html:2516`) foi mantido — serve ao caso diferente de "colar exercícios num
+treino que já existe". O caminho multi-dia é o novo, global.
 
 ## 9. App se perde entre treino cadastrado × planejado na semana; permitir >1 treino por dia — ⬜ Aberto
 
@@ -179,8 +185,10 @@ Coisas que apareceram na leitura do código e valem entrar no backlog:
 
 ## Priorização sugerida
 
-1. **Itens 8 e 9** — os dois únicos abertos e os que a pessoa sente no uso ("o app se perde").
-   O 9 é o de maior esforço (modelo de dados); o 8 é médio e reaproveita o gerador de IA.
+1. **Item 9** — o único ainda aberto e o que a pessoa mais sente no uso ("o app se perde").
+   É o de maior esforço (mexe no modelo de dados: `weekPlan[dow]`/`dayData.tr` de único → lista).
 2. **Sugestões A e B** — rápidas, fecham gaps menores dos itens 1 e 10.
-3. **Sugestão E** — atualizar o `CLAUDE.md` antes que o descompasso cresça.
-4. **Sugestão C** — melhoria de conforto, quando sobrar espaço.
+3. **Sugestão C** — melhoria de conforto, quando sobrar espaço.
+
+> Item 8 e a Sugestão E (documentar as actions de IA no `CLAUDE.md`) foram entregues
+> neste ramo.

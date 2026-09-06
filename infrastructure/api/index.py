@@ -203,6 +203,26 @@ def week_suggestion(week_summary,untrained,remaining_days):
   )
   txt=bedrock_text([{'text':prompt}],200)
   return [s.strip() for s in txt.strip().split('\n') if s.strip()]
+def _clean_workouts(raw):
+  """Normaliza e limita a lista de treinos vinda da IA — usada pelo gerador
+  (generate_workout_plan) e pelo segmentador de texto (segment_workout_text):
+  campos como string, sets inteiro, e tetos de tamanho para nao estourar o
+  DynamoDB nem a tela. Devolve a lista de treinos ja saneada."""
+  def _i(v,d=3):
+    try: return max(1,int(round(float(v))))
+    except: return d
+  out=[]
+  for w in (raw or [])[:7]:
+    exs=[]
+    for e in (w.get('exercises') or [])[:15]:
+      nm=str(e.get('name','')).strip()[:80]
+      if not nm: continue
+      exs.append({'name':nm,'group':str(e.get('group','')).strip()[:20],
+                  'sets':_i(e.get('sets')),'reps':str(e.get('reps','')).strip()[:20],
+                  'obs':str(e.get('obs','')).strip()[:120]})
+    if exs:
+      out.append({'name':str(w.get('name','Treino')).strip()[:40],'exercises':exs})
+  return out
 def generate_workout_plan(payload):
   """Gera um plano de treino (varios treinos) a partir do objetivo, bioimpedancia
   e series ja feitas na semana. Retorna itens na mesma forma do import de plano
@@ -255,21 +275,41 @@ def generate_workout_plan(payload):
   except Exception:
     log.warning('generate_workout_plan: JSON invalido: %r',txt[:300])
     return {'workouts':[],'error':'Resposta invalida da IA'}
-  def _i(v,d=3):
-    try: return max(1,int(round(float(v))))
-    except: return d
-  out=[]
-  for w in (data.get('workouts') or [])[:7]:
-    exs=[]
-    for e in (w.get('exercises') or [])[:15]:
-      nm=str(e.get('name','')).strip()[:80]
-      if not nm: continue
-      exs.append({'name':nm,'group':str(e.get('group','')).strip()[:20],
-                  'sets':_i(e.get('sets')),'reps':str(e.get('reps','')).strip()[:20],
-                  'obs':str(e.get('obs','')).strip()[:120]})
-    if exs:
-      out.append({'name':str(w.get('name','Treino')).strip()[:40],'exercises':exs})
-  return {'workouts':out,'notes':str(data.get('notes','')).strip()[:200]}
+  return {'workouts':_clean_workouts(data.get('workouts')),'notes':str(data.get('notes','')).strip()[:200]}
+def segment_workout_text(text):
+  """Segmenta um texto livre com UM OU MAIS treinos (possivelmente de dias
+  diferentes) em treinos estruturados. Diferente de generate_workout_plan, que
+  cria do zero: aqui a IA apenas ORGANIZA o que a pessoa colou — nao inventa
+  exercicios. Devolve o mesmo formato {workouts:[{name,exercises}]} para o
+  frontend reusar o preview/apply do gerador (por isso o segmentador vive fora
+  do card de um treino especifico: um unico texto pode virar varios treinos)."""
+  grupos='Peito, Costas, Ombro, Bíceps, Tríceps, Perna, Core, Glúteo, Cardio, Outro'
+  prompt=(
+    'Voce recebe um texto com UM OU MAIS treinos de musculacao, possivelmente de '
+    'dias diferentes (ex.: "Treino A - segunda", "Treino B - quarta", ou blocos '
+    'separados por dia). Separe em treinos distintos conforme o texto indicar.\n\n'
+    'NAO invente nada: use apenas os exercicios, series e repeticoes que estao no '
+    'texto. Se as series nao aparecerem, use 3. Se as repeticoes nao aparecerem, '
+    'deixe "". Nao adicione exercicios que a pessoa nao escreveu.\n\n'
+    'Para cada treino: "name" (o nome/dia como no texto) e "exercises". Cada '
+    'exercicio: "name", "group" (EXATAMENTE um destes, com acento: '+grupos+'), '
+    '"sets" (inteiro), "reps" (texto) e "obs" (o que sobrar, ex.: tecnica/descanso).\n'
+    'Se houver um unico treino no texto, devolva um unico item.\n\n'
+    'Responda APENAS com um JSON valido, sem markdown:\n'
+    '{"workouts":[{"name":"Treino A","exercises":[{"name":"Supino reto","group":"Peito","sets":4,"reps":"8-12","obs":""}]}]}\n\n'
+    'Texto:\n'+text
+  )
+  txt=bedrock_text([{'text':prompt}],2500,NOVA_MIN_TEMP)
+  m=re.search(r'\{[\s\S]*\}',txt)
+  if not m:
+    log.warning('segment_workout_text: resposta sem JSON: %r',txt[:200])
+    return {'workouts':[],'error':'Nao foi possivel interpretar o texto'}
+  try:
+    data=json.loads(m.group())
+  except Exception:
+    log.warning('segment_workout_text: JSON invalido: %r',txt[:300])
+    return {'workouts':[],'error':'Resposta invalida da IA'}
+  return {'workouts':_clean_workouts(data.get('workouts'))}
 def generate_meal_plan(payload):
   """Gera um plano alimentar diario a partir do objetivo e das metas de kcal/proteina.
   Retorna itens na mesma forma da extracao de plano (id/hint/kcal/prot/trigger) para
@@ -476,6 +516,16 @@ def _dispatch(event,context):
     try:
       body=json.loads(event.get('body') or '{}')
       res=generate_workout_plan(body)
+      return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
+    except Exception as e:
+      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+  if action=='segment_workout_text' and method=='POST':
+    try:
+      body=json.loads(event.get('body') or '{}')
+      text=(body.get('text') or '').strip()
+      if not text:
+        return{'statusCode':400,'body':json.dumps({'error':'missing text'})}
+      res=segment_workout_text(text)
       return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}

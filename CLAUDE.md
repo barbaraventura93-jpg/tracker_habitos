@@ -79,10 +79,14 @@ Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
 
 | Action | O que faz |
 |---|---|
-| `analyze` (POST) | extrai exercícios/suplementos/plano alimentar de PDF/imagem via Bedrock |
+| `analyze` (POST) | extrai exercícios/suplementos/plano alimentar de PDF/imagem/texto via Bedrock (array plano de itens) |
 | `identify_exercise` | grupo + músculos + GIF + instruções de um exercício, com cache |
 | `estimate_food` | estima macros de refeição livre (texto ou foto) via Bedrock |
 | `week_suggestion` | sugestão de treino para os dias restantes da semana |
+| `generate_workout_plan` (POST) | gera um plano de treino (vários treinos) a partir do objetivo, bioimpedância e séries da semana — formato `{workouts:[{name,exercises}]}` |
+| `segment_workout_text` (POST) | segmenta um texto livre com **um ou mais** treinos (vários dias num só bloco) em treinos estruturados, sem inventar exercícios — mesmo formato do gerador, para reusar o preview/apply |
+| `generate_meal_plan` (POST) | gera plano alimentar por IA a partir de objetivo, região e metas de kcal/proteína |
+| `analyze_bio` (POST) | extrai a série de composição corporal (atual + histórico) de um exame de bioimpedância |
 | `history_range` | Query por `userId` com `date BETWEEN` — hidrata o histórico num dispositivo novo |
 | `export` | download de todos os dados do usuário |
 | `delete_account` (POST) | apaga todas as linhas do `userId` nas duas tabelas — exige `{"confirm":"EXCLUIR"}` no body |

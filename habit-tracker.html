@@ -5544,8 +5544,9 @@ function renderMais(){
 // ─── GERADOR DE TREINO IA ────────────────────────────────────────────────────
 let _wgenPreview=null;
 let _wgenNotes='';
+let _wgenIsImport=false; // preview veio da importação por texto (não é geração da IA)
 const WGEN_OBJ_LABELS={cutting:'Perda de gordura',manutencao:'Manutenção',bulking:'Ganho de massa'};
-function showWorkoutGen(){_wgenPreview=null;_wgenNotes='';renderWorkoutGen();showScreen('workout-gen');setBnavActive('mais');}
+function showWorkoutGen(){_wgenPreview=null;_wgenNotes='';_wgenIsImport=false;renderWorkoutGen();showScreen('workout-gen');setBnavActive('mais');}
 function wgenMonthKey(){return today().slice(0,7);}
 function wgenNextMonthLabel(){
   const p=wgenMonthKey().split('-');let y=+p[0],m=+p[1];m++;if(m>12){m=1;y++;}
@@ -5587,13 +5588,13 @@ function renderWorkoutGen(){
     }).join('');
     body.innerHTML=`<div class="fade-in">
       <div style="${card};background:#F5F3FF;border-color:#C7D2FE">
-        <div style="font-size:13px;color:#4338CA;font-weight:600;margin-bottom:4px">✓ Treino gerado — revise e ajuste</div>
+        <div style="font-size:13px;color:#4338CA;font-weight:600;margin-bottom:4px">${_wgenIsImport?'✓ '+_wgenPreview.length+' treino(s) separado(s) do seu texto — revise e ajuste':'✓ Treino gerado — revise e ajuste'}</div>
         ${_wgenNotes?`<div style="font-size:12px;color:#4338CA;line-height:1.5">${_wgenNotes}</div>`:''}
       </div>
       ${secs}
-      <div style="${muted};margin:0 2px 12px">${WGEN_DISCLAIMER}</div>
+      ${_wgenIsImport?'':`<div style="${muted};margin:0 2px 12px">${WGEN_DISCLAIMER}</div>`}
       <button onclick="wgenApply()" style="width:100%;padding:13px;background:#818cf8;border-radius:11px;color:#fff;font-size:14px;font-weight:700;margin-bottom:8px">Aplicar treinos</button>
-      <button onclick="_wgenPreview=null;renderWorkoutGen()" style="width:100%;padding:11px;background:none;border:1px solid #E7E5E4;border-radius:11px;color:#78716C;font-size:13px">Descartar e voltar</button>
+      <button onclick="_wgenPreview=null;_wgenIsImport=false;renderWorkoutGen()" style="width:100%;padding:11px;background:none;border:1px solid #E7E5E4;border-radius:11px;color:#78716C;font-size:13px">Descartar e voltar</button>
     </div>`;
     return;
   }
@@ -5620,8 +5621,11 @@ function renderWorkoutGen(){
   body.innerHTML=`<div class="fade-in">
     <div style="${card}">
       <div style="font-family:'Fraunces',serif;font-size:16px;color:#1C1917;margin-bottom:6px">📄 Já tenho treino do meu personal</div>
-      <div style="${muted};margin-bottom:12px">Importe o treino prescrito pelo seu personal (PDF ou foto) e ajuste no app.</div>
-      <button onclick="wgenImportPersonal()" style="width:100%;padding:12px;background:#fff;border:1px solid #818cf8;border-radius:11px;color:#6C63FF;font-size:14px;font-weight:600">Importar treino do personal</button>
+      <div style="${muted};margin-bottom:10px">Cole o treino prescrito — pode ser de <b>vários dias de uma vez</b>. A IA separa cada treino (A, B, C…) e você ajusta no app.</div>
+      <textarea id="wgen-import-text" rows="4" placeholder="ex.: Treino A (segunda) — Supino reto 4x10, Crucifixo 3x12, Tríceps corda 3x15&#10;Treino B (quarta) — Agachamento 4x10, Leg press 3x12, Cadeira extensora 3x15" style="width:100%;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;padding:10px 12px;color:#1C1917;font-size:13px;outline:none;resize:vertical;margin-bottom:8px"></textarea>
+      <button id="wgen-import-go" onclick="wgenImportText()" style="width:100%;padding:12px;background:#818cf8;border-radius:11px;color:#fff;font-size:14px;font-weight:700;margin-bottom:8px">✍️ Separar treinos do texto</button>
+      <div id="wgen-import-status" style="font-size:12px;min-height:14px;margin-bottom:6px"></div>
+      <button onclick="wgenImportPersonal()" style="width:100%;padding:10px;background:none;border:1px solid #E7E5E4;border-radius:11px;color:#78716C;font-size:12px">Prefiro importar um PDF ou foto</button>
     </div>
     <div style="${card}">
       <div style="font-family:'Fraunces',serif;font-size:16px;color:#1C1917;margin-bottom:6px">🤖 Pedir treino ao nosso agente de IA</div>
@@ -5647,6 +5651,37 @@ function renderWorkoutGen(){
 }
 function wgenAccept(){saveGoals({...goals,aiWorkoutOk:true});renderWorkoutGen();}
 function wgenImportPersonal(){showGym();gymTogglePlan();showToast('Use "Importar plano de PDF ou imagem" no treino desejado.');}
+// Importa um texto livre com um ou mais treinos (vários dias num só bloco). A IA
+// segmenta em treinos e reusa o mesmo preview/apply da geração — por isso vive
+// aqui, fora do card de um treino específico.
+async function wgenImportText(){
+  if(!USE_API||!authToken){showToast('Faça login para usar esta função.');return;}
+  if(!navigator.onLine){showToast('Sem conexão — tente novamente online');return;}
+  const ta=document.getElementById('wgen-import-text');const text=(ta?.value||'').trim();
+  const statusEl=document.getElementById('wgen-import-status');
+  if(!text){if(statusEl)statusEl.innerHTML='<span style="color:#f87171">Cole o treino em texto primeiro.</span>';return;}
+  const btn=document.getElementById('wgen-import-go');
+  if(btn){btn.disabled=true;btn.textContent='Separando treinos… aguarde';}
+  if(statusEl)statusEl.innerHTML='<span style="color:#D97706">⏳ Separando treinos com IA — aguarde...</span>';
+  try{
+    const resp=await fetch(`${API_URL}?action=segment_workout_text`,{
+      method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},
+      body:JSON.stringify({text})
+    });
+    const data=await readApiBody(resp);
+    if(!resp.ok||data.error) throw new Error(apiErr(resp,data,'Erro ao separar treinos'));
+    const ws=(data.workouts||[]).filter(w=>w.exercises&&w.exercises.length);
+    if(!ws.length) throw new Error('Não consegui identificar treinos no texto. Detalhe melhor (nome do exercício, séries e reps).');
+    _wgenIsImport=true;
+    _wgenPreview=ws.map((w,wi)=>({name:w.name||('Treino '+String.fromCharCode(65+wi)),
+      exercises:w.exercises.map((e,ei)=>({...e,group:canonGroup(e.group)||'Outro',id:'ex_'+Date.now()+'_'+wi+'_'+ei,_checked:true}))}));
+    _wgenNotes='';
+    renderWorkoutGen();
+  }catch(e){
+    if(statusEl)statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
+    if(btn){btn.disabled=false;btn.textContent='✍️ Separar treinos do texto';}
+  }
+}
 async function genWorkoutPlan(){
   if(!USE_API||!authToken){showToast('Faça login para usar esta função.');return;}
   if(!goals.aiWorkoutOk){showToast('Aceite o aviso primeiro.');return;}
@@ -5670,6 +5705,7 @@ async function genWorkoutPlan(){
     if(!resp.ok||data.error) throw new Error(data.error||'Erro ao gerar treino');
     const ws=(data.workouts||[]).filter(w=>w.exercises&&w.exercises.length);
     if(!ws.length) throw new Error('A IA não retornou treinos. Tente novamente.');
+    _wgenIsImport=false;
     _wgenPreview=ws.map((w,wi)=>({name:w.name||('Treino '+String.fromCharCode(65+wi)),
       exercises:w.exercises.map((e,ei)=>({...e,group:canonGroup(e.group)||'Outro',id:'ex_'+Date.now()+'_'+wi+'_'+ei,_checked:true}))}));
     _wgenNotes=data.notes||'';
@@ -5681,6 +5717,7 @@ async function genWorkoutPlan(){
 }
 function wgenApply(){
   if(!_wgenPreview) return;
+  const wasImport=_wgenIsImport;
   const applied=[];
   _wgenPreview.forEach((w,wi)=>{
     const exs=w.exercises.filter((e,ei)=>document.getElementById('wg-'+wi+'-'+ei)?.checked);
@@ -5699,10 +5736,11 @@ function wgenApply(){
     weekPlan[String(dow)]=id;
   });
   saveUserWorkouts();saveGymPlan();saveWeekPlan();
-  saveGoals({...goals,lastAiWorkoutGen:wgenMonthKey()});
-  _wgenPreview=null;_wgenNotes='';
+  // o limite de 1×/mês vale só para a geração pela IA; importar o próprio treino não gasta a cota
+  if(!wasImport) saveGoals({...goals,lastAiWorkoutGen:wgenMonthKey()});
+  _wgenPreview=null;_wgenNotes='';_wgenIsImport=false;
   if(typeof renderUI==='function') renderUI();
-  showToast('Treino aplicado! Edite à vontade no plano.');
+  showToast(wasImport?'Treinos importados! Edite à vontade no plano.':'Treino aplicado! Edite à vontade no plano.');
   if(firstId) _gymPlanTr=firstId;
   showGym();gymTogglePlan();
 }
