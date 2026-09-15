@@ -79,10 +79,14 @@ Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
 
 | Action | O que faz |
 |---|---|
-| `analyze` (POST) | extrai exercícios/suplementos/plano alimentar de PDF/imagem via Bedrock |
+| `analyze` (POST) | extrai exercícios/suplementos/plano alimentar de PDF/imagem/texto via Bedrock (array plano de itens) |
 | `identify_exercise` | grupo + músculos + GIF + instruções de um exercício, com cache |
 | `estimate_food` | estima macros de refeição livre (texto ou foto) via Bedrock |
 | `week_suggestion` | sugestão de treino para os dias restantes da semana |
+| `generate_workout_plan` (POST) | gera um plano de treino (vários treinos) a partir do objetivo, bioimpedância e séries da semana — `{workouts:[{name,exercises}]}` |
+| `extract_workout_plan` (POST) | segmenta um texto livre com **um ou mais** treinos (vários dias num só bloco) em treinos estruturados, sem inventar exercícios |
+| `generate_meal_plan` (POST) | gera plano alimentar por IA a partir de objetivo, região e metas de kcal/proteína |
+| `analyze_bio` (POST) | extrai a série de composição corporal (atual + histórico) de um exame de bioimpedância |
 | `history_range` | Query por `userId` com `date BETWEEN` — hidrata o histórico num dispositivo novo |
 | `export` | download de todos os dados do usuário |
 | `delete_account` (POST) | apaga todas as linhas do `userId` nas duas tabelas — exige `{"confirm":"EXCLUIR"}` no body |
@@ -225,6 +229,21 @@ mapa, sem erro visível. Os prompts do Bedrock pedem os grupos acentuados, e
 `canonGroup()` no frontend normaliza qualquer variante recebida — use essa função
 em vez de comparar strings de grupo na mão. `loadGymPlan`, `loadGymSession` e
 `syncGymPlan` também normalizam na leitura, para curar dado gravado antes do fix.
+
+### Mais de um treino por dia
+
+Um dia pode ter **vários treinos** (ex.: musculação + aeróbico). A fonte da verdade é
+`dayData.trs` (array de ids); `dayData.tr` continua sendo o treino **em foco** no log, com
+normalização retrocompatível no `loadDay`/`makeEmpty` (dia antigo só com `.tr` continua
+abrindo). O seletor da tela marca/desmarca treinos do dia (`gymPickDay`/`gymRemoveDay`);
+o heatmap da semana e a timeline "hoje" agregam **todas** as sessões do dia. No template
+da semana, `weekPlan[dow]` aceita string **ou lista** — use `plannedTrsForDow(dow)` para
+ler os treinos previstos.
+
+Para agregações que percorrem o dia, **use o helper `dayTrs(dd)`** (lista com retrocompat),
+nunca `dd.tr` sozinho: `calcScore`, `buildMonthReport`, a varredura de grupo descansado do
+`dailyInsightCard` e `getLastGymSession` já somam todos os treinos do dia. Limitação ainda
+aberta: `gymDurMin` (cardio) é escalar por dia.
 
 ---
 
