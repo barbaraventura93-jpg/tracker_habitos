@@ -236,7 +236,8 @@ body.tmr-on .screens-wrap{padding-bottom:calc(var(--bnav) + 96px);}
         </div>
         <div id="auth-form">
           <input id="auth-email" type="email" placeholder="E-mail" autocomplete="email" style="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:14px;margin-bottom:10px;outline:none">
-          <input id="auth-password" type="password" placeholder="Senha (mínimo 8 caracteres)" autocomplete="current-password" style="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:14px;margin-bottom:6px;outline:none">
+          <input id="auth-password" type="password" placeholder="Senha (mínimo 8 caracteres)" autocomplete="current-password" style="width:100%;background:#FAFAF9;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:14px;margin-bottom:4px;outline:none">
+          <div style="text-align:right;margin-bottom:6px"><a href="#" id="auth-pw-toggle" onclick="togglePwLogin(event)" style="font-size:12px;color:var(--muted);text-decoration:none">👁 Mostrar senha</a></div>
           <div id="auth-error" style="font-size:12px;color:#DC2626;min-height:18px;margin-bottom:8px;text-align:center"></div>
           <button onclick="authSubmit()" id="auth-btn" style="width:100%;padding:14px;background:var(--accent);border-radius:10px;color:#fff;font-size:15px;font-weight:500">Entrar</button>
           <div id="forgot-link" style="text-align:center;margin-top:12px">
@@ -281,7 +282,8 @@ body.tmr-on .screens-wrap{padding-bottom:calc(var(--bnav) + 96px);}
             <input type="password" id="forgot-newpass" placeholder="Nova senha"
               style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#FAFAF9;color:var(--txt);box-sizing:border-box;margin-bottom:10px;outline:none">
             <input type="password" id="forgot-confirmpass" placeholder="Confirmar nova senha"
-              style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#FAFAF9;color:var(--txt);box-sizing:border-box;margin-bottom:12px;outline:none">
+              style="width:100%;padding:12px 14px;border:1px solid var(--border);border-radius:10px;font-size:14px;background:#FAFAF9;color:var(--txt);box-sizing:border-box;margin-bottom:6px;outline:none">
+            <div style="text-align:right;margin-bottom:10px"><a href="#" id="forgot-pw-toggle" onclick="togglePwForgot(event)" style="font-size:12px;color:var(--muted);text-decoration:none">👁 Mostrar senha</a></div>
             <div id="forgot-error-step2" style="color:#DC2626;font-size:12px;margin-bottom:10px;display:none"></div>
             <button onclick="forgotConfirmCode()" id="btn-confirm-code"
               style="width:100%;padding:14px;background:var(--accent);color:#fff;border:none;border-radius:10px;font-size:15px;font-weight:500;cursor:pointer">
@@ -867,6 +869,8 @@ function _nowMinutes(){const n=new Date();return n.getHours()*60+n.getMinutes();
 function _toMin(hhmm){if(!hhmm||!/^\d{1,2}:\d{2}$/.test(hhmm))return null;const[h,m]=hhmm.split(':').map(Number);return h*60+m;}
 function _period(min){if(min==null)return 3;if(min<12*60)return 0;if(min<18*60)return 1;return 2;}
 const _PERIODS=[{lbl:'MANHÃ',icon:'🌅'},{lbl:'TARDE',icon:'☀️'},{lbl:'NOITE',icon:'🌙'},{lbl:'SEM HORÁRIO',icon:'🕓'}];
+// treinos do dia (lista), com retrocompat p/ dia antigo só com .tr — para agregações
+function dayTrs(dd){return (dd&&dd.trs&&dd.trs.length)?dd.trs:(dd&&dd.tr&&dd.tr!=='descanso'?[dd.tr]:[]);}
 // monta a lista de itens do dia com horário e ação
 function buildDayPlanItems(){
   const items=[];
@@ -1351,7 +1355,7 @@ function getLastGymSession(tr,beforeDate){
   for(let i=1;i<=90;i++){
     const d=addDays(beforeDate,-i);
     const dd=loadDay(d);
-    if(dd.tr===tr){const s=loadGymSession(d,tr);if(s&&s.length>0) return{date:d,session:s};}
+    if(dayTrs(dd).includes(tr)){const s=loadGymSession(d,tr);if(s&&s.length>0) return{date:d,session:s};}
   }
   return null;
 }
@@ -2649,18 +2653,33 @@ function importGymPlanSelected(){
   if(st&&count) st.innerHTML=`<span style="color:#16A34A">✓ ${count} exercício(s) adicionado(s) ao plano de ${getWorkoutById(tr)?.name||tr}!</span>`;
 }
 
+// Núcleo compartilhado dos importadores por IA (arquivo/texto): mostra
+// "analisando…", chama a IA (`fetchItems`), aplica os itens no preview (`apply`,
+// que devolve a contagem) e renderiza, padronizando as mensagens de status.
+// `successMsg(n)` monta o texto de sucesso (o gênero da concordância varia entre
+// exercício e refeição, então cada tela informa o seu).
+async function runAiImport({fetchItems,statusId,previewId,renderPreview,apply,successMsg}){
+  const statusEl=statusId?document.getElementById(statusId):null;
+  if(statusEl)statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando com IA — aguarde...</span>';
+  try{
+    const items=await fetchItems();
+    const n=apply(items);
+    const prevEl=previewId?document.getElementById(previewId):null;
+    if(prevEl&&renderPreview)prevEl.innerHTML=renderPreview();
+    if(statusEl)statusEl.innerHTML=`<span style="color:#16A34A">✓ ${successMsg(n)}</span>`;
+  }catch(e){
+    if(statusEl)statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
+  }
+}
+function _applyGymPlanItems(items){
+  _gymPlanPreview=items.map((ex,i)=>({...ex,group:canonGroup(ex.group)||'Outro',id:'ex_'+Date.now()+i,_checked:true}));
+  return _gymPlanPreview.length;
+}
+const _gymImportMsg=n=>`${n} exercício(s) identificado(s) — selecione os que deseja importar`;
 async function handleGymPlanFile(input,tr){
   const file=input.files[0];if(!file) return;
-  const statusEl=document.getElementById('gym-import-status');
-  statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando plano com IA — aguarde...</span>';
-  try{
-    const items=await analyzeViaLambda(file,'gym_plan');
-    _gymPlanPreview=items.map((ex,i)=>({...ex,group:canonGroup(ex.group)||'Outro',id:'ex_'+Date.now()+i,_checked:true}));
-    document.getElementById('gym-import-preview').innerHTML=renderGymPlanPreviewHtml();
-    statusEl.innerHTML=`<span style="color:#16A34A">✓ ${items.length} exercício(s) identificado(s) — selecione os que deseja importar</span>`;
-  }catch(e){
-    statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
-  }
+  return runAiImport({fetchItems:()=>analyzeViaLambda(file,'gym_plan'),statusId:'gym-import-status',
+    previewId:'gym-import-preview',renderPreview:renderGymPlanPreviewHtml,apply:_applyGymPlanItems,successMsg:_gymImportMsg});
 }
 
 // ─── PLAN: DRAG & DROP (desktop) ────────────────────────────────────────────
@@ -4376,9 +4395,11 @@ function calcScore(d, date){
   const slD=SLEEPS.find(s=>s.id===d.sleep)?.ok?1:0;
   const coD=d.sleepOk?1:0;
   const spD=sups.filter(s=>dsups[s.id]).length;
-  const isGym=isGymType(d.tr);
+  // treino do dia pode ter mais de um: conta se qualquer musculação registrada foi feita
+  const gymTrs=dayTrs(d).filter(id=>isGymType(id));
+  const isGym=gymTrs.length>0;
   let tD=0;
-  if(isGym&&date){const sess=loadGymSession(date,d.tr);tD=sess&&sess.some(ex=>ex.sets.some(s=>s.done))?1:0;}
+  if(isGym&&date){tD=gymTrs.some(id=>{const sess=loadGymSession(date,id);return sess&&sess.some(ex=>ex.sets.some(s=>s.done));})?1:0;}
   const tT=isGym?1:0;
   const dueHabits=date?habitsDueOn(date):[];
   const hDone=(d.habits||{});
@@ -4524,7 +4545,7 @@ function dailyInsightCard(){
     const seen={};
     for(let i=1;i<=7;i++){
       const d=addDays(today(),-i);const dd=loadDay(d);
-      if(isGymType(dd.tr)){const s=loadGymSession(d,dd.tr);(s||[]).forEach(ex=>{if(ex.group&&ex.group!=='Outro'&&ex.group!=='Cardio'&&ex.sets&&ex.sets.some(x=>x.done))seen[ex.group]=true;});}
+      dayTrs(dd).forEach(trId=>{if(!isGymType(trId))return;const s=loadGymSession(d,trId);(s||[]).forEach(ex=>{if(ex.group&&ex.group!=='Outro'&&ex.group!=='Cardio'&&ex.sets&&ex.sets.some(x=>x.done))seen[ex.group]=true;});});
     }
     const rested=['Costas','Perna','Peito','Ombro'].filter(g=>!seen[g]);
     if(rested.length) msgs.push({icon:'💡',txt:'<b>'+rested[0]+'</b> não é treinado há uma semana — que tal encaixar?'});
@@ -5142,12 +5163,20 @@ function accForgotCurrentPassword(e){
 // senha e a confirmação batem. Volta a ocultar sempre que o painel re-renderiza.
 function accTogglePw(e){
   e&&e.preventDefault();
-  const ids=['acc-pw-atual','acc-pw-nova','acc-pw-conf'];
-  const showing=document.getElementById('acc-pw-atual').type==='text';
-  ids.forEach(id=>{const el=document.getElementById(id);if(el)el.type=showing?'password':'text';});
-  const t=document.getElementById('acc-pw-toggle');
-  if(t)t.textContent=showing?'👁 Mostrar senhas':'🙈 Ocultar senhas';
+  togglePwFields('acc-pw-toggle',['acc-pw-atual','acc-pw-nova','acc-pw-conf'],'senhas');
 }
+// alterna text/password num conjunto de campos e atualiza o rótulo do link 👁/🙈
+function togglePwFields(linkId,ids,label){
+  label=label||'senha';
+  const els=ids.map(id=>document.getElementById(id)).filter(Boolean);
+  if(!els.length) return;
+  const showing=els[0].type==='text';
+  els.forEach(el=>{el.type=showing?'password':'text';});
+  const t=document.getElementById(linkId);
+  if(t)t.textContent=(showing?'👁 Mostrar ':'🙈 Ocultar ')+label;
+}
+function togglePwLogin(e){e&&e.preventDefault();togglePwFields('auth-pw-toggle',['auth-password'],'senha');}
+function togglePwForgot(e){e&&e.preventDefault();togglePwFields('forgot-pw-toggle',['forgot-newpass','forgot-confirmpass'],'senha');}
 function accRestartOnboarding(){
   lsDel('ht:onboard_done');
   startOnboarding();
@@ -5290,7 +5319,7 @@ function renderMealPlanConfigHtml(){
   if(!goals.aiMealOk){
     _mgen=`<div style="${_mut};margin:2px 0 8px">${_mdisc}</div><button onclick="mgenAccept()" style="width:100%;padding:11px;background:#34d399;border-radius:10px;color:#fff;font-size:13px;font-weight:700">Li e concordo — gerar minha dieta</button>`;
   } else if((goals.lastAiMealGen||'')===wgenMonthKey()){
-    _mgen=`<div style="${_mut};margin:2px 0 8px">${_mdisc}</div><div style="padding:11px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;text-align:center;color:#78716C;font-size:12px">Você já gerou um plano este mês.<br>Disponível novamente em <b>${wgenNextMonthLabel()}</b>.</div>`;
+    _mgen=`<div style="${_mut};margin:2px 0 8px">${_mdisc}</div><div style="padding:11px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:10px;text-align:center;color:#78716C;font-size:12px">Você já gerou um plano este mês.<br>Disponível novamente em <b>${wgenNextMonthLabel()}</b>.</div><div style="text-align:center;margin-top:8px"><a href="#" onclick="mgenForceRegen(event)" style="font-size:12px;color:#A8A29E;text-decoration:underline">Preciso refazer agora</a></div>`;
   } else {
     _mgen=`<div style="${_mut};margin:2px 0 8px">${_mdisc}</div><button id="mgen-go" onclick="genMealPlan()" style="width:100%;padding:12px;background:#34d399;border-radius:10px;color:#fff;font-size:13px;font-weight:700">Gerar plano com IA</button>`;
   }
@@ -5393,41 +5422,40 @@ function mpResetToDefault(){
   mealPlan=starterMealPlan();
   saveMealPlan();showMealPlanConfig();showToast('Plano restaurado.');renderUI();
 }
+function _applyMealPlanItems(items){
+  _mpImportPreview=items.filter(i=>i.id&&MEALS.find(m=>m.id===i.id)).map(i=>({...i,_checked:true}));
+  return _mpImportPreview.length;
+}
+const _mealImportMsg=n=>`${n} refeição(ões) identificada(s) — selecione as que deseja importar`;
 async function mpHandleFile(input){
   const file=input.files[0];if(!file)return;
-  const statusEl=document.getElementById('mp-import-status');
-  if(statusEl)statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando plano com IA — aguarde...</span>';
-  try{
-    const items=await analyzeViaLambda(file,'meal_plan');
-    _mpImportPreview=items.filter(i=>i.id&&MEALS.find(m=>m.id===i.id)).map(i=>({...i,_checked:true}));
-    const prevEl=document.getElementById('mp-import-preview');
-    if(prevEl)prevEl.innerHTML=_mpRenderImportPreview();
-    if(statusEl)statusEl.innerHTML=`<span style="color:#16A34A">✓ ${_mpImportPreview.length} refeição(ões) identificada(s) — selecione as que deseja importar</span>`;
-  }catch(e){
-    if(statusEl)statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
-  }
+  return runAiImport({fetchItems:()=>analyzeViaLambda(file,'meal_plan'),statusId:'mp-import-status',
+    previewId:'mp-import-preview',renderPreview:_mpRenderImportPreview,apply:_applyMealPlanItems,successMsg:_mealImportMsg});
 }
 async function mpHandleText(){
   const ta=document.getElementById('mp-import-text');const text=(ta?.value||'').trim();
   if(!text){showToast('Cole o texto do plano primeiro.');return;}
   _mpAiGen=false;
-  const statusEl=document.getElementById('mp-import-status');
-  if(statusEl)statusEl.innerHTML='<span style="color:#D97706">⏳ Analisando texto com IA — aguarde...</span>';
-  try{
-    const items=await analyzeTextViaLambda(text,'meal_plan');
-    _mpImportPreview=items.filter(i=>i.id&&MEALS.find(m=>m.id===i.id)).map(i=>({...i,_checked:true}));
-    const prevEl=document.getElementById('mp-import-preview');if(prevEl)prevEl.innerHTML=_mpRenderImportPreview();
-    if(statusEl)statusEl.innerHTML=`<span style="color:#16A34A">✓ ${_mpImportPreview.length} refeição(ões) identificada(s) — selecione as que deseja importar</span>`;
-  }catch(e){
-    if(statusEl)statusEl.innerHTML=`<span style="color:#f87171">❌ ${e.message}</span>`;
-  }
+  return runAiImport({fetchItems:()=>analyzeTextViaLambda(text,'meal_plan'),statusId:'mp-import-status',
+    previewId:'mp-import-preview',renderPreview:_mpRenderImportPreview,apply:_applyMealPlanItems,successMsg:_mealImportMsg});
 }
 function mgenAccept(){saveGoals({...goals,aiMealOk:true});showMealPlanConfig();}
+// escape do limite de 1×/mês: libera uma nova geração agora, sob confirmação
+function mgenForceRegen(e){e&&e.preventDefault();if(!confirm('Isto libera uma nova geração de dieta agora, fora do limite de 1× por mês. Continuar?'))return;saveGoals({...goals,lastAiMealGen:''});showMealPlanConfig();}
 async function genMealPlan(){
   if(!USE_API||!authToken){showToast('Faça login para usar esta função.');return;}
   if(!goals.aiMealOk){showToast('Aceite o aviso primeiro.');return;}
   if((goals.lastAiMealGen||'')===wgenMonthKey()){showToast('Você já gerou um plano este mês.');return;}
   if(!navigator.onLine){showToast('Sem conexão — tente novamente online');return;}
+  // Região importa para a IA sugerir alimentos acessíveis; se faltar, peça agora
+  // (item 10) e grave no perfil para não perguntar de novo.
+  let regiao=(goals.regiao||'').trim();
+  if(!regiao){
+    const r=(prompt('Em qual cidade/estado você mora? Isso ajuda a sugerir alimentos acessíveis na sua região (ex.: Recife/PE).','')||'').trim();
+    if(!r){showToast('Informe a região para gerar o plano.');return;}
+    regiao=r.slice(0,120);
+    saveGoals({...goals,regiao});
+  }
   const peso=parseFloat(goals.pesoAtual)||0;
   const prot=peso?Math.round(calcProtein(peso,goals.objetivo||'manutencao')):0;
   const btn=document.getElementById('mgen-go');if(btn){btn.disabled=true;btn.textContent='Gerando plano… aguarde';}
@@ -5435,7 +5463,7 @@ async function genMealPlan(){
   try{
     const resp=await fetch(`${API_URL}?action=generate_meal_plan`,{
       method:'POST',headers:{'content-type':'application/json',authorization:'Bearer '+authToken},
-      body:JSON.stringify({objetivo:goals.objetivo||'manutencao',calorias:parseInt(goals.calorias)||0,protein:prot,regiao:goals.regiao||'',restricoes:goals.restricoes||'',meals:['cafe','almoco','lanche','jantar','ceia']})
+      body:JSON.stringify({objetivo:goals.objetivo||'manutencao',calorias:parseInt(goals.calorias)||0,protein:prot,regiao:regiao,restricoes:goals.restricoes||'',meals:['cafe','almoco','lanche','jantar','ceia']})
     });
     const data=await resp.json();
     if(!resp.ok||data.error) throw new Error(data.error||'Erro ao gerar plano');
@@ -5621,7 +5649,8 @@ function renderWorkoutGen(){
       <button onclick="wgenAccept()" style="width:100%;padding:12px;background:#818cf8;border-radius:11px;color:#fff;font-size:14px;font-weight:700">Li e concordo — quero gerar meu treino</button>`;
   } else if(blocked){
     genBtn=`<div style="${muted};margin:2px 0 10px">${WGEN_DISCLAIMER}</div>
-      <div style="padding:12px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:11px;text-align:center;color:#78716C;font-size:13px">Você já gerou um treino este mês.<br>Disponível novamente em <b>${wgenNextMonthLabel()}</b>.</div>`;
+      <div style="padding:12px;background:#FAFAF9;border:1px solid #E7E5E4;border-radius:11px;text-align:center;color:#78716C;font-size:13px">Você já gerou um treino este mês.<br>Disponível novamente em <b>${wgenNextMonthLabel()}</b>.</div>
+      <div style="text-align:center;margin-top:8px"><a href="#" onclick="wgenForceRegen(event)" style="font-size:12px;color:#A8A29E;text-decoration:underline">Preciso refazer agora</a></div>`;
   } else {
     genBtn=`<div style="${muted};margin:2px 0 10px">${WGEN_DISCLAIMER}</div>
       <button id="wgen-go" onclick="genWorkoutPlan()" style="width:100%;padding:13px;background:#818cf8;border-radius:11px;color:#fff;font-size:14px;font-weight:700">Gerar treino</button>`;
@@ -5657,6 +5686,8 @@ function renderWorkoutGen(){
   </div>`;
 }
 function wgenAccept(){saveGoals({...goals,aiWorkoutOk:true});renderWorkoutGen();}
+// escape do limite de 1×/mês: libera uma nova geração agora, sob confirmação
+function wgenForceRegen(e){e&&e.preventDefault();if(!confirm('Isto libera uma nova geração de treino agora, fora do limite de 1× por mês. Continuar?'))return;saveGoals({...goals,lastAiWorkoutGen:''});renderWorkoutGen();}
 function wgenImportPersonal(){showGym();gymTogglePlan();showToast('Use "Importar plano de PDF ou imagem" no treino desejado.');}
 async function genWorkoutPlan(){
   _wgenIsImport=false;
@@ -5949,12 +5980,14 @@ function buildMonthReport(ym){
     const isEmpty=JSON.stringify(dd)===JSON.stringify(makeEmpty(d));
     const sc=calcScore(dd,d);
     if(!isEmpty){scoreSum+=sc.pct;scoreDays++;if(sc.pct>=80)greatDays++;}
-    // treino
-    if(isGymType(dd.tr)){
-      const sess=loadGymSession(d,dd.tr);
+    // treino — soma todos os treinos registrados no dia (pode ter mais de um)
+    let dayTrained=false;
+    dayTrs(dd).forEach(trId=>{
+      if(!isGymType(trId))return;
+      const sess=loadGymSession(d,trId);
       if(sess&&sess.some(ex=>ex.sets&&ex.sets.some(s=>s.done))){
-        trainDays++;
-        const w=getWorkoutById(dd.tr);const nm=w?w.name:dd.tr;
+        dayTrained=true;
+        const w=getWorkoutById(trId);const nm=w?w.name:trId;
         trByType[nm]=(trByType[nm]||0)+1;
         sess.forEach(ex=>{
           if(ex.group&&ex.group!=='Outro'&&ex.group!=='Cardio'){
@@ -5963,7 +5996,8 @@ function buildMonthReport(ym){
           }
         });
       }
-    }
+    });
+    if(dayTrained) trainDays++;
     trainMin+=dd.gymDurMin||0;
     // dieta livre
     const ft=foodTotals(Array.isArray(dd.foods)?dd.foods:[]);
