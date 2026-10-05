@@ -1,4 +1,4 @@
-import json,boto3,os,urllib.request,decimal,re,base64,datetime,logging,time
+import json,boto3,os,urllib.request,unicodedata,decimal,re,base64,datetime,logging,time
 from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -168,8 +168,10 @@ COACH_RULES=(
 def _cs(v,n=300):
   return str(v if v is not None else '').strip()[:n]
 def _ci(v):
-  try: return max(0,int(round(float(v))))
-  except: return 0
+  # o modelo as vezes devolve "380 kcal" ou "35g" em vez do numero puro
+  if isinstance(v,(int,float)): return max(0,int(round(v)))
+  m=re.search(r'\d+(?:[.,]\d+)?',str(v or ''))
+  return max(0,int(round(float(m.group().replace(',','.'))))) if m else 0
 def _coach_ctx(c):
   """Transforma o contexto enviado pelo app num bloco de texto para o prompt."""
   c=c if isinstance(c,dict) else {}
@@ -207,19 +209,80 @@ def _coach_ctx(c):
   if c.get('resumo'): L.append('Acompanhamento recente: '+_cs(c.get('resumo'),900))
   if c.get('agora'): L.append('Agora: '+_cs(c.get('agora'),60)+'.')
   return '\n'.join(L)
-def _coach_json(txt,kind='{'):
-  pat=r'\{[\s\S]*\}' if kind=='{' else r'\[[\s\S]*\]'
-  m=re.search(pat,txt or '')
-  if not m: return None
-  try: return json.loads(m.group())
-  except Exception: return None
-def _coach_meal(it):
-  mid=_cs(it.get('meal') or it.get('id'),10)
+def _coach_json(txt):
+  """Le o JSON da resposta do modelo, tolerando o que o Nova costuma fazer:
+  cercas de markdown, texto antes/depois, virgula sobrando e resposta cortada
+  pelo maxTokens. Devolve dict, list ou None."""
+  t=re.sub(r'```(?:json)?','',txt or '').strip()
+  starts=[i for i in (t.find('{'),t.find('[')) if i>=0]
+  if not starts: return None
+  t=t[min(starts):]
+  t=re.sub(r',\s*([}\]])',r'\1',t)
+  dec=json.JSONDecoder()
+  try: return dec.raw_decode(t)[0]
+  except Exception: pass
+  # resposta cortada: recua ate o ultimo objeto completo e fecha o que ficou aberto
+  for cut in range(len(t)-1,0,-1):
+    if t[cut]!='}': continue
+    frag=t[:cut+1]
+    stack=[]
+    instr=False;esc=False
+    for ch in frag:
+      if instr:
+        if esc: esc=False
+        elif ch=='\\': esc=True
+        elif ch=='"': instr=False
+        continue
+      if ch=='"': instr=True
+      elif ch in '[{': stack.append(ch)
+      elif ch in ']}' and stack: stack.pop()
+    if instr: continue
+    try: return json.loads(frag+''.join(']' if c=='[' else '}' for c in reversed(stack)))
+    except Exception: continue
+  return None
+def _coach_list(d,*keys):
+  """Acha a lista de itens na resposta, seja ela a raiz ou qualquer chave com lista de objetos."""
+  if isinstance(d,list): return d
+  if not isinstance(d,dict): return []
+  for k in keys:
+    if isinstance(d.get(k),list): return d[k]
+  for v in d.values():
+    if isinstance(v,list) and v and isinstance(v[0],dict): return v
+  return []
+def _strip(s):
+  return unicodedata.normalize('NFD',str(s or '')).encode('ascii','ignore').decode().lower().strip()
+MEAL_ALIASES=[('cafe','cafe'),('desjejum','cafe'),('manha','cafe'),('breakfast','cafe'),
+              ('almoco','almoco'),('lunch','almoco'),
+              ('ceia','ceia'),('supper','ceia'),
+              ('jantar','jantar'),('janta','jantar'),('dinner','jantar'),
+              ('lanche','lanche'),('snack','lanche'),('merenda','lanche')]
+def _meal_id(v):
+  t=_strip(v)
+  if t in COACH_MEALS: return t
+  for k,mid in MEAL_ALIASES:
+    if k in t: return mid
+  return None
+def _pick(it,*keys):
+  for k in keys:
+    if it.get(k) not in (None,'',[]): return it.get(k)
+  return None
+def _coach_meal(it,default_meal=None):
+  if not isinstance(it,dict): return None
+  mid=_meal_id(_pick(it,'meal','id','refeicao','refeição','tipo','nome','name')) or default_meal
   if mid not in COACH_MEALS: return None
-  hint=_cs(it.get('hint'),240)
+  h=_pick(it,'hint','descricao','descrição','description','alimentos','itens','opcao','cardapio','menu')
+  if isinstance(h,list): h=', '.join(str(x.get('nome') or x.get('name') or x) if isinstance(x,dict) else str(x) for x in h)
+  hint=_cs(h,240)
   if not hint: return None
-  return {'meal':mid,'hint':hint,'kcal':_ci(it.get('kcal')),'prot':_ci(it.get('prot')),
-          'carb':_ci(it.get('carb')),'fat':_ci(it.get('fat'))}
+  return {'meal':mid,'hint':hint,
+          'kcal':_ci(_pick(it,'kcal','calorias','calories','energia')),
+          'prot':_ci(_pick(it,'prot','proteina','proteína','protein','proteinas')),
+          'carb':_ci(_pick(it,'carb','carbo','carboidrato','carboidratos','carbs')),
+          'fat':_ci(_pick(it,'fat','gordura','gorduras','lipidios'))}
+def _coach_fail(mode,txt,msg):
+  # sem isto a causa (o texto que o modelo devolveu) nunca chegava ao CloudWatch
+  log.warning('coach %s: resposta inaproveitavel: %r',mode,(txt or '')[:1500])
+  raise Exception(msg)
 def coach(payload):
   mode=payload.get('mode') or 'chat'
   ctx=_coach_ctx(payload.get('context'))
@@ -234,12 +297,13 @@ def coach(payload):
       '(margem de ~10%).'+(' Pedido da pessoa: '+pref+'.' if pref else '')+'\n'
       'Responda APENAS um JSON valido, sem markdown:\n'
       '{"options":[{"hint":"alimentos com quantidades",'+macro+',"why":"frase curta"}]}')
-    d=_coach_json(bedrock_text([{'text':prompt}],900,0.5)) or {}
+    txt=bedrock_text([{'text':prompt}],1200,0.5)
     opts=[]
-    for o in (d.get('options') or [])[:3]:
+    for o in _coach_list(_coach_json(txt),'options','opcoes','opções')[:3]:
+      if not isinstance(o,dict): continue
       m=_coach_meal({**o,'meal':meal})
-      if m: m['why']=_cs(o.get('why'),140);opts.append(m)
-    if not opts: raise Exception('Nao consegui montar opcoes agora')
+      if m: m['why']=_cs(_pick(o,'why','motivo','porque'),140);opts.append(m)
+    if not opts: _coach_fail(mode,txt,'Nao consegui montar opcoes agora — tente de novo')
     return {'options':opts}
   if mode=='flex':
     treat=_cs(payload.get('treat'),120)
@@ -251,24 +315,36 @@ def coach(payload):
       'Responda APENAS um JSON valido, sem markdown:\n'
       '{"treat":{"name":"nome e porcao",'+macro+'},"changes":[{"meal":"id",'
       '"hint":"nova descricao com quantidades",'+macro+'}],"tip":"1-2 frases"}')
-    d=_coach_json(bedrock_text([{'text':prompt}],1100,0.3)) or {}
-    t=d.get('treat') or {}
-    treat_o={'name':_cs(t.get('name') or treat,60),'kcal':_ci(t.get('kcal')),'prot':_ci(t.get('prot')),
-             'carb':_ci(t.get('carb')),'fat':_ci(t.get('fat'))}
-    ch=[m for m in (_coach_meal(x) for x in (d.get('changes') or [])[:5]) if m]
-    return {'treat':treat_o,'changes':ch,'tip':_cs(d.get('tip'),400)}
+    txt=bedrock_text([{'text':prompt}],1500,0.3)
+    d=_coach_json(txt)
+    if not isinstance(d,dict): _coach_fail(mode,txt,'Nao consegui calcular o extra agora — tente de novo')
+    t=_pick(d,'treat','extra','guloseima') or {}
+    if not isinstance(t,dict): t={}
+    tm=_coach_meal({**t,'hint':_pick(t,'name','nome','hint') or treat},'lanche') or {}
+    treat_o={'name':_cs(_pick(t,'name','nome') or treat,60),'kcal':tm.get('kcal',0),'prot':tm.get('prot',0),
+             'carb':tm.get('carb',0),'fat':tm.get('fat',0)}
+    ch=[m for m in (_coach_meal(x) for x in _coach_list(d,'changes','ajustes','mudancas','refeicoes','meals')[:5]) if m]
+    return {'treat':treat_o,'changes':ch,'tip':_cs(_pick(d,'tip','dica'),400)}
   if mode=='day':
-    prompt=(head+'Tarefa: monte o cardapio de HOJE para as refeicoes que ela ainda NAO comeu, variando '
+    plano=(payload.get('context') or {}).get('plano') or []
+    faltam=[m.get('id') for m in plano if isinstance(m,dict) and m.get('id') in COACH_MEALS and not m.get('done')] if plano else COACH_MEALS
+    if not faltam: raise Exception('Todas as refeicoes de hoje ja foram marcadas como feitas')
+    prompt=(head+'Refeicoes que faltam hoje (use exatamente estes ids no campo "meal"): '+', '.join(faltam)+'.\n'
+      'Tarefa: monte o cardapio de HOJE para essas refeicoes, variando '
       'em relacao ao plano base mas usando alimentos da rotina dela e da regiao, batendo as metas do dia '
       '(considere o que ja foi consumido). Prefira preparo simples.'
       +(' Pedido da pessoa: '+_cs(payload.get('pref'),200)+'.' if _cs(payload.get('pref'),200) else '')+'\n'
       'Responda APENAS um JSON valido, sem markdown:\n'
-      '{"meals":[{"meal":"cafe|almoco|lanche|jantar|ceia","hint":"alimentos com quantidades",'+macro+'}],'
+      '{"meals":[{"meal":"id da refeicao","hint":"alimentos com quantidades",'+macro+'}],'
       '"tip":"1 frase sobre o foco do dia"}')
-    d=_coach_json(bedrock_text([{'text':prompt}],1500,0.6)) or {}
-    meals=[m for m in (_coach_meal(x) for x in (d.get('meals') or [])[:5]) if m]
-    if not meals: raise Exception('Nao consegui montar o cardapio agora')
-    return {'meals':meals,'tip':_cs(d.get('tip'),300)}
+    txt=bedrock_text([{'text':prompt}],2200,0.6)
+    d=_coach_json(txt)
+    meals=[m for m in (_coach_meal(x) for x in _coach_list(d,'meals','refeicoes','cardapio','menu')[:5]) if m]
+    if not meals and isinstance(d,dict):
+      # formato {"almoco":{...},"jantar":{...}}: a refeicao vem na chave
+      meals=[m for m in (_coach_meal(v,_meal_id(k)) for k,v in d.items()) if m]
+    if not meals: _coach_fail(mode,txt,'Nao consegui montar o cardapio agora — tente de novo')
+    return {'meals':meals,'tip':_cs(_pick(d,'tip','dica') if isinstance(d,dict) else '',300)}
   # chat
   hist=payload.get('messages') or []
   conv=[]
@@ -286,10 +362,11 @@ def coach(payload):
     '{"reply":"texto","meals":[{"meal":"id","hint":"...",'+macro+'}],"chips":["..."]}')
   txt=bedrock_text([{'text':prompt}],1000,0.6)
   d=_coach_json(txt)
+  if isinstance(d,dict) and not d.get('reply'): d['reply']=_pick(d,'resposta','mensagem','texto')
   if not isinstance(d,dict) or not d.get('reply'):
     # modelo respondeu texto puro: melhor mostrar do que dar erro
     return {'reply':_cs(re.sub(r'```[a-z]*','',txt or ''),1500) or 'Pode repetir?','meals':[],'chips':[]}
-  meals=[m for m in (_coach_meal(x) for x in (d.get('meals') or [])[:5]) if m]
+  meals=[m for m in (_coach_meal(x) for x in _coach_list(d,'meals','refeicoes')[:5]) if m]
   chips=[_cs(x,60) for x in (d.get('chips') or [])[:3] if _cs(x,60)]
   return {'reply':_cs(d.get('reply'),1500),'meals':meals,'chips':chips}
 def estimate_food(text,file_b64,mime):
