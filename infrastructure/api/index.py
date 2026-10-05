@@ -1,4 +1,4 @@
-import json,boto3,os,urllib.request,urllib.parse,decimal,re,base64,datetime,unicodedata,logging,time
+import json,boto3,os,urllib.request,decimal,re,base64,datetime,logging,time
 from boto3.dynamodb.conditions import Key
 from botocore.config import Config
 from botocore.exceptions import ClientError
@@ -6,7 +6,6 @@ log=logging.getLogger()
 log.setLevel(logging.INFO)
 dynamo=boto3.resource('dynamodb')
 table=dynamo.Table(os.environ['TABLE_NAME'])
-cache_table=dynamo.Table(os.environ.get('CACHE_TABLE_NAME','exercise-cache'))
 sub_table=dynamo.Table(os.environ.get('SUB_TABLE_NAME','tracker-habitos-push-subscriptions'))
 # 2 tentativas x 20s = ~45s com overhead, dentro dos 60s da funcao. A folga
 # importa: estourando o Timeout da Lambda o processo e morto e nenhum except
@@ -20,7 +19,6 @@ MODEL='us.amazon.nova-lite-v1:0'
 # O Amazon Nova recusa temperature=0 — o minimo aceito e 0.00001. Passar 0
 # derruba a chamada inteira com ValidationException.
 NOVA_MIN_TEMP=0.00001
-RAPIDAPI_KEY=os.environ.get('RAPIDAPI_KEY','')
 class Dec(json.JSONEncoder):
   def default(self,o):
     if isinstance(o,decimal.Decimal):
@@ -67,7 +65,7 @@ def bedrock_text(content,max_tokens,temperature=None):
   return resp['output']['message']['content'][0]['text']
 def call_ai(file_b64,mime,ctx,text=None):
   if ctx=='supplements':
-    prompt='Extraia todos os suplementos, vitaminas e medicamentos. Retorne APENAS um array JSON: [{"label":"nome e dose","sub":"horario e instrucao","icon":"emoji","showOn":"always"}]. Use showOn=treino para pre/pos-treino, descanso para descanso, always para os demais. Somente o JSON, sem markdown.'
+    prompt='Extraia todos os suplementos, vitaminas e medicamentos. Retorne APENAS um array JSON: [{"label":"nome e dose","sub":"horario e instrucao","icon":"emoji","showOn":"always"}]. Use sempre showOn=always. Somente o JSON, sem markdown.'
   elif ctx=='meal_plan':
     prompt=(
       'Extraia o plano alimentar com macros por refeição. Retorne APENAS um array JSON, sem markdown:\n'
@@ -82,7 +80,7 @@ def call_ai(file_b64,mime,ctx,text=None):
       'Somente o JSON.'
     )
   else:
-    prompt='Extraia todos os exercicios deste plano de treino. Retorne APENAS um array JSON: [{"name":"exercicio","group":"Peito|Costas|Ombro|Bíceps|Tríceps|Perna|Core|Glúteo|Cardio|Outro","sets":3,"reps":"12","obs":""}]. Use os acentos exatamente como escritos. Somente o JSON, sem markdown.'
+    raise Exception('contexto de importacao invalido: '+str(ctx))
   if text:
     content=[{'text':prompt+'\n\nConteudo enviado pelo usuario (segmente tudo conforme as instrucoes acima):\n'+text}]
   elif (mime or '')=='application/pdf':
@@ -97,220 +95,6 @@ def call_ai(file_b64,mime,ctx,text=None):
   if not m:
     raise Exception('Nenhum item identificado no arquivo')
   return json.loads(m.group())
-EDB_HOST='exercisedb.p.rapidapi.com'
-def edb_get(path):
-  if not RAPIDAPI_KEY: return None
-  try:
-    req=urllib.request.Request('https://'+EDB_HOST+path,headers={'X-RapidAPI-Key':RAPIDAPI_KEY,'X-RapidAPI-Host':EDB_HOST})
-    with urllib.request.urlopen(req,timeout=6) as r:
-      return json.loads(r.read())
-  except Exception as e:
-    log.warning('ExerciseDB %s falhou: %s: %s',path,type(e).__name__,e)
-    return None
-def edb_lookup(english_name,target):
-  # ExerciseDB indexa por nome em ingles; a busca e por substring e devolve varios matches
-  q=(english_name or '').lower().strip()
-  if not q: return None
-  rows=edb_get('/exercises/name/'+urllib.parse.quote(q))
-  if not isinstance(rows,list) or not rows:
-    # 2a tentativa sem o equipamento: "barbell bench press" -> "bench press"
-    words=q.split()
-    if len(words)>2:
-      rows=edb_get('/exercises/name/'+urllib.parse.quote(' '.join(words[-2:])))
-  if not isinstance(rows,list) or not rows: return None
-  tgt=(target or '').lower().strip()
-  def score(r):
-    n=(r.get('name') or '').lower()
-    s=0
-    if n==q: s+=100
-    elif q in n or n in q: s+=40
-    if tgt and (r.get('target') or '').lower()==tgt: s+=25
-    return s
-  return max(rows,key=score)
-def identify_exercise(name):
-  key=name.lower().strip()
-  try:
-    cached=cache_table.get_item(Key={'exerciseName':key}).get('Item')
-    # so reaproveita cache do schema atual; entradas gravadas sem a chave da
-    # RapidAPI sao refeitas quando a chave passa a existir
-    if cached and cached.get('found') and cached.get('schema')=='v2':
-      if not (cached.get('edb')=='nokey' and RAPIDAPI_KEY): return cached
-  except Exception as e:
-    log.warning('cache get falhou para %r: %s',key,e)
-  prompt=(
-    'Identifique o exercicio de musculacao: "'+name+'"\n\n'
-    'Responda APENAS com um JSON valido, sem markdown:\n'
-    '{"group":"Peito|Costas|Ombro|Bíceps|Tríceps|Perna|Glúteo|Core|Cardio|Outro",'
-    '"targetMuscle":"musculo principal em ingles",'
-    '"englishName":"nome do exercicio em ingles, como aparece numa base de dados de exercicios",'
-    '"secondaryMuscles":["musculo2","musculo3"]}\n\n'
-    'Exemplos:\n'
-    '"Supino reto"->{"group":"Peito","targetMuscle":"pectorals","englishName":"barbell bench press","secondaryMuscles":["triceps","delts"]}\n'
-    '"Remada curvada"->{"group":"Costas","targetMuscle":"latissimus dorsi","englishName":"barbell bent over row","secondaryMuscles":["biceps","rhomboids"]}\n'
-    '"Rosca direta"->{"group":"Bíceps","targetMuscle":"biceps","englishName":"barbell curl","secondaryMuscles":["forearms"]}\n'
-    '"Squat"->{"group":"Perna","targetMuscle":"quadriceps","englishName":"barbell squat","secondaryMuscles":["hamstrings","glutes"]}'
-  )
-  try:
-    txt=bedrock_text([{'text':prompt}],200,NOVA_MIN_TEMP).strip()
-    m=re.search(r'\{[\s\S]*\}',txt)
-    if not m:
-      log.warning('identify_exercise: resposta sem JSON para %r: %r',name,txt[:200])
-      return {'exerciseName':key,'found':False}
-    data=json.loads(m.group())
-    result={
-      'exerciseName':key,
-      'found':True,
-      'schema':'v2',
-      'group':data.get('group','Outro'),
-      'targetMuscle':data.get('targetMuscle',''),
-      'secondaryMuscles':data.get('secondaryMuscles',[]),
-      'englishName':data.get('englishName',''),
-      'gifUrl':'',
-      'instructions':[],
-      'fromBedrock':True,
-      'edb':'nokey' if not RAPIDAPI_KEY else 'miss',
-      'cachedAt':datetime.datetime.utcnow().isoformat()+'Z',
-    }
-    # enriquece com GIF e instrucoes; o grupo em portugues continua vindo do Bedrock
-    hit=edb_lookup(data.get('englishName') or name,data.get('targetMuscle'))
-    if hit:
-      result['edb']='hit'
-      result['gifUrl']=hit.get('gifUrl') or ''
-      result['edbName']=hit.get('name') or ''
-      if hit.get('target'): result['targetMuscle']=hit['target']
-      ins=hit.get('instructions')
-      if isinstance(ins,list) and ins: result['instructions']=[str(i) for i in ins[:6]]
-      sec=hit.get('secondaryMuscles')
-      if isinstance(sec,list) and sec: result['secondaryMuscles']=[str(s) for s in sec]
-    try: cache_table.put_item(Item=result)
-    except Exception as e: log.warning('cache put falhou para %r: %s',key,e)
-    return result
-  except Exception as e:
-    # a UI espera found:false para nao quebrar; o motivo vai junto para o campo
-    # error e para o CloudWatch, em vez de sumir como "nao identificado"
-    log.exception('identify_exercise falhou para %r',name)
-    return {'exerciseName':key,'found':False,'error':'%s: %s'%(type(e).__name__,e)}
-def week_suggestion(week_summary,untrained,remaining_days):
-  if remaining_days==0: return []
-  untrained_str=', '.join(untrained) if untrained else 'nenhum — semana equilibrada'
-  prompt=(
-    'O usuario treinou isso essa semana: '+json.dumps(week_summary,ensure_ascii=False)+'\n\n'
-    'Grupos musculares NAO treinados: '+untrained_str+'\n'
-    'Dias restantes na semana: '+str(remaining_days)+'\n\n'
-    'Gere 1 ou 2 sugestoes curtas e motivadoras (max 2 linhas cada) sobre o que faz sentido '
-    'treinar nos dias restantes para equilibrar a semana. Linguagem simples, sem jargao tecnico. '
-    'Responda so com as sugestoes, sem introducao ou numeracao.'
-  )
-  txt=bedrock_text([{'text':prompt}],200)
-  return [s.strip() for s in txt.strip().split('\n') if s.strip()]
-def generate_workout_plan(payload):
-  """Gera um plano de treino (varios treinos) a partir do objetivo, bioimpedancia
-  e series ja feitas na semana. Retorna itens na mesma forma do import de plano
-  (name/group/sets/reps/obs) para o frontend reusar o pipeline de preview."""
-  grupos='Peito, Costas, Ombro, Bíceps, Tríceps, Perna, Core, Glúteo, Cardio, Outro'
-  obj=payload.get('objetivo') or 'manutencao'
-  n=max(1,min(7,int(payload.get('workoutsPerWeek') or 3)))
-  mins=max(20,min(120,int(payload.get('minutesPerWorkout') or 60)))
-  ex_alvo=max(3,min(10,round(mins/9)))
-  body=payload.get('body') or {}
-  goals=payload.get('goals') or {}
-  week=payload.get('weekSummary') or {}
-  obj_txt={'cutting':'perda de gordura (deficit calorico)',
-           'bulking':'ganho de massa muscular (superavit)',
-           'manutencao':'manutencao de peso e composicao'}.get(obj,'manutencao')
-  ctx=[]
-  if body.get('weight'): ctx.append('peso '+str(body['weight'])+'kg')
-  if body.get('fat') is not None: ctx.append('gordura '+str(body['fat'])+'%')
-  if body.get('lean') is not None: ctx.append('massa magra '+str(body['lean'])+'kg')
-  if goals.get('idade'): ctx.append(str(goals['idade'])+' anos')
-  if goals.get('sexo'): ctx.append('sexo '+('feminino' if goals.get('sexo')=='f' else 'masculino'))
-  ctx_txt=', '.join(ctx) if ctx else 'nao informado'
-  prompt=(
-    'Voce e um profissional de educacao fisica. Monte um plano de treino de musculacao seguro, '
-    'baseado em principios consolidados de treinamento de forca: volume semanal de ~10 a 20 series '
-    'por grupo muscular, frequencia de ~2x por semana por grupo quando os dias permitirem, faixa de '
-    'repeticoes adequada ao objetivo (hipertrofia 6-12; em deficit pode incluir algumas series de '
-    'reps mais altas), e sobrecarga progressiva.\n\n'
-    'Objetivo do usuario: '+obj_txt+'\n'
-    'Composicao corporal / perfil: '+ctx_txt+'\n'
-    'Series ja concluidas por grupo nesta semana: '+json.dumps(week,ensure_ascii=False)+'\n'
-    'Treinos por semana desejados: '+str(n)+'\n'
-    'Duracao por treino: '+str(mins)+' minutos (cerca de '+str(ex_alvo)+' exercicios por treino)\n\n'
-    'Divida os grupos numa estrutura adequada ao numero de treinos '
-    '(ex.: 2 treinos = corpo inteiro; 3 = empurrar/puxar/pernas ou A/B/C; 4 = superior/inferior). '
-    'Use apenas exercicios comuns e seguros. O campo "group" deve ser EXATAMENTE um destes '
-    '(com acento): '+grupos+'.\n\n'
-    'Responda APENAS com um JSON valido, sem markdown, no formato:\n'
-    '{"workouts":[{"name":"Treino A - Empurrar","exercises":['
-    '{"name":"Supino reto","group":"Peito","sets":4,"reps":"8-12","obs":""}]}],'
-    '"notes":"1 frase curta de orientacao geral"}'
-  )
-  txt=bedrock_text([{'text':prompt}],2000,NOVA_MIN_TEMP)
-  m=re.search(r'\{[\s\S]*\}',txt)
-  if not m:
-    log.warning('generate_workout_plan: resposta sem JSON: %r',txt[:200])
-    return {'workouts':[],'error':'Nao foi possivel gerar o treino'}
-  try:
-    data=json.loads(m.group())
-  except Exception:
-    log.warning('generate_workout_plan: JSON invalido: %r',txt[:300])
-    return {'workouts':[],'error':'Resposta invalida da IA'}
-  def _i(v,d=3):
-    try: return max(1,int(round(float(v))))
-    except: return d
-  out=[]
-  for w in (data.get('workouts') or [])[:7]:
-    exs=[]
-    for e in (w.get('exercises') or [])[:15]:
-      nm=str(e.get('name','')).strip()[:80]
-      if not nm: continue
-      exs.append({'name':nm,'group':str(e.get('group','')).strip()[:20],
-                  'sets':_i(e.get('sets')),'reps':str(e.get('reps','')).strip()[:20],
-                  'obs':str(e.get('obs','')).strip()[:120]})
-    if exs:
-      out.append({'name':str(w.get('name','Treino')).strip()[:40],'exercises':exs})
-  return {'workouts':out,'notes':str(data.get('notes','')).strip()[:200]}
-def extract_workout_plan(payload):
-  """Segmenta um texto livre (possivelmente com varios treinos/dias) em treinos
-  estruturados, na mesma forma do generate_workout_plan, para o frontend reusar o
-  preview multi-treino."""
-  text=(payload.get('text') or '').strip()
-  if not text: return {'workouts':[]}
-  prompt=(
-    'Voce recebe um treino em texto livre, possivelmente com varios treinos ou dias. '
-    'Segmente em treinos separados. Para cada treino, extraia o nome (ex.: "Treino A", '
-    '"Peito e Triceps", "Segunda-feira") e a lista de exercicios com series e repeticoes.\n'
-    'O campo group deve ser EXATAMENTE um destes (com acento): '
-    'Peito, Costas, Ombro, B\u00edceps, Tr\u00edceps, Perna, Core, Gl\u00fateo, Cardio, Outro.\n'
-    'Responda APENAS um JSON valido, sem markdown:\n'
-    '{"workouts":[{"name":"Treino A","exercises":[{"name":"Supino reto","group":"Peito","sets":4,"reps":"8-12","obs":""}]}]}\n\n'
-    'Texto:\n'+text
-  )
-  txt=bedrock_text([{'text':prompt}],2000,NOVA_MIN_TEMP)
-  m=re.search(r'\{[\s\S]*\}',txt)
-  if not m:
-    log.warning('extract_workout_plan: resposta sem JSON: %r',txt[:200])
-    return {'workouts':[],'error':'Nao foi possivel ler o treino do texto'}
-  try:
-    data=json.loads(m.group())
-  except Exception:
-    log.warning('extract_workout_plan: JSON invalido: %r',txt[:300])
-    return {'workouts':[],'error':'Resposta invalida da IA'}
-  def _i(v,d=3):
-    try: return max(1,int(round(float(v))))
-    except: return d
-  out=[]
-  for w in (data.get('workouts') or [])[:10]:
-    exs=[]
-    for e in (w.get('exercises') or [])[:20]:
-      nm=str(e.get('name','')).strip()[:80]
-      if not nm: continue
-      exs.append({'name':nm,'group':str(e.get('group','')).strip()[:20],
-                  'sets':_i(e.get('sets')),'reps':str(e.get('reps','')).strip()[:20],
-                  'obs':str(e.get('obs','')).strip()[:120]})
-    if exs:
-      out.append({'name':str(w.get('name','Treino')).strip()[:40],'exercises':exs})
-  return {'workouts':out}
 def generate_meal_plan(payload):
   """Gera um plano alimentar diario a partir do objetivo e das metas de kcal/proteina.
   Retorna itens na mesma forma da extracao de plano (id/hint/kcal/prot/trigger) para
@@ -631,43 +415,13 @@ def _dispatch(event,context):
   if action=='analyze' and method=='POST':
     try:
       body=json.loads(event.get('body') or '{}')
-      ctx=body.get('context','gym_plan')
+      ctx=body.get('context','')
       text=(body.get('text') or '').strip()
       if text:
         items=call_ai(None,None,ctx,text=text)
       else:
         items=call_ai(body['file'],body['mimeType'],ctx)
       return{'statusCode':200,'body':json.dumps({'items':items})}
-    except Exception as e:
-      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
-  if action=='identify_exercise' and method=='GET':
-    name=params.get('name','').strip()
-    if not name:
-      return{'statusCode':400,'body':json.dumps({'error':'missing name'})}
-    try:
-      result=identify_exercise(name)
-      return{'statusCode':200,'body':json.dumps(result,cls=Dec)}
-    except Exception as e:
-      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
-  if action=='week_suggestion' and method=='POST':
-    try:
-      body=json.loads(event.get('body') or '{}')
-      suggestions=week_suggestion(body.get('weekSummary',{}),body.get('untrainedGroups',[]),body.get('remainingDays',0))
-      return{'statusCode':200,'body':json.dumps({'suggestions':suggestions})}
-    except Exception as e:
-      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
-  if action=='generate_workout_plan' and method=='POST':
-    try:
-      body=json.loads(event.get('body') or '{}')
-      res=generate_workout_plan(body)
-      return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
-    except Exception as e:
-      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
-  if action=='extract_workout_plan' and method=='POST':
-    try:
-      body=json.loads(event.get('body') or '{}')
-      res=extract_workout_plan(body)
-      return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}
   if action=='generate_meal_plan' and method=='POST':
@@ -748,7 +502,6 @@ def _dispatch(event,context):
       return{'statusCode':400,'body':json.dumps({'error':'invalid start/end'})}
     try:
       items=query_days(uid,Key('date').between(start,end))
-      items+=query_days(uid,Key('date').between('gym:'+start,'gym:'+end+';'))
       out=[{'date':i['date'],'data':i.get('data')} for i in items]
       return{'statusCode':200,'body':json.dumps({'items':out},cls=Dec)}
     except Exception as e:
