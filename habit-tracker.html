@@ -683,10 +683,6 @@ const DEFAULT_MEAL_PLAN={
   },
   jantar:{
     default:{kcal:380,prot:34,hint:'Salada + Frango 100g + Batata inglesa 120g + Ketchup',badge:'🍽️ Refeição'},
-    variants:[
-      {trigger:'jantarV=rap10',kcal:330,prot:30,hint:'Rap10 fibras + Frango desfiado 80g + Requeijão light 30g',badge:'🌯 Rap10'},
-      {trigger:'jantarV=hamburguer',kcal:480,prot:35,hint:'Pão francês + Hambúrguer patinho 100g + Maionese light + Queijo',badge:'🍔 Hambúrguer'}
-    ]
   },
   ceia:{
     default:{kcal:200,prot:22,hint:'Iogurte grego + cacau em pó + morangos + Whey misturado',badge:'21:00'}
@@ -737,7 +733,6 @@ function getMealSlot(mealId,d){
     for(const v of cfg.variants){
       if(v.trigger==='isFds'&&d.isFds) return v;
       if(v.trigger==='almocoCarb'&&d.almocoCarb) return v;
-      if(v.trigger===`jantarV=${d.jantarV}`) return v;
     }
   }
   return cfg.default||null;
@@ -2005,7 +2000,7 @@ function suggestCat(t){
 function makeEmpty(date){
   const dow=getDow(date);
   const isFds=dow===0||dow===6;
-  return{isFds,almocoCarb:false,jantarV:'refeicao',
+  return{isFds,almocoCarb:false,
          meals:{},sups:{},habits:{},foods:[],mealOverrides:{},water:0,sleep:null,sleepOk:null,notes:''};
 }
 
@@ -4195,8 +4190,9 @@ function renderMealPlanConfigHtml(){
   const triggerLabel={
     'isFds':'Final de semana',
     'almocoCarb':'Com carboidrato',
-    'jantarV=rap10':'Jantar Rap10',
-    'jantarV=hamburguer':'Jantar Hambúrguer',
+    // variantes antigas: o seletor de jantar saiu da aba Plano — o coach troca a refeição
+    'jantarV=rap10':'Jantar Rap10 (não usada mais)',
+    'jantarV=hamburguer':'Jantar Hambúrguer (não usada mais)',
   };
   const slotCard=(mealId,slot,variantIdx,label)=>{
     if(!slot) return '';
@@ -4273,8 +4269,6 @@ function mpOpenEdit(mealId,variantIdx){
   const triggerOpts=[
     {v:'isFds',l:'Final de semana (isFds)'},
     {v:'almocoCarb',l:'Almoço com carboidrato'},
-    {v:'jantarV=rap10',l:'Jantar Rap10'},
-    {v:'jantarV=hamburguer',l:'Jantar Hambúrguer'},
   ];
   const bd=document.createElement('div');
   bd.style.cssText='position:fixed;inset:0;z-index:300;background:rgba(46,58,51,.5);display:flex;align-items:flex-end;justify-content:center';
@@ -5249,7 +5243,6 @@ function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classL
 function toggleMeal(id){dayData.meals[id]=!dayData.meals[id];save();renderUI();}
 function toggleSup(id){dayData.sups[id]=!dayData.sups[id];save();renderUI();}
 function toggle(k){dayData[k]=!dayData[k];save();renderUI();}
-function setJantar(v){dayData.jantarV=v;save();renderUI();}
 function setWater(i){dayData.water=i<dayData.water?i:i+1;save();renderUI();}
 function addWater(n){dayData.water=Math.max(0,Math.min(12,dayData.water+n));save();renderUI();}
 function setSleep(id){dayData.sleep=id;save();renderUI();}
