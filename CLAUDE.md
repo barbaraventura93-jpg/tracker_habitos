@@ -4,10 +4,18 @@
 
 O app deixou de ser "rotina + treino" e virou um **coach de alimentação,
 suplementação e hábitos** (referência: a experiência do Fitbod, aplicada à comida).
-Treino saiu da interface — ver "Coach alimentar" abaixo. Tudo o que segue sobre
-treino (Periodização, heatmap, timer, multi-treino) descreve código que **continua
-no arquivo, mas não é mais alcançável pela navegação**. Remover esse código de vez
-é uma limpeza pendente; até lá, não invista nele.
+O app não acompanha mais treino — ver "Coach alimentar" abaixo. **Todo o código
+de treino foi removido** (frontend e Lambda: log, plano, timer, heatmap, Semana,
+periodização, gerador de treino, `identify_exercise`, `week_suggestion`,
+`generate_workout_plan`, `extract_workout_plan`). Não reintroduza.
+
+Ficou de propósito, por ser infraestrutura e não código: a tabela `exercise-cache`,
+o parâmetro/secret `RapidApiKey` e o passo "Atualizar RAPIDAPI_KEY" do workflow.
+Tirar a tabela do `template.yaml` faz o CloudFormation **apagá-la** — se for fazer,
+faça num PR próprio e consciente. As chaves antigas de treino no DynamoDB
+(`gym:<data>:<treino>`, `__gymplan__`, `__workouts__`, `__weekplan__`,
+`__periodization__`) continuam nas contas, aparecem no `export` e são apagadas pelo
+`delete_account`; o app só não as lê mais (`hydrateRange` pula `gym:`).
 
 ### Histórico (2026-07-28)
 
@@ -16,10 +24,10 @@ como as três fases da Periodização Semanal descritas abaixo. Os dois document
 planejamento do repositório viraram registro histórico:
 
 - `docs/transformacao-app-diario.md` — diagnóstico e roadmap, tudo entregue
-- `exercicios-refinamento.md` — resta **um item**: o redesign do formulário do Plano
+- `exercicios-refinamento.md` — arquivado: era sobre treino, que saiu do app
 
 Gaps técnicos ainda abertos, nenhum bloqueante: **latência do Cognito** (`get_uid()`
-faz round-trip a cada request) e **`habit-tracker.html` com ~5k linhas**. A outra
+faz round-trip a cada request) e **`habit-tracker.html` com ~5,2k linhas**. A outra
 metade do gap de manutenibilidade foi fechada — o Lambda da API saiu de dentro do
 `template.yaml` e virou `infrastructure/api/index.py`.
 
@@ -85,7 +93,7 @@ Configurações de Saúde — as duas telas têm que chegar no mesmo número.
 
 ## Coach alimentar
 
-Navegação: **Hoje · Plano · Coach · Progresso · Mais**. Treino virou só indicação
+Navegação: **Hoje · Plano · Coach · Progresso · Mais**. Treino é só indicação
 de apps (`showTreinoApps()`, Mais › Treino).
 
 - **Perfil alimentar** — `foodProfile`, chave `ht:foodprofile` / `__foodprofile__`:
@@ -107,8 +115,12 @@ de apps (`showTreinoApps()`, Mais › Treino).
   registro nenhum. `progressInsights()` são regras locais (sem IA); cada uma pode
   levar uma pergunta pronta para o coach (`coachAsk`).
 - **Conversa** — `coachMsgs` em `ht:coach_chat` (local, não sincroniza, últimas 60).
-- `getSups()` não filtra mais por dia de treino: todo suplemento aparece todo dia.
-- O score do dia (`calcScore`) não conta mais treino.
+- `getSups()` não filtra por dia: todo suplemento aparece todo dia (o campo
+  `showOn` de dado antigo é ignorado).
+- O score do dia (`calcScore`) não conta treino. `dayData` não tem mais
+  `tr`/`trs`/`gymDurMin` (dia antigo que ainda os tenha só carrega campos mortos).
+- Metas (`goalsDefs`) não têm mais vínculo com treino (`linkedWorkout`); meta
+  antiga com o campo vira meta de registro manual.
 
 Backend: **uma action só, `coach` (POST)**, com `mode` = `chat | swap | flex | day`.
 O frontend manda o contexto inteiro em `context` (`coachContext()`) — o Lambda não
@@ -121,13 +133,9 @@ Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
 
 | Action | O que faz |
 |---|---|
-| `analyze` (POST) | extrai exercícios/suplementos/plano alimentar de PDF/imagem/texto via Bedrock (array plano de itens) |
-| `identify_exercise` | grupo + músculos + GIF + instruções de um exercício, com cache |
+| `analyze` (POST) | extrai suplementos (`context=supplements`) ou plano alimentar (`context=meal_plan`) de PDF/imagem/texto via Bedrock |
 | `coach` (POST) | coach alimentar: `mode` chat (conversa), swap (3 opções para trocar uma refeição), flex (encaixar um extra e reajustar o dia), day (cardápio do dia) |
 | `estimate_food` | estima macros de refeição livre (texto ou foto) via Bedrock |
-| `week_suggestion` | sugestão de treino para os dias restantes da semana |
-| `generate_workout_plan` (POST) | gera um plano de treino (vários treinos) a partir do objetivo, bioimpedância e séries da semana — `{workouts:[{name,exercises}]}` |
-| `extract_workout_plan` (POST) | segmenta um texto livre com **um ou mais** treinos (vários dias num só bloco) em treinos estruturados, sem inventar exercícios |
 | `generate_meal_plan` (POST) | gera plano alimentar por IA a partir de objetivo, região e metas de kcal/proteína |
 | `analyze_bio` (POST) | extrai a série de composição corporal (atual + histórico) de um exame de bioimpedância |
 | `history_range` | Query por `userId` com `date BETWEEN` — hidrata o histórico num dispositivo novo |
@@ -171,8 +179,9 @@ Erros de ativação vão para o `console` e para uma nota dentro do card
 (`_pushNote`), não para o toast: instrução de configuração não cabe em 3 segundos.
 
 "Datas especiais" no DynamoDB (não são datas reais, são chaves de config por usuário):
-`__gymplan__`, `__workouts__`, `__mealplan__`, `__csups__`, `__goals__`, `__goalsdefs__`,
-`__goallogs__`, `__body__`, `__habits__`, `__weekplan__`, `__periodization__`, `__foodprofile__`
+`__mealplan__`, `__csups__`, `__goals__`, `__goalsdefs__`, `__goallogs__`, `__body__`,
+`__habits__`, `__foodprofile__`. Legado de treino, sem leitura no app: `__gymplan__`,
+`__workouts__`, `__weekplan__`, `__periodization__` e as sessões `gym:<data>:<treino>`.
 
 ## Conta do usuário
 
@@ -191,8 +200,8 @@ Tudo em `showAccount()`, dentro de Mais › Conta e senha:
 ## IAM
 
 Policy `DynamoDBAccess`: `GetItem`, `PutItem`, `DeleteItem`, `BatchWriteItem`,
-`Scan` e `Query`, nas três tabelas (`tracker-habitos-data`, `exercise-cache` e
-`tracker-habitos-push-subscriptions`). O `Query` entrou junto com o
+`Scan` e `Query`, nas três tabelas (`tracker-habitos-data`, `exercise-cache` — sem
+uso desde a remoção do treino — e `tracker-habitos-push-subscriptions`). O `Query` entrou junto com o
 `history_range`; o `BatchWriteItem`, junto com o `delete_account`.
 
 Policy `BedrockAccess`: `bedrock:InvokeModel` com `"*"`.
@@ -200,93 +209,6 @@ Policy `BedrockAccess`: `bedrock:InvokeModel` com `"*"`.
 **Gap conhecido e ainda aberto:** `get_uid()` chama `GetUser` no Cognito a cada
 request (~100–200 ms extras). Validar a assinatura do JWT localmente, com JWKS
 em cache, dispensaria a maioria dessas chamadas.
-
----
-
-## Periodização Semanal — entregue (Fases 1, 2 e 3)
-
-As três fases estão no `main`. O que segue descreve o que existe, não um plano.
-
-### Tela Semana (Fase 1)
-
-- Aba "Semana" dentro da tela de treino, com os 7 dias (Seg–Dom): tipo de treino,
-  grupos musculares trabalhados e duração
-- Silhueta SVG desenhada à mão no próprio HTML (`viewBox 0 0 400 466`, paths
-  espelhados por `transform="scale(-1,1)"`), colorida por intensidade via `svgFill`
-- **A intensidade é contagem de séries concluídas, não volume de carga.**
-  `muscleSets[grupo] += nº de séries com done=true`, e
-  `pct = min(100, round(muscleSets[grupo] / 15 × 100))` — ou seja, 15 séries na
-  semana saturam o grupo em 100%. A ideia original de `Σ(séries × reps × peso)`
-  não foi adiante: peso é opcional no log e deixava o mapa vazio para quem não
-  anota carga
-- `Cardio` e `Outro` ficam fora do heatmap de propósito
-- Os 7 dias são lidos do cache local (`loadDay`), hidratado por `history_range` —
-  **não existe handler `week_summary`**, ele foi descartado quando o `Query`
-  entrou no IAM e tornou o `history_range` suficiente
-
-### Identificação de exercício (Fase 2)
-
-- Tabela `exercise-cache` (PK `exerciseName`, global — sem `userId`)
-- `identify_exercise` roda em dois passos: o Bedrock resolve o grupo em português
-  (necessário para o heatmap, e que a ExerciseDB não fornece) e traduz o nome para
-  inglês; essa tradução busca GIF, instruções e músculo-alvo na ExerciseDB
-- A ordem importa: buscar a ExerciseDB primeiro erraria quase sempre, porque os
-  nomes são digitados em português. Assim fica 1 requisição por exercício novo,
-  dentro do free tier de 100/dia
-- Sem a chave da RapidAPI o handler continua funcionando, só não enriquece — essas
-  entradas são marcadas com `edb:'nokey'` e refeitas quando a chave passa a existir.
-  O marcador `schema:'v2'` invalida entradas antigas gravadas com `gifUrl` vazio
-
-### Sugestão semanal (Fase 3)
-
-- `action=week_suggestion` via Bedrock, com os grupos não treinados e os dias
-  restantes da semana no contexto
-
-### Timer de treino
-
-Um único widget com dois modos, em `_tmr`: `rest` (regressivo, descanso entre
-séries) e `work` (progressivo, exercícios medidos em tempo).
-
-- O widget é criado em `document.body`, **não** dentro do HTML da tela. `renderGym()`
-  reconstrói a tela inteira a cada série marcada — dentro dela o timer morreria a
-  cada toque
-- O tempo sai sempre de `Date.now()` (`_tmrValue()`), nunca de um contador
-  decrementado: com a tela apagada o navegador estrangula o `setInterval` e um
-  contador dessincronizaria
-- `AudioContext` é criado no **início** do timer, que é sempre um gesto do usuário.
-  Criar no fim da contagem seria bloqueado pelo mobile, que exige gesto
-- Preferências em `localStorage` `ht:tmr` (`{rest, auto, sound}`). Os botões ±15s
-  gravam o novo padrão — o timer aprende o descanso real, sem tela de configuração
-- `timerLogWork()` grava na primeira série pendente: `"45s"` na musculação,
-  minutos decimais no aeróbico (onde o campo alimenta `dayData.gymDurMin`).
-  Guarda `date`/`tr` do início para não gravar no lugar errado se a pessoa
-  trocar de dia no meio
-- A classe `body.tmr-on` aumenta o `padding-bottom` do `.screens-wrap` para a
-  barra não cobrir o fim da lista
-
-### Grupos musculares — atenção ao acento
-
-`GYM_GROUPS` usa **`Bíceps`, `Tríceps`, `Glúteo` com acento**. O heatmap indexa
-`muscleSets` por essa string, então qualquer valor sem acento simplesmente some do
-mapa, sem erro visível. Os prompts do Bedrock pedem os grupos acentuados, e
-`canonGroup()` no frontend normaliza qualquer variante recebida — use essa função
-em vez de comparar strings de grupo na mão. `loadGymPlan`, `loadGymSession` e
-`syncGymPlan` também normalizam na leitura, para curar dado gravado antes do fix.
-
-### Mais de um treino por dia
-
-Um dia pode ter **vários treinos** (ex.: musculação + aeróbico). A fonte da verdade é
-`dayData.trs` (array de ids); `dayData.tr` continua sendo o treino **em foco** no log, com
-normalização retrocompatível no `loadDay`/`makeEmpty` (dia antigo só com `.tr` continua
-abrindo). O seletor da tela marca/desmarca treinos do dia (`gymPickDay`/`gymRemoveDay`);
-o heatmap da semana e a timeline "hoje" agregam **todas** as sessões do dia. No template
-da semana, `weekPlan[dow]` aceita string **ou lista** — use `plannedTrsForDow(dow)` para
-ler os treinos previstos.
-
-Para agregações que percorrem o dia, **use o helper `dayTrs(dd)`** (lista com retrocompat),
-nunca `dd.tr` sozinho: `calcScore`, `buildMonthReport`, a varredura de grupo descansado do
-`dailyInsightCard` e `getLastGymSession` já somam todos os treinos do dia. Limitação ainda
-aberta: `gymDurMin` (cardio) é escalar por dia.
 
 ---
 
@@ -308,7 +230,8 @@ A API não tem `requirements.txt`: usa só stdlib + `boto3`, que já vem no runt
 Se um dia precisar de dependência de terceiros, copie o padrão do `push-sender`
 (`pip install -t` antes do zip).
 
-⚠️ O passo "Atualizar RAPIDAPI_KEY" usa `update-function-configuration
+⚠️ O passo "Atualizar RAPIDAPI_KEY" (resto da época do treino — a chave não é mais
+lida pelo código) usa `update-function-configuration
 --environment`, que **substitui o mapa inteiro de variáveis**, não faz merge. Toda
 variável declarada no template precisa estar repetida lá, senão some a cada deploy.
 
@@ -320,9 +243,8 @@ AWS no CloudWatch antes de propagar; sem ele os erros sumiam nos `except` mudos.
 
 ⚠️ **`temperature=0` é inválido no Amazon Nova** — o mínimo aceito é `0.00001`
 (a constante `NOVA_MIN_TEMP`). Passar `0` derruba a chamada inteira com
-`ValidationException`. Foi o que quebrou `estimate_food` e `identify_exercise`
-enquanto `analyze` e `week_suggestion`, que não mandavam `temperature`,
-continuavam funcionando. O helper ainda repete a chamada sem `temperature` se o
+`ValidationException`. Foi o que já quebrou `estimate_food` em produção, enquanto as
+chamadas que não mandavam `temperature` continuavam funcionando. O helper ainda repete a chamada sem `temperature` se o
 modelo recusar o `inferenceConfig`, então uma mudança futura de validação
 degrada em vez de quebrar.
 

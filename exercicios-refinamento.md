@@ -1,5 +1,8 @@
 # Refinamento técnico — Exercícios & Identificação Muscular
 
+> **Arquivado (2026-10-05).** O app deixou de acompanhar treino e todo esse código
+> foi removido, inclusive o item que ainda restava. Mantido só como registro.
+
 > **Estado em 2026-07-28:** de tudo que este documento levantou, resta **um único
 > item** — o redesign do formulário do Plano (ocultar o `gpa-group` quando a IA
 > identifica). Todo o resto foi entregue. O texto abaixo é registro do diagnóstico

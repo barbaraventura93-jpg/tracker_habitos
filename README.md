@@ -2,7 +2,7 @@
 
 Coach de **alimentação, suplementação e hábitos** — inspirado na experiência do Fitbod, mas para comida: o app conversa com a pessoa, indica a rotina alimentar do dia, adapta refeições quando ela quer mudar algo, controla refeições livres e mostra onde ela está escorregando para chegar na meta. Sincroniza entre dispositivos.
 
-> **Mudança de direção (out/2026).** Treino saiu da interface: o app só indica apps de treino (Mais › Treino). As seções sobre treino abaixo descrevem código que continua no arquivo, mas não está mais acessível pela navegação.
+> **Mudança de direção (out/2026).** O app não acompanha mais treino: só indica apps de treino (Mais › Treino). Todo o código de treino foi removido do frontend e do Lambda; os dados antigos de treino continuam na conta e saem em "Exportar dados".
 
 ## Coach alimentar
 
@@ -28,62 +28,25 @@ Coach de **alimentação, suplementação e hábitos** — inspirado na experiê
 - Score diário com anel de progresso, barras por categoria e pendências
 - Marcação de refeições com detalhes de macros
 - Controle de água com indicador de copos, ml e litros
-- Suplementos com checklist configurável por tipo de dia (treino / descanso)
+- Checklist de suplementos do dia
 - Registro de sono — horas e horário consistente
 - Metas personalizadas com barra de progresso e status em tempo real
-
-### Treino
-
-**Musculação**
-- Log de exercícios com séries, reps e kg por set
-- Comparação automática com a última sessão do mesmo treino
-- % de sucesso do dia sobe automaticamente ao concluir séries
-- Plano de treino por tipo (A/B/C) salvo como modelo, sessões isoladas por tipo
-- Sessões de treino persistidas no DynamoDB — histórico seguro mesmo se o cache do browser for limpo
-- **Identificação automática de exercícios via Bedrock** — ao digitar o nome (≥ 3 letras), classifica o grupo muscular (Peito · Costas · Ombro · Bíceps · Tríceps · Perna · Glúteo · Core · Cardio) com emoji de representação; resultado cacheado em DynamoDB para não repetir chamadas
-- **Card de identificação dinâmico** — exibe estado de loading → card confirmado com emoji + grupo → grade de seleção rápida se não identificado; botão "Trocar" para correção manual
-- **Rever grupos** — botão no Plano reidentifica todos os exercícios cadastrados via Bedrock e atualiza os grupos em lote
-- **Edição no plano** — botão ✏️ nos exercícios abre painel com nome, grupo muscular, séries/reps padrão e observação; alterações salvas permanentemente no plano
-- **Edição de sessão** — mesmo botão na tela de log edita só aquela sessão, com aviso visual de escopo
-
-**Cardio / Aeróbico**
-- Log de atividades com duração (min) e distância (km) por intervalo
-- `gymDurMin` calculado automaticamente ao marcar atividade concluída
-- Suporte a múltiplos intervalos (ex: 5 tiros de 400m)
-
-**Geral**
-- Upload de plano via PDF ou imagem — IA extrai exercícios automaticamente
-- **Log herda do Plano** — ao adicionar um exercício no Log, séries e reps são herdadas automaticamente do Plano correspondente; se o exercício não estiver no Plano, mostra campos editáveis com aviso; toast confirma a herança aplicada
-- **Periodização por Blocos** — organização do treino em ciclos (ex: Hipertrofia → Deload → Força) com duração em semanas, meta de séries/reps e foco (volume · intensidade · deload); banner no topo do Log mostra o bloco atual, semana do ciclo, barra de progresso e botão "Próximo" ao atingir a última semana; gerenciado em Mais → Periodização por Blocos; sincronizado via DynamoDB (`__periodization__`)
-
-### Semana
-
-Tela dedicada na navegação inferior com visão consolidada da semana de treino:
-
-- **Mapa muscular SVG anatômico** — silhueta humana frente/costas com curvas bezier e `<clipPath>` para recorte preciso; músculos posicionados anatomicamente (trapézio em diamante, latíssimo em asa, peitoral em leque, abdômen segmentado); heatmap com 4 intensidades: cinza (sem treino) → roxo claro (leve) → roxo (moderado) → laranja (intenso); fórmula: 15 séries/semana = 100%
-- **Timeline semanal** — 7 cards Seg–Dom com tipo de treino, grupos trabalhados, duração e marcação de concluído/falhado
-- **Equilíbrio muscular** — tabela com sets e intensidade por grupo (Peito · Costas · Ombro · Bíceps · Tríceps · Perna · Core · Glúteo)
-- **Sugestão IA** — após renderizar a tela, busca sugestão personalizada no Bedrock (Amazon Nova Lite) com contexto da semana; exibe 1–2 mensagens motivadoras em português sobre o que falta treinar; fallback para regra estática se a IA não responder
 
 ### Nutrição
 - Controle de macros por refeição
 - Meta de calorias calculada automaticamente (BMR × TDEE)
 
 ### Suplementos
-- Cadastro livre com nome, dose, ícone e visibilidade (sempre / treino / descanso)
+- Cadastro livre com nome, dose, horário e ícone
 - Importação via PDF ou foto — IA extrai os itens
 
 ### Metas e Objetivos
 
 Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento automático.
 
-**Categorias:** Treino · Nutrição · Saúde · Sono · Meditação · Leitura · Finanças · Criatividade · Carreira · Social · Bem-estar · Personalizado
+**Categorias:** Exercício · Nutrição · Saúde · Sono · Meditação · Leitura · Finanças · Criatividade · Carreira · Social · Bem-estar · Personalizado
 
 **Frequências:** Diária · Semanal · Mensal · Anual · Uma vez (com prazo)
-
-**Vínculo com tipo de treino** — progresso alimentado automaticamente:
-- **Duração (min):** soma os minutos das sessões concluídas no período
-- **Sessões realizadas:** conta dias com atividades marcadas como feitas
 
 **Tela Hoje — 3 seções:** Foco do Dia / Esta Semana / Longo Prazo
 - Card mostra barra de progresso, status do dia e botões de log rápido (+1, +5, +10)
@@ -123,7 +86,7 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 - Hospedagem: **AWS S3 + CloudFront**
 - Autenticação: **AWS Cognito**
 - Backend: **AWS Lambda (Python 3.12) + DynamoDB**
-- IA: **AWS Bedrock** (Amazon Nova Lite) — análise de PDF/imagem · identificação de exercícios · sugestão semanal
+- IA: **AWS Bedrock** (Amazon Nova Lite) — coach alimentar · análise de PDF/imagem · estimativa de macros · plano alimentar
 - Infraestrutura como código: **AWS CloudFormation**
 - CI/CD: **GitHub Actions**
 
@@ -136,10 +99,10 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 | S3 | Hospedagem do arquivo estático | Free Tier |
 | CloudFront | CDN + HTTPS + invalidação automática | Free Tier |
 | Cognito | Autenticação de usuários | Free Tier (50k MAU) |
-| DynamoDB `tracker-habitos-data` | Dados diários por usuário + sessões de treino (PK: userId, SK: date) | Free Tier |
-| DynamoDB `exercise-cache` | Cache global de identificação de exercícios via Bedrock (PK: exerciseName) | Free Tier |
-| Lambda | API REST + IA + identificação de exercícios + sugestão semanal | Free Tier |
-| Bedrock (Nova Lite) | Extração de planos · identificação de exercícios · sugestão semanal | ~$0,00002/exercício identificado |
+| DynamoDB `tracker-habitos-data` | Dados diários e configurações por usuário (PK: userId, SK: date) | Free Tier |
+| DynamoDB `exercise-cache` | **Sem uso** desde a remoção do treino — continua no template até ser retirada de propósito | Free Tier |
+| Lambda | API REST + IA (coach, macros, plano alimentar, import) | Free Tier |
+| Bedrock (Nova Lite) | Coach · extração de planos · estimativa de macros | centavos por mês |
 | GitHub Actions | CI/CD automático no push | Gratuito |
 
 **Bucket:** `tracker-habitos` · **Região:** `sa-east-1` (São Paulo) · **URL:** `https://d1o1gejacy6m9o.cloudfront.net`
@@ -150,12 +113,15 @@ Sistema completo de metas com 12 categorias, 5 frequências e acompanhamento aut
 
 | Action | Método | Descrição |
 |---|---|---|
-| *(sem action)* | GET | Lê dados de uma data (`?date=YYYY-MM-DD` ou `gym:YYYY-MM-DD:trId`) |
+| *(sem action)* | GET | Lê dados de uma data (`?date=YYYY-MM-DD`) ou de uma chave de configuração (`__goals__` etc.) |
 | *(sem action)* | PUT | Salva dados de uma data |
-| `analyze` | POST | Extrai exercícios ou suplementos de PDF/imagem via Bedrock |
-| `identify_exercise` | GET | Identifica exercício pelo nome — cache DynamoDB → Bedrock Nova Lite |
-| `week_suggestion` | POST | Gera sugestão semanal personalizada via Bedrock |
-| `history_range` | GET | Lista dias e sessões de treino entre `start` e `end` (Query no DynamoDB) — hidrata o histórico em dispositivos novos |
+| `analyze` | POST | Extrai suplementos ou plano alimentar de PDF/imagem/texto via Bedrock |
+| `coach` | POST | Coach alimentar — `mode` chat, swap, flex ou day |
+| `estimate_food` | POST | Estima macros de uma refeição (texto ou foto) |
+| `generate_meal_plan` | POST | Gera plano alimentar por IA |
+| `analyze_bio` | POST | Extrai composição corporal de um exame de bioimpedância |
+| `history_range` | GET | Lista os dias entre `start` e `end` (Query no DynamoDB) — hidrata o histórico em dispositivos novos |
+| `delete_account` | POST | Apaga todos os dados do usuário |
 | `export` | GET | Exporta todos os registros do usuário em JSON |
 
 ---
