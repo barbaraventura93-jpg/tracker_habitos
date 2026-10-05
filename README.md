@@ -1,6 +1,17 @@
 # Rotina Diária
 
-App de acompanhamento de rotina diária — refeições, água, suplementos, sono, treino e metas personalizadas — com sincronização entre dispositivos e histórico de 60 dias.
+Coach de **alimentação, suplementação e hábitos** — inspirado na experiência do Fitbod, mas para comida: o app conversa com a pessoa, indica a rotina alimentar do dia, adapta refeições quando ela quer mudar algo, controla refeições livres e mostra onde ela está escorregando para chegar na meta. Sincroniza entre dispositivos.
+
+> **Mudança de direção (out/2026).** Treino saiu da interface: o app só indica apps de treino (Mais › Treino). As seções sobre treino abaixo descrevem código que continua no arquivo, mas não está mais acessível pela navegação.
+
+## Coach alimentar
+
+- **Perfil alimentar em conversa** (cadastro e Mais › Perfil alimentar): cidade/estado, o que come num dia normal, o que ama, o que não gosta, restrições, onde sente que falha e quantas refeições livres quer por semana/quinzena/mês
+- **Aba Coach**: chat com IA (`action=coach`, `mode=chat`) com todo o contexto do dia; quando a resposta muda refeições, aparece "Aplicar no meu dia"
+- **Cardápio do dia** (`mode=day`), **trocar uma refeição** (`mode=swap`, 3 opções com macros parecidos) e **encaixar um extra** (`mode=flex` — "quero um sorvete sem culpa": estima o doce e reajusta as refeições que faltam)
+- Os ajustes valem só para o dia (`dayData.mealOverrides`) — o plano base não muda
+- **Refeições livres**: o registro "Comeu fora do plano?" tem a opção "contar como refeição livre", e o card mostra o uso no período
+- **Aba Progresso** (7/14/30 dias): calorias por dia × meta, médias, refeições do plano cumpridas e "onde está escorregando" (excesso de calorias, proteína baixa, refeição pulada, escapadas à noite/no fim de semana, refeições livres acima do combinado, água, suplementos), cada ponto com atalho para pedir ajuda ao coach
 
 **[Acessar o app](https://d1o1gejacy6m9o.cloudfront.net)**
 

@@ -1,6 +1,15 @@
 # tracker_habitos — Contexto para Claude Code
 
-## Estado do projeto (2026-07-28)
+## Estado do projeto (2026-10-05) — virada para coach alimentar
+
+O app deixou de ser "rotina + treino" e virou um **coach de alimentação,
+suplementação e hábitos** (referência: a experiência do Fitbod, aplicada à comida).
+Treino saiu da interface — ver "Coach alimentar" abaixo. Tudo o que segue sobre
+treino (Periodização, heatmap, timer, multi-treino) descreve código que **continua
+no arquivo, mas não é mais alcançável pela navegação**. Remover esse código de vez
+é uma limpeza pendente; até lá, não invista nele.
+
+### Histórico (2026-07-28)
 
 O roadmap de `docs/transformacao-app-diario.md` (Fases A–E) está **concluído**, assim
 como as três fases da Periodização Semanal descritas abaixo. Os dois documentos de
@@ -47,7 +56,7 @@ Como funciona:
 - **Use `lsGet` / `lsSet` / `lsDel`, nunca `localStorage` direto** para dado de
   usuário. Sem escopo definido eles viram no-op, então nada vaza antes do login.
 - `setUserScope()` + `reloadUserState()` rodam no login, no logout e no boot.
-  `reloadUserState()` relê todo `let` de estado do escopo novo — se você adicionar
+  `reloadUserState()` relê todo `let` de estado do escopo novo (inclusive `foodProfile` e `coachMsgs`) — se você adicionar
   um novo `let x=loadX()` no topo do arquivo, **precisa** incluí-lo lá.
 - `claimLegacyKeys()` migra as chaves planas da instalação antiga para o escopo do
   usuário que já estava logado no boot. Num login novo essas chaves são
@@ -60,18 +69,51 @@ lista de suplementos vazia e sem plano alimentar — não com a rotina de outra 
 ## Onboarding
 
 Assistente de 7 passos em `screen-onboarding`, disparado por `needsOnboarding()`
-dentro de `enterApp()`: boas-vindas → perfil → semana de treino → alimentação →
-suplementos → metas/hábitos → resumo. Só o perfil pede preenchimento; todo o resto
+dentro de `enterApp()`: boas-vindas → perfil (inclui nível de atividade) → rotina
+alimentar (entrevista em chat) → alimentação → suplementos → metas/hábitos → resumo. Só o perfil pede preenchimento; todo o resto
 tem "pular", e `onbFinish()` **só grava as etapas que não foram puladas** (`d.skipped`).
 
-Onde cada passo escreve: perfil e alimentação → `__goals__`; treino →
-`__workouts__` (weekDays) + `__weekplan__`; alimentação com "criar refeições" →
+Onde cada passo escreve: perfil e alimentação → `__goals__` (o nível de atividade
+vira `treinosSemana`, que só alimenta o fator de gasto calórico); rotina →
+`__foodprofile__`; alimentação com "criar refeições" →
 `__mealplan__` (kcal/proteína distribuídos por `ONB_MEAL_SPLIT`, descrição em
 branco); suplementos → `__csups__`; hábitos → `__habits__`.
 
 As fórmulas nutricionais (`calcBMR`, `activityFactor`, `calorieAdjust`,
 `calcCalories`, `calcProtein`, `calcWaterCups`) são compartilhadas com a tela de
 Configurações de Saúde — as duas telas têm que chegar no mesmo número.
+
+## Coach alimentar
+
+Navegação: **Hoje · Plano · Coach · Progresso · Mais**. Treino virou só indicação
+de apps (`showTreinoApps()`, Mais › Treino).
+
+- **Perfil alimentar** — `foodProfile`, chave `ht:foodprofile` / `__foodprofile__`:
+  `cidade`, `rotina`, `gosta`, `naoGosta`, `restricoes[]`+`restricoesTxt`,
+  `falhas[]`+`falhaTxt`, `livresQtd`+`livresPeriodo` (`semana|quinzena|mes`).
+  Coletado pela entrevista em formato de chat (`PF_QS`, `pfRender`/`pfMount`), que é
+  o passo `rotina` do onboarding e também a tela Mais › Perfil alimentar.
+  `saveFoodProfile()` espelha cidade/restrições em `goals.regiao`/`goals.restricoes`
+  (que o `generate_meal_plan` lê).
+- **Ajuste do dia** — `dayData.mealOverrides[refeição] = {hint,kcal,prot,carb,fat,badge}`.
+  `getMealSlot()` olha o override antes do plano base, então tudo que lê o plano
+  (resumo, progresso, contexto do coach) já enxerga o ajuste. Só vale para a data
+  em que foi gravado. Override nunca é aplicado em refeição já marcada como feita.
+- **Refeições livres** — item de `dayData.foods` com `free:true`.
+  `freeMealStatus()` conta no período do perfil. Itens com `src:'flex'` são o extra
+  planejado pelo "Encaixar um extra" e não contam como livre nem como "fora do plano".
+- **Consumo e metas** — use `dayIntake(dd)` e `nutriTargets()`; não recalcule na mão.
+- **Progresso** — `progressStats(n)` olha os N dias **antes de hoje** e ignora dia sem
+  registro nenhum. `progressInsights()` são regras locais (sem IA); cada uma pode
+  levar uma pergunta pronta para o coach (`coachAsk`).
+- **Conversa** — `coachMsgs` em `ht:coach_chat` (local, não sincroniza, últimas 60).
+- `getSups()` não filtra mais por dia de treino: todo suplemento aparece todo dia.
+- O score do dia (`calcScore`) não conta mais treino.
+
+Backend: **uma action só, `coach` (POST)**, com `mode` = `chat | swap | flex | day`.
+O frontend manda o contexto inteiro em `context` (`coachContext()`) — o Lambda não
+lê o DynamoDB nessa action. Todas as respostas passam por `_coach_meal()`, que
+descarta refeição com id inválido ou sem descrição.
 
 ## Convenções do Lambda
 
@@ -81,6 +123,7 @@ Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
 |---|---|
 | `analyze` (POST) | extrai exercícios/suplementos/plano alimentar de PDF/imagem/texto via Bedrock (array plano de itens) |
 | `identify_exercise` | grupo + músculos + GIF + instruções de um exercício, com cache |
+| `coach` (POST) | coach alimentar: `mode` chat (conversa), swap (3 opções para trocar uma refeição), flex (encaixar um extra e reajustar o dia), day (cardápio do dia) |
 | `estimate_food` | estima macros de refeição livre (texto ou foto) via Bedrock |
 | `week_suggestion` | sugestão de treino para os dias restantes da semana |
 | `generate_workout_plan` (POST) | gera um plano de treino (vários treinos) a partir do objetivo, bioimpedância e séries da semana — `{workouts:[{name,exercises}]}` |
@@ -129,7 +172,7 @@ Erros de ativação vão para o `console` e para uma nota dentro do card
 
 "Datas especiais" no DynamoDB (não são datas reais, são chaves de config por usuário):
 `__gymplan__`, `__workouts__`, `__mealplan__`, `__csups__`, `__goals__`, `__goalsdefs__`,
-`__goallogs__`, `__body__`, `__habits__`, `__weekplan__`, `__periodization__`
+`__goallogs__`, `__body__`, `__habits__`, `__weekplan__`, `__periodization__`, `__foodprofile__`
 
 ## Conta do usuário
 
