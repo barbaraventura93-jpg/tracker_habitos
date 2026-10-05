@@ -365,6 +365,149 @@ def generate_meal_plan(payload):
     out.append({'id':mid,'hint':hint,'kcal':_i(it.get('kcal')),'prot':_i(it.get('prot')),
                 'carb':_i(it.get('carb')),'fat':_i(it.get('fat')),'trigger':None})
   return {'items':out}
+# ─── COACH ALIMENTAR ─────────────────────────────────────────────────────────
+# Uma action so (`coach`), discriminada por `mode` no body: chat | swap | flex | day.
+# O frontend manda o contexto inteiro (perfil alimentar, metas, plano do dia, o que
+# ja foi comido, refeicoes livres) — o Lambda nao le o DynamoDB aqui, entao a
+# resposta reflete exatamente o que a pessoa ve na tela.
+COACH_MEALS=['cafe','almoco','lanche','jantar','ceia']
+COACH_RULES=(
+  'Regras: fale em portugues do Brasil, tom acolhedor e direto, sem culpa e sem '
+  'terrorismo nutricional. Use alimentos comuns e acessiveis na regiao da pessoa e '
+  'que ja fazem parte da rotina dela; nunca sugira algo que ela disse nao gostar ou '
+  'que viole uma restricao. Nada de dietas extremas, jejum prolongado ou menos de '
+  '1200 kcal/dia. Voce nao substitui nutricionista ou medico — se a pessoa citar '
+  'doenca, medicamento ou sintoma, recomende acompanhamento profissional. '
+  'Sobre treino: este app nao monta treinos; se perguntarem, indique procurar um '
+  'educador fisico ou apps de treino (Fitbod, Hevy, Strong).\n'
+)
+def _cs(v,n=300):
+  return str(v if v is not None else '').strip()[:n]
+def _ci(v):
+  try: return max(0,int(round(float(v))))
+  except: return 0
+def _coach_ctx(c):
+  """Transforma o contexto enviado pelo app num bloco de texto para o prompt."""
+  c=c if isinstance(c,dict) else {}
+  pf=c.get('perfil') or {}
+  fp=c.get('foodProfile') or {}
+  mt=c.get('metas') or {}
+  L=[]
+  obj={'cutting':'perder gordura','bulking':'ganhar massa','manutencao':'manter o peso'}.get(pf.get('objetivo'),'manter o peso')
+  L.append('Objetivo: '+obj+'.')
+  if pf.get('pesoAtual'): L.append('Peso atual: '+_cs(pf.get('pesoAtual'),10)+' kg; meta: '+(_cs(pf.get('pesoMeta'),10) or '?')+' kg.')
+  if mt: L.append('Metas diarias: %d kcal, %dg proteina, %dg carbo, %dg gordura, %d copos de agua.'%(_ci(mt.get('kcal')),_ci(mt.get('prot')),_ci(mt.get('carb')),_ci(mt.get('fat')),_ci(mt.get('agua'))))
+  for k,lbl in (('cidade','Mora em'),('rotina','Alimentos que ja fazem parte da rotina'),('gosta','Gosta de'),
+                ('naoGosta','NAO gosta / evita'),('restricoes','Restricoes alimentares (respeite sempre)'),
+                ('falhas','Onde sente que falha'),('obs','Observacoes')):
+    v=fp.get(k)
+    if isinstance(v,list): v=', '.join(_cs(x,60) for x in v[:12])
+    v=_cs(v,400)
+    if v: L.append(lbl+': '+v+'.')
+  lv=c.get('livres') or {}
+  if lv.get('limite'):
+    L.append('Refeicoes livres: usou %d de %d permitidas no periodo (%s).'%(_ci(lv.get('usadas')),_ci(lv.get('limite')),_cs(lv.get('periodo'),20)))
+  plano=c.get('plano') or []
+  if plano:
+    L.append('Plano de hoje:')
+    for m in plano[:6]:
+      L.append('- %s (%s)%s: %s — %d kcal, %dg prot, %dg carb, %dg gord'%(
+        _cs(m.get('id'),10),_cs(m.get('label'),30),' [JA COMEU]' if m.get('done') else '',
+        _cs(m.get('hint'),200) or 'sem descricao',_ci(m.get('kcal')),_ci(m.get('prot')),_ci(m.get('carb')),_ci(m.get('fat'))))
+  co=c.get('consumido') or {}
+  if co: L.append('Ja consumido hoje: %d kcal, %dg prot, %dg carb, %dg gord.'%(_ci(co.get('kcal')),_ci(co.get('prot')),_ci(co.get('carb')),_ci(co.get('fat'))))
+  fora=c.get('foraDoPlano') or []
+  if fora: L.append('Comeu fora do plano hoje: '+', '.join(_cs(x,60) for x in fora[:8])+'.')
+  sups=c.get('suplementos') or []
+  if sups: L.append('Suplementos que usa: '+', '.join(_cs(x,60) for x in sups[:12])+'.')
+  if c.get('resumo'): L.append('Acompanhamento recente: '+_cs(c.get('resumo'),900))
+  if c.get('agora'): L.append('Agora: '+_cs(c.get('agora'),60)+'.')
+  return '\n'.join(L)
+def _coach_json(txt,kind='{'):
+  pat=r'\{[\s\S]*\}' if kind=='{' else r'\[[\s\S]*\]'
+  m=re.search(pat,txt or '')
+  if not m: return None
+  try: return json.loads(m.group())
+  except Exception: return None
+def _coach_meal(it):
+  mid=_cs(it.get('meal') or it.get('id'),10)
+  if mid not in COACH_MEALS: return None
+  hint=_cs(it.get('hint'),240)
+  if not hint: return None
+  return {'meal':mid,'hint':hint,'kcal':_ci(it.get('kcal')),'prot':_ci(it.get('prot')),
+          'carb':_ci(it.get('carb')),'fat':_ci(it.get('fat'))}
+def coach(payload):
+  mode=payload.get('mode') or 'chat'
+  ctx=_coach_ctx(payload.get('context'))
+  head='Voce e o coach de alimentacao do app Rotina Diaria — conversa com a pessoa e adapta a alimentacao do dia a dia dela.\n'+COACH_RULES+'\nContexto da pessoa:\n'+ctx+'\n\n'
+  macro='"kcal":int,"prot":int,"carb":int,"fat":int'
+  if mode=='swap':
+    meal=_cs(payload.get('meal'),10)
+    if meal not in COACH_MEALS: raise Exception('refeicao invalida')
+    pref=_cs(payload.get('pref'),200)
+    prompt=(head+'Tarefa: a pessoa quer TROCAR a refeicao "'+meal+'" de hoje. Sugira 3 opcoes '
+      'diferentes entre si, com quantidades, mantendo calorias e proteina proximas da refeicao atual '
+      '(margem de ~10%).'+(' Pedido da pessoa: '+pref+'.' if pref else '')+'\n'
+      'Responda APENAS um JSON valido, sem markdown:\n'
+      '{"options":[{"hint":"alimentos com quantidades",'+macro+',"why":"frase curta"}]}')
+    d=_coach_json(bedrock_text([{'text':prompt}],900,0.5)) or {}
+    opts=[]
+    for o in (d.get('options') or [])[:3]:
+      m=_coach_meal({**o,'meal':meal})
+      if m: m['why']=_cs(o.get('why'),140);opts.append(m)
+    if not opts: raise Exception('Nao consegui montar opcoes agora')
+    return {'options':opts}
+  if mode=='flex':
+    treat=_cs(payload.get('treat'),120)
+    if not treat: raise Exception('diga o que quer encaixar')
+    prompt=(head+'Tarefa: a pessoa quer encaixar "'+treat+'" hoje, sem culpa e sem estourar a meta do dia. '
+      'Estime os macros de uma porcao realista disso e ajuste APENAS as refeicoes que ela ainda NAO comeu '
+      '(reduzindo carbo/gordura, mantendo a proteina) para o total do dia continuar perto da meta. '
+      'Se for razoavel, diga tambem quando encaixar.\n'
+      'Responda APENAS um JSON valido, sem markdown:\n'
+      '{"treat":{"name":"nome e porcao",'+macro+'},"changes":[{"meal":"id",'
+      '"hint":"nova descricao com quantidades",'+macro+'}],"tip":"1-2 frases"}')
+    d=_coach_json(bedrock_text([{'text':prompt}],1100,0.3)) or {}
+    t=d.get('treat') or {}
+    treat_o={'name':_cs(t.get('name') or treat,60),'kcal':_ci(t.get('kcal')),'prot':_ci(t.get('prot')),
+             'carb':_ci(t.get('carb')),'fat':_ci(t.get('fat'))}
+    ch=[m for m in (_coach_meal(x) for x in (d.get('changes') or [])[:5]) if m]
+    return {'treat':treat_o,'changes':ch,'tip':_cs(d.get('tip'),400)}
+  if mode=='day':
+    prompt=(head+'Tarefa: monte o cardapio de HOJE para as refeicoes que ela ainda NAO comeu, variando '
+      'em relacao ao plano base mas usando alimentos da rotina dela e da regiao, batendo as metas do dia '
+      '(considere o que ja foi consumido). Prefira preparo simples.'
+      +(' Pedido da pessoa: '+_cs(payload.get('pref'),200)+'.' if _cs(payload.get('pref'),200) else '')+'\n'
+      'Responda APENAS um JSON valido, sem markdown:\n'
+      '{"meals":[{"meal":"cafe|almoco|lanche|jantar|ceia","hint":"alimentos com quantidades",'+macro+'}],'
+      '"tip":"1 frase sobre o foco do dia"}')
+    d=_coach_json(bedrock_text([{'text':prompt}],1500,0.6)) or {}
+    meals=[m for m in (_coach_meal(x) for x in (d.get('meals') or [])[:5]) if m]
+    if not meals: raise Exception('Nao consegui montar o cardapio agora')
+    return {'meals':meals,'tip':_cs(d.get('tip'),300)}
+  # chat
+  hist=payload.get('messages') or []
+  conv=[]
+  for m in hist[-12:]:
+    who='Pessoa' if m.get('role')=='user' else 'Coach'
+    t=_cs(m.get('text'),800)
+    if t: conv.append(who+': '+t)
+  if not conv: raise Exception('mensagem vazia')
+  prompt=(head+'Conversa ate agora:\n'+'\n'.join(conv)+'\n\n'
+    'Responda a ultima mensagem da Pessoa como Coach, de forma curta (ate ~120 palavras), pratica e '
+    'personalizada. Se a resposta envolver mudar refeicoes de hoje, inclua as novas refeicoes em "meals" '
+    '(so as que mudam; nunca as ja comidas) para ela aplicar com um toque. Sugira ate 3 respostas curtas '
+    'que ela pode mandar em seguida em "chips".\n'
+    'Responda APENAS um JSON valido, sem markdown:\n'
+    '{"reply":"texto","meals":[{"meal":"id","hint":"...",'+macro+'}],"chips":["..."]}')
+  txt=bedrock_text([{'text':prompt}],1000,0.6)
+  d=_coach_json(txt)
+  if not isinstance(d,dict) or not d.get('reply'):
+    # modelo respondeu texto puro: melhor mostrar do que dar erro
+    return {'reply':_cs(re.sub(r'```[a-z]*','',txt or ''),1500) or 'Pode repetir?','meals':[],'chips':[]}
+  meals=[m for m in (_coach_meal(x) for x in (d.get('meals') or [])[:5]) if m]
+  chips=[_cs(x,60) for x in (d.get('chips') or [])[:3] if _cs(x,60)]
+  return {'reply':_cs(d.get('reply'),1500),'meals':meals,'chips':chips}
 def estimate_food(text,file_b64,mime):
   instr=(
     'Voce e um nutricionista. Estime os macros da refeicao/alimento descrito'
@@ -531,6 +674,13 @@ def _dispatch(event,context):
     try:
       body=json.loads(event.get('body') or '{}')
       res=generate_meal_plan(body)
+      return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
+    except Exception as e:
+      return{'statusCode':500,'body':json.dumps({'error':str(e)})}
+  if action=='coach' and method=='POST':
+    try:
+      body=json.loads(event.get('body') or '{}')
+      res=coach(body)
       return{'statusCode':200,'body':json.dumps(res,cls=Dec)}
     except Exception as e:
       return{'statusCode':500,'body':json.dumps({'error':str(e)})}

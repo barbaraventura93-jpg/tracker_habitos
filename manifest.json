@@ -1,7 +1,7 @@
 {
   "name": "Rotina Diária",
   "short_name": "Rotina",
-  "description": "Acompanhamento de rotina diária — refeições, água, suplementos, sono e treino.",
+  "description": "Coach de alimentação, suplementação e hábitos — cardápio do dia, trocas, refeições livres e acompanhamento.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
