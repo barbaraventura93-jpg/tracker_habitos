@@ -34,6 +34,24 @@ metade do gap de manutenibilidade foi fechada — o Lambda da API saiu de dentro
 O isolamento do `localStorage` por usuário e o assistente de primeiro acesso estão
 entregues — ver as seções "Multi-usuário" e "Onboarding" abaixo.
 
+## Identidade visual — "Sálvia & Linho" (2026-10-05)
+
+Visual de coach de rotina, alimentação e bem-estar: verde-sálvia claro, fundo linho,
+toque de rosé. Tokens no `:root` do `habit-tracker.html` (`--accent` #6E9C7E,
+`--accent-deep` #4F7F60, `--accent-light`, `--rose`, `--bg` #F6F8F2…).
+
+- **Fontes:** títulos em Cormorant Garamond (`var(--serif)`), texto e números em Jost
+  (`font-variant-numeric:tabular-nums` no lugar da antiga fonte mono).
+- **Ícones de interface:** traço fino via sprite SVG logo após o `<body>`. Em JS use
+  `ic('nome')` (ex.: `ic('drop')`, `ic('leaf')`); em HTML estático,
+  `<svg class="i"><use href="#i-nome"/></svg>`. Emoji só onde é conteúdo do usuário
+  (ícone de refeição, suplemento, hábito).
+- **Não volte ao roxo (#6C63FF) nem a cinzas frios.** Cores novas: puxe do token ou da
+  mesma família (pêssego p/ refeições, névoa azul p/ água, lilás p/ sono, dourado p/
+  suplementos, rosé p/ alertas).
+- Componentes: `.coach-hero` (abertura do dia em Hoje), `.btn-primary`, `.btn-soft`,
+  `.btn-link`. Login/onboarding escondem a navegação via `body.auth-on`.
+
 ## Arquitetura atual
 
 - **Frontend:** HTML/CSS/JS puro, single file (`habit-tracker.html`), hospedado em S3 + CloudFront
