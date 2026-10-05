@@ -612,10 +612,6 @@ const DEFAULT_MEAL_PLAN={
   },
   jantar:{
     default:{kcal:380,prot:34,hint:'Salada + Frango 100g + Batata inglesa 120g + Ketchup',badge:'🍽️ Refeição'},
-    variants:[
-      {trigger:'jantarV=rap10',kcal:330,prot:30,hint:'Rap10 fibras + Frango desfiado 80g + Requeijão light 30g',badge:'🌯 Rap10'},
-      {trigger:'jantarV=hamburguer',kcal:480,prot:35,hint:'Pão francês + Hambúrguer patinho 100g + Maionese light + Queijo',badge:'🍔 Hambúrguer'}
-    ]
   },
   ceia:{
     default:{kcal:200,prot:22,hint:'Iogurte grego + cacau em pó + morangos + Whey misturado',badge:'21:00'}
@@ -666,7 +662,6 @@ function getMealSlot(mealId,d){
     for(const v of cfg.variants){
       if(v.trigger==='isFds'&&d.isFds) return v;
       if(v.trigger==='almocoCarb'&&d.almocoCarb) return v;
-      if(v.trigger===`jantarV=${d.jantarV}`) return v;
     }
   }
   return cfg.default||null;
@@ -1934,7 +1929,7 @@ function suggestCat(t){
 function makeEmpty(date){
   const dow=getDow(date);
   const isFds=dow===0||dow===6;
-  return{isFds,almocoCarb:false,jantarV:'refeicao',
+  return{isFds,almocoCarb:false,
          meals:{},sups:{},habits:{},foods:[],mealOverrides:{},water:0,sleep:null,sleepOk:null,notes:''};
 }
 
@@ -3160,20 +3155,14 @@ function renderFreeFoodCard(){
 function renderNutricao(body,sc){
   let html='';
 
-  // ── Variante do jantar ────────────────────────────────────────────────────
-  const jBtns=[{id:'refeicao',l:'🍽️ Refeição'},{id:'rap10',l:'🌯 Rap10'},{id:'hamburguer',l:'🍔 Hambúrguer'}].map(v=>`<button onclick="setJantar('${v.id}')" style="flex:1;padding:7px 4px;border-radius:8px;font-size:11px;font-weight:600;background:${dayData.jantarV===v.id?'#6C63FF':'#FAFAF9'};color:${dayData.jantarV===v.id?'#fff':'#78716C'};border:1px solid ${dayData.jantarV===v.id?'#6C63FF':'#E7E5E4'}">${v.l}</button>`).join('');
-
   // ── Checklist de refeições ────────────────────────────────────────────────
   const isToday=currentDate===today();
   const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];const ov=!!(dayData.mealOverrides&&dayData.mealOverrides[m.id]);
     // trocar só faz sentido para hoje e para o que ainda não foi comido
     const acts=(isToday&&!done)?`<div style="display:flex;gap:14px;margin-top:7px"><span role="button" onclick="event.stopPropagation();openSwapSheet('${m.id}')" style="font-size:11px;font-weight:600;color:#6C63FF">🔄 Trocar</span>${ov?`<span role="button" onclick="event.stopPropagation();clearOverride('${m.id}')" style="font-size:11px;color:#78716C;text-decoration:underline">↩ voltar ao plano</span>`:''}</div>`:'';
     return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:700;color:${done?'#78716C':'#1C1917'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#78716C;font-family:'DM Mono',monospace">${m.time}</span></div><div style="font-size:10px;color:${done?'#3d5040':'#78716C'};font-family:'DM Mono',monospace;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#3d5040':'#A8A29E'};line-height:1.45">${cEsc(det.hint)}</div>${det.badge?`<div class="badge">${cEsc(det.badge)}</div>`:''}${acts}</div></button>`;}).join('');
-  const _jp=effectiveMealPlan();
-  const hasJantarV=!!(_jp&&_jp.jantar&&(_jp.jantar.variants||[]).some(v=>String(v.trigger||'').startsWith('jantarV=')));
 
   html+=`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><span>🍽️</span> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'DM Mono',monospace;color:${sc.meals.d===sc.meals.t?'#fb923c':'#78716C'}">${sc.meals.d}/${sc.meals.t}</span></div>
-    ${hasJantarV?`<div style="margin-bottom:10px"><div style="font-size:10px;color:#78716C;font-weight:700;letter-spacing:.08em;margin-bottom:6px">VARIANTE DO JANTAR</div><div style="display:flex;gap:6px">${jBtns}</div></div>`:''}
     ${mealCards}
     ${isToday?`<div style="display:flex;gap:6px;margin-top:4px">
       <button onclick="openDaySheet()" style="flex:1;padding:10px;background:#F5F3FF;border:1px solid #C7BFFF;color:#5A52E8;border-radius:10px;font-size:12px;font-weight:600">✨ Variar o cardápio de hoje</button>
@@ -4110,8 +4099,9 @@ function renderMealPlanConfigHtml(){
   const triggerLabel={
     'isFds':'Final de semana',
     'almocoCarb':'Com carboidrato',
-    'jantarV=rap10':'Jantar Rap10',
-    'jantarV=hamburguer':'Jantar Hambúrguer',
+    // variantes antigas: o seletor de jantar saiu da aba Plano — o coach troca a refeição
+    'jantarV=rap10':'Jantar Rap10 (não usada mais)',
+    'jantarV=hamburguer':'Jantar Hambúrguer (não usada mais)',
   };
   const slotCard=(mealId,slot,variantIdx,label)=>{
     if(!slot) return '';
@@ -4188,8 +4178,6 @@ function mpOpenEdit(mealId,variantIdx){
   const triggerOpts=[
     {v:'isFds',l:'Final de semana (isFds)'},
     {v:'almocoCarb',l:'Almoço com carboidrato'},
-    {v:'jantarV=rap10',l:'Jantar Rap10'},
-    {v:'jantarV=hamburguer',l:'Jantar Hambúrguer'},
   ];
   const bd=document.createElement('div');
   bd.style.cssText='position:fixed;inset:0;z-index:300;background:rgba(28,25,23,.5);display:flex;align-items:flex-end;justify-content:center';
@@ -5164,7 +5152,6 @@ function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classL
 function toggleMeal(id){dayData.meals[id]=!dayData.meals[id];save();renderUI();}
 function toggleSup(id){dayData.sups[id]=!dayData.sups[id];save();renderUI();}
 function toggle(k){dayData[k]=!dayData[k];save();renderUI();}
-function setJantar(v){dayData.jantarV=v;save();renderUI();}
 function setWater(i){dayData.water=i<dayData.water?i:i+1;save();renderUI();}
 function addWater(n){dayData.water=Math.max(0,Math.min(12,dayData.water+n));save();renderUI();}
 function setSleep(id){dayData.sleep=id;save();renderUI();}
