@@ -111,8 +111,14 @@ Configurações de Saúde — as duas telas têm que chegar no mesmo número.
 
 ## Coach alimentar
 
-Navegação: **Hoje · Plano · Coach · Progresso · Mais**. Treino é só indicação
-de apps (`showTreinoApps()`, Mais › Treino).
+Navegação: **Hoje · Progresso · Mais**. Hoje, Plano e Coach viraram **uma tela
+só** (`renderHoje`): coach (`dailyInsightCard`) → jejum (`fastCard`) → score →
+refeições (`mealsCardHtml`) → fora do plano → refeições livres → suplementos
+(`supsCardHtml`) → hábitos (checklist em `renderHabitsToday`) → água → sono →
+resumo nutricional → metas → observações. O planner "Meu dia" saiu. A conversa
+(`screen-coach`) abre por cima de Hoje, com botão de voltar; `showBnav('nutricao')`
+e `'coach'` continuam aceitos e caem em Hoje. Treino é só indicação de apps
+(`showTreinoApps()`, Mais › Treino).
 
 - **Perfil alimentar** — `foodProfile`, chave `ht:foodprofile` / `__foodprofile__`:
   `cidade`, `rotina`, `gosta`, `naoGosta`, `restricoes[]`+`restricoesTxt`,
@@ -133,6 +139,18 @@ de apps (`showTreinoApps()`, Mais › Treino).
   registro nenhum. `progressInsights()` são regras locais (sem IA); cada uma pode
   levar uma pergunta pronta para o coach (`coachAsk`).
 - **Conversa** — `coachMsgs` em `ht:coach_chat` (local, não sincroniza, últimas 60).
+- **Jejum intermitente** — `foodProfile.jejum = {proto, inicio}`; `proto` é
+  `12:12|14:10|16:8|18:6` (janela diária), `flex` (às vezes pula o café) ou `nenhum`;
+  `inicio` abre a janela de alimentação. No dia, `dayData.fast` true/false sobrepõe o
+  perfil (`flex`/`nenhum` jejuam com 16:8 quando a pessoa toca em "Vou pular (jejum)"
+  no café). Use `isFastDay`, `fastWindow`, `mealFasted` e `activeMeals` — refeição fora
+  da janela **não é pulada**: sai de `calcScore`, das estatísticas do Progresso e do
+  modo `day` do coach (vai no contexto com `jejum:true`). A tela Mais › Jejum
+  (`renderJejum`) tem as fontes científicas e as contraindicações.
+- **Variantes do plano** — só `isFds` (fim de semana) existe. `cleanMealPlan()` tira
+  na leitura as variantes antigas `jantarV=*` (Rap10/Hambúrguer) e `almocoCarb`, e
+  regrava o `__mealplan__` limpo quando vem do servidor. Atenção ao resolver conflito
+  com ramos antigos: um merge já trouxe o seletor de jantar de volta uma vez.
 - `getSups()` não filtra por dia: todo suplemento aparece todo dia (o campo
   `showOn` de dado antigo é ignorado).
 - O score do dia (`calcScore`) não conta treino. `dayData` não tem mais
