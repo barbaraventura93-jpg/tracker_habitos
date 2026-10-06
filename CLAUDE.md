@@ -96,8 +96,10 @@ lista de suplementos vazia e sem plano alimentar — não com a rotina de outra 
 
 Assistente de 7 passos em `screen-onboarding`, disparado por `needsOnboarding()`
 dentro de `enterApp()`: boas-vindas → perfil (inclui nível de atividade) → rotina
-alimentar (entrevista em chat) → alimentação → suplementos → metas/hábitos → resumo. Só o perfil pede preenchimento; todo o resto
-tem "pular", e `onbFinish()` **só grava as etapas que não foram puladas** (`d.skipped`).
+alimentar (entrevista em chat) → alimentação → suplementos → metas/hábitos → resumo. O perfil é **obrigatório**
+(idade, altura e peso atual — base de todos os cálculos) e não tem "pular"; todo o resto
+tem, e `onbFinish()` **só grava as etapas que não foram puladas** (`d.skipped`). As Configurações de Saúde
+(`saveGoalsForm`) exigem os mesmos três campos antes de salvar.
 
 Onde cada passo escreve: perfil e alimentação → `__goals__` (o nível de atividade
 vira `treinosSemana`, que só alimenta o fator de gasto calórico); rotina →
@@ -106,8 +108,14 @@ vira `treinosSemana`, que só alimenta o fator de gasto calórico); rotina →
 branco); suplementos → `__csups__`; hábitos → `__habits__`.
 
 As fórmulas nutricionais (`calcBMR`, `activityFactor`, `calorieAdjust`,
-`calcCalories`, `calcProtein`, `calcWaterCups`) são compartilhadas com a tela de
-Configurações de Saúde — as duas telas têm que chegar no mesmo número.
+`calcCalories`, `calcProtein`, `calcWaterCups`, `weightProjection`/`projLine`) são
+compartilhadas com a tela de Configurações de Saúde — as duas telas têm que chegar
+no mesmo número. O ajuste calórico é guiado pelo **objetivo**, não pela diferença de
+peso: `calorieAdjust(objetivo,tdee)` devolve déficit de 20% do TDEE no cutting
+(300–750 kcal), superávit de 12% no bulking (200–450 kcal) e 0 na manutenção. A meta
+de peso (`pesoMeta`) não entra mais no cálculo das calorias — serve só para a
+**projeção** de quando a meta é atingida (`weightProjection`, ~7700 kcal/kg), exibida
+no preview do onboarding e no card de PESO das Configurações (`#g-peso-proj`).
 
 ## Coach alimentar
 
