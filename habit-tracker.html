@@ -1604,9 +1604,7 @@ function showGoals(){
     </div>
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-drop"/></svg> ÁGUA</div><span id="g-agua-badge" style="font-size:10px;color:#6F7B73"></span></div>
-      <div id="g-agua-formula" style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#6F7B73;line-height:1.6">Preencha o peso atual para calcular automaticamente</div>
-      <div style="font-size:11px;color:#6F7B73;margin-bottom:7px">Copos por dia — aceite o sugerido ou ajuste:</div>
-      <div id="g-agua-btns" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>
+      <div id="g-agua-formula" style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:8px;padding:10px 12px;font-size:11px;color:#6F7B73;line-height:1.6">Preencha o peso atual para calcular automaticamente</div>
     </div>
     ${renderPushCard()}
     <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#6E9C7E;border-radius:12px;color:#fff;font-size:15px;font-weight:600;margin-bottom:10px">Salvar metas</button>`;
@@ -1783,10 +1781,6 @@ function goalsSelectSexo(s){
   if(m){m.style.background=isMasc?'#6E9C7E':'#F7FAF5';m.style.color=isMasc?'#fff':'#6F7B73';m.style.borderColor=isMasc?'#6E9C7E':'#E4EBE2';}
   goalsCalcUpdate();
 }
-function goalsSelectAgua(n){
-  goals={...goals,aguaCopos:n};
-  goalsCalcUpdate();
-}
 function goalsSelectTreinos(n){
   goals={...goals,treinosSemana:n};
   document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#4E8A62':'#F7FAF5';b.style.color=sel?'#fff':'#6F7B73';b.style.borderColor=sel?'#4E8A62':'#E4EBE2';});
@@ -1825,29 +1819,19 @@ function goalsCalcUpdate(){
     else pesoInfoEl.innerHTML=`<span style="color:#E2A07C">↑ Objetivo: ganhar ${diff} kg</span>`;
   } else if(pesoInfoEl) pesoInfoEl.innerHTML='';
 
-  // ── Água: 35 ml/kg (recomendação EFSA/IOM) ─────────────────────────────
+  // ── Água: 35 ml/kg (recomendação EFSA/IOM) — calculada do peso, sem escolha manual ──
   const aguaFormulaEl=document.getElementById('g-agua-formula');
-  const aguaBtnsEl=document.getElementById('g-agua-btns');
   const aguaBadgeEl=document.getElementById('g-agua-badge');
-  let aguaSug=goals.aguaCopos;
   if(peso>0){
     const ml=Math.round(peso*35);
     const copos=calcWaterCups(peso);
     const liters=(ml/1000).toFixed(1).replace('.',',');
-    aguaSug=copos;
+    goals={...goals,aguaCopos:copos};
     if(aguaFormulaEl) aguaFormulaEl.innerHTML=`🧮 <b>${peso} kg</b> × 35 ml = <b>${ml} ml</b> (<b>${liters} L</b>) ÷ 250 ml/copo = <span style="color:#8DBCCB;font-weight:600">${copos} copos · ${liters} L/dia</span><br><span style="color:#A3AEA6;font-size:10px">Base: 30–40 ml/kg — EFSA & Institute of Medicine</span>`;
     if(aguaBadgeEl) aguaBadgeEl.textContent='calculado automaticamente';
   } else {
     if(aguaFormulaEl) aguaFormulaEl.innerHTML='Preencha o peso atual para calcular automaticamente';
     if(aguaBadgeEl) aguaBadgeEl.textContent='';
-  }
-  if(aguaBtnsEl){
-    const coposList=[6,7,8,9,10,11,12];
-    const cur=goals.aguaCopos;
-    aguaBtnsEl.innerHTML=coposList.map(n=>{
-      const sel=cur===n;const isSug=n===aguaSug&&peso>0;
-      return`<button onclick="goalsSelectAgua(${n})" id="ga-${n}" style="padding:8px 2px;border-radius:8px;font-size:12px;font-weight:600;background:${sel?'#4F7F60':'#F7FAF5'};color:${sel?'#fff':'#6F7B73'};border:1px solid ${sel?'#6E9C7E':isSug?'#38bdf860':'#E4EBE2'}">${n}${isSug?'<sup style="color:#8DBCCB;font-size:8px">✦</sup>':''}</button>`;
-    }).join('');
   }
 
   // ── Calorias: Mifflin-St Jeor + fator atividade + ajuste de meta ────────
@@ -1894,7 +1878,7 @@ function saveGoalsForm(){
     idade:document.getElementById('g-idade').value,
     sexo:goals.sexo||'f',
     calorias:parseInt(document.getElementById('g-calorias').value)||1800,
-    aguaCopos:goals.aguaCopos,
+    aguaCopos:calcWaterCups(parseFloat(document.getElementById('g-peso-atual')?.value)||0),
     treinosSemana:goals.treinosSemana,
     regiao:(document.getElementById('g-regiao')?.value||'').trim(),
     restricoes:(document.getElementById('g-restricoes')?.value||'').trim(),
@@ -2363,16 +2347,18 @@ rotina:()=>`<div style="font-size:12px;color:var(--muted);line-height:1.55;margi
 dieta:()=>{
   const d=_onbDraft;
   const cal=d.calorias||onbCalorias();
-  const prot=calcProtein(onbNum(d.pesoAtual),d.objetivo);
-  const copos=[6,7,8,9,10,11,12].map(n=>{
-    const on=d.aguaCopos===n;
-    return`<button onclick="onbSetAgua(${n})" style="flex:1;padding:9px 2px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid ${on?'#8DBCCB':'var(--border)'};background:${on?'#8DBCCB':'#F7FAF5'};color:${on?'#fff':'var(--muted)'}">${n}</button>`;
-  }).join('');
+  const peso=onbNum(d.pesoAtual);
+  const prot=calcProtein(peso,d.objetivo);
+  const copos=d.aguaCopos||calcWaterCups(peso);
+  const aguaL=((peso>0?peso*35:copos*250)/1000).toFixed(1).replace('.',',');
   return `${onbSection('META DE CALORIAS','Já vem calculada a partir do seu perfil. Ajuste se você segue outra recomendação.')}
   <input id="onb-cal" type="number" inputmode="numeric" value="${cal||''}" placeholder="1800" style="${ONB_INPUT};margin-bottom:6px">
   ${prot?`<div style="font-size:11px;color:var(--muted);margin-bottom:18px">🥩 Meta de proteína: <b style="color:var(--txt)">${prot} g/dia</b> — calculada do peso e do objetivo.</div>`:'<div style="margin-bottom:18px"></div>'}
-  ${onbSection('COPOS DE ÁGUA POR DIA','Copo de 250 ml.')}
-  <div style="display:flex;gap:5px;margin-bottom:18px">${copos}</div>
+  ${onbSection('ÁGUA','Calculada do seu peso — 35 ml/kg. Copo de 250 ml.')}
+  <div style="display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:18px">
+    <div style="font-size:16px">💧</div>
+    <div style="font-size:13px;color:var(--txt)"><b style="color:#8DBCCB">${copos} copos</b> · ${aguaL} L/dia${peso>0?` <span style="color:var(--muted)">(${peso} kg × 35 ml)</span>`:''}</div>
+  </div>
   ${onbSection('PLANO ALIMENTAR')}
   <button onclick="onbTogglePlano()" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border-radius:10px;border:2px solid ${d.criarPlano?'var(--accent)':'var(--border)'};background:${d.criarPlano?'var(--accent-light)':'#F7FAF5'};text-align:left">
     <div style="font-size:16px;color:${d.criarPlano?'var(--accent)':'var(--dim)'}">${d.criarPlano?'☑':'☐'}</div>
@@ -2456,7 +2442,6 @@ const ONB_FOOT={
   done:   ()=>onbPrimary('Entrar no app','onbFinish()'),
 };
 
-function onbSetAgua(n){onbCapture();_onbDraft.aguaCopos=n;renderOnboarding();}
 function onbTogglePlano(){onbCapture();_onbDraft.criarPlano=!_onbDraft.criarPlano;renderOnboarding();}
 function onbToggleSup(id){
   const a=_onbDraft.sups,i=a.indexOf(id);
@@ -2481,12 +2466,12 @@ function onbFinish(){
     g.idade=d.idade;g.altura=d.altura;g.pesoAtual=d.pesoAtual;g.pesoMeta=d.pesoMeta;
     g.objetivo=d.objetivo;
     g.protMeta=calcProtein(peso,d.objetivo);
+    g.aguaCopos=calcWaterCups(peso);
     g.treinosSemana=onbTreinosSemana();
   }
   if(!d.skipped.dieta){
     const cal=d.calorias||onbCalorias();
     if(cal>0) g.calorias=cal;
-    g.aguaCopos=d.aguaCopos;
   }
   saveGoals(g);
 
