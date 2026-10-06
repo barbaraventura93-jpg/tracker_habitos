@@ -298,6 +298,10 @@ jobs:
           put manifest.json        "no-cache, must-revalidate" "application/manifest+json"
           aws s3 cp icon.svg s3://tracker-habitos/icon.svg \
             --cache-control "public, max-age=604800" --content-type "image/svg+xml"
+          for png in icon-192.png icon-512.png icon-maskable-512.png apple-touch-icon.png; do
+            aws s3 cp "$png" "s3://tracker-habitos/$png" \
+              --cache-control "public, max-age=604800" --content-type "image/png"
+          done
 
       - name: Invalidar cache do CloudFront
         if: steps.stack.outputs.api_url != '' && steps.stack.outputs.client_id != ''

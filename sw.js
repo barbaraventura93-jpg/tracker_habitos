@@ -2,10 +2,10 @@
 // Function URL é injetado no HTML no deploy, um aparelho com HTML velho ficava
 // chamando um endereço que não existe mais e a API respondia 403 para tudo. O
 // nome do cache mudou de propósito — o `activate` apaga a v1 inteira.
-const CACHE = 'rotina-shell-v3'; // v3: ícone e cores novos (redesign Sálvia & Linho)
+const CACHE = 'rotina-shell-v4'; // v4: ícones PNG (instalabilidade do PWA)
 // Só o que é imutável entra no shell. O HTML NÃO entra: ele carrega configuração
 // que muda a cada deploy.
-const SHELL = ['icon.svg', 'manifest.json'];
+const SHELL = ['icon.svg', 'icon-192.png', 'icon-512.png', 'icon-maskable-512.png', 'apple-touch-icon.png', 'manifest.json'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).catch(() => {}));

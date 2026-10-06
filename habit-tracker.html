@@ -8,7 +8,8 @@
 <meta name="theme-color" content="#F6F8F2">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon.svg" type="image/svg+xml">
-<link rel="apple-touch-icon" href="icon.svg">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
 <title>Rotina Diária</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -4568,6 +4569,7 @@ function renderMais(){
     ${g.items.map(renderItem).join('')}`).join('');
   body.innerHTML=`
     <div class="fade-in">
+      ${installCardHtml()}
       ${groupsHtml}
       <div style="height:1px;background:#EEF3EB;margin:12px 0"></div>
       <button onclick="signOut()" style="width:100%;display:flex;align-items:center;gap:14px;padding:14px;background:none;border:1px solid #E4EBE2;border-radius:14px;text-align:left">
@@ -5332,6 +5334,74 @@ function setSleep(id){dayData.sleep=id;save();renderUI();}
 function setSleepOk(v){dayData.sleepOk=v;save();renderUI();}
 function setNotes(v){dayData.notes=v;save();}
 function dispDate(s){const[y,m,d]=s.split('-');const dt=new Date(+y,+m-1,+d);return{day:DAYS[dt.getDay()],date:d+' '+MONTHS[+m-1]};}
+
+// ─── INSTALAR O APP (PWA) ───────────────────────────────────────────────────
+// O menu do navegador ("Instalar app" / "Adicionar à Tela de Início") some sem
+// avisar: some depois de instalado, some quando o Chrome ainda não achou que a
+// pessoa "se engajou", e no iPhone nunca existiu. Em vez de depender dele,
+// guardamos o evento beforeinstallprompt e oferecemos o nosso próprio botão em
+// Mais. No iOS, que não dispara esse evento, mostramos o passo a passo manual.
+let _deferredInstall=null;
+function isStandalone(){return window.matchMedia?.('(display-mode: standalone)').matches||window.navigator.standalone===true;}
+function installState(){
+  if(isStandalone()) return{mode:'installed'};        // já roda instalado
+  if(_deferredInstall) return{mode:'ready'};           // Chrome/Edge/Android: prompt nativo pronto
+  const ua=navigator.userAgent||'';
+  if(/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1)) return{mode:'ios'};
+  return{mode:'none'};
+}
+window.addEventListener('beforeinstallprompt',e=>{
+  e.preventDefault();          // sem isso o Chrome mostra o próprio banner e não devolve o evento
+  _deferredInstall=e;
+  if(document.getElementById('screen-mais')?.classList.contains('active')) renderMais();
+});
+window.addEventListener('appinstalled',()=>{
+  _deferredInstall=null;
+  showToast('✓ App instalado');
+  if(document.getElementById('screen-mais')?.classList.contains('active')) renderMais();
+});
+async function installApp(){
+  const p=_deferredInstall;
+  if(!p){renderMais();return;}
+  _deferredInstall=null;       // o evento só pode ser usado uma vez
+  try{
+    p.prompt();
+    await p.userChoice;        // {outcome:'accepted'|'dismissed'}
+  }catch{}
+  renderMais();
+}
+function installCardHtml(){
+  const st=installState();
+  if(st.mode==='installed'||st.mode==='none') return '';
+  if(st.mode==='ready'){
+    return `<div style="background:#EEF4EC;border:1px solid #CFE2D3;border-radius:14px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
+        <div style="width:42px;height:42px;border-radius:14px;background:#6E9C7E1A;border:1px solid #6E9C7E33;display:flex;align-items:center;justify-content:center;color:#4F7F60">${ic('download')}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:#2E3A33">Instalar o app</div>
+          <div style="font-size:12px;color:#6F7B73;margin-top:2px">Abre em tela cheia, carrega mais rápido e libera os lembretes por notificação.</div>
+        </div>
+      </div>
+      <button onclick="installApp()" style="width:100%;padding:12px;background:#6E9C7E;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:600">Instalar na Tela de Início</button>
+    </div>`;
+  }
+  // iOS: Safari não tem prompt — só o caminho manual Compartilhar → Adicionar.
+  return `<div style="background:#EEF4EC;border:1px solid #CFE2D3;border-radius:14px;padding:16px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+      <div style="width:42px;height:42px;border-radius:14px;background:#6E9C7E1A;border:1px solid #6E9C7E33;display:flex;align-items:center;justify-content:center;color:#4F7F60">${ic('download')}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;color:#2E3A33">Instalar na Tela de Início</div>
+        <div style="font-size:12px;color:#6F7B73;margin-top:2px">No iPhone e iPad é pelo próprio Safari:</div>
+      </div>
+    </div>
+    <div style="font-size:12.5px;color:#4A564E;line-height:1.7;padding-left:4px">
+      1. Toque em <b>Compartilhar</b> (o quadrado com a seta ⬆️) na barra do Safari.<br>
+      2. Escolha <b>Adicionar à Tela de Início</b>.<br>
+      3. Confirme em <b>Adicionar</b> e abra o app pelo novo ícone.
+    </div>
+    <div style="font-size:11px;color:#8A948C;margin-top:8px;padding-left:4px">Só funciona no Safari — em outros navegadores do iPhone essa opção não aparece.</div>
+  </div>`;
+}
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 if('serviceWorker' in navigator&&location.protocol.startsWith('http')){navigator.serviceWorker.register('sw.js').catch(()=>{});}
