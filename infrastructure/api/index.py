@@ -71,8 +71,8 @@ def call_ai(file_b64,mime,ctx,text=None):
       'Extraia o plano alimentar com macros por refeição. Retorne APENAS um array JSON, sem markdown:\n'
       '[{"id":"cafe","hint":"descrição dos alimentos","kcal":380,"prot":35,"carb":40,"fat":10,"badge":"Semana","trigger":null}]\n'
       'Ids válidos: cafe, almoco, lanche, jantar, ceia.\n'
-      'Se houver variantes (fim de semana, com carboidrato), inclua com o campo trigger:\n'
-      '"isFds" para final de semana | "almocoCarb" para almoço com carboidrato\n'
+      'Se houver variante de fim de semana, inclua com o campo trigger:\n'
+      '"isFds" para final de semana.\n'
       'Outras versões da mesma refeição (ex.: duas opções de jantar) viram uma só descrição com "ou".\n'
       'Para refeições sem variante, trigger deve ser null.\n'
       'Extraia kcal, prot (proteína em g), carb (carboidrato em g) e fat (gordura em g) de cada '
@@ -163,7 +163,15 @@ COACH_RULES=(
   '1200 kcal/dia. Voce nao substitui nutricionista ou medico — se a pessoa citar '
   'doenca, medicamento ou sintoma, recomende acompanhamento profissional. '
   'Sobre treino: este app nao monta treinos; se perguntarem, indique procurar um '
-  'educador fisico ou apps de treino (Fitbod, Hevy, Strong).\n'
+  'educador fisico ou apps de treino (Fitbod, Hevy, Strong). '
+  'Jejum intermitente: se a pessoa estiver em jejum hoje, so sugira comida dentro da '
+  'janela de alimentacao, redistribua as calorias e a proteina das refeicoes que ficaram '
+  'fora da janela entre as de dentro, e quebre o jejum com proteina e fibra. Nunca '
+  'pressione ninguem a jejuar; para gestantes, lactantes, menores de 18 anos, historico de '
+  'transtorno alimentar ou diabetes com insulina, oriente acompanhamento profissional. '
+  'Base cientifica: o jejum ajuda a emagrecer sobretudo por reduzir a ingestao; com as '
+  'mesmas calorias o resultado e parecido com a dieta comum (Liu et al., NEJM 2022); '
+  'janela mais cedo tende a favorecer a sensibilidade a insulina (Sutton et al., 2018).\n'
 )
 def _cs(v,n=300):
   return str(v if v is not None else '').strip()[:n]
@@ -193,12 +201,17 @@ def _coach_ctx(c):
   lv=c.get('livres') or {}
   if lv.get('limite'):
     L.append('Refeicoes livres: usou %d de %d permitidas no periodo (%s).'%(_ci(lv.get('usadas')),_ci(lv.get('limite')),_cs(lv.get('periodo'),20)))
+  jj=c.get('jejum') or {}
+  if jj.get('hoje'):
+    L.append('Hoje a pessoa esta em JEJUM INTERMITENTE (%s): janela de alimentacao %s.'%(_cs(jj.get('protocolo'),10),_cs(jj.get('janela'),20)))
+  elif jj.get('protocolo') and jj.get('protocolo')!='nenhum':
+    L.append('Costuma fazer jejum (%s), mas hoje nao.'%_cs(jj.get('protocolo'),10))
   plano=c.get('plano') or []
   if plano:
     L.append('Plano de hoje:')
     for m in plano[:6]:
       L.append('- %s (%s)%s: %s — %d kcal, %dg prot, %dg carb, %dg gord'%(
-        _cs(m.get('id'),10),_cs(m.get('label'),30),' [JA COMEU]' if m.get('done') else '',
+        _cs(m.get('id'),10),_cs(m.get('label'),30),' [JA COMEU]' if m.get('done') else (' [FORA DA JANELA DE JEJUM — nao sugerir]' if m.get('jejum') else ''),
         _cs(m.get('hint'),200) or 'sem descricao',_ci(m.get('kcal')),_ci(m.get('prot')),_ci(m.get('carb')),_ci(m.get('fat'))))
   co=c.get('consumido') or {}
   if co: L.append('Ja consumido hoje: %d kcal, %dg prot, %dg carb, %dg gord.'%(_ci(co.get('kcal')),_ci(co.get('prot')),_ci(co.get('carb')),_ci(co.get('fat'))))
@@ -327,8 +340,8 @@ def coach(payload):
     return {'treat':treat_o,'changes':ch,'tip':_cs(_pick(d,'tip','dica'),400)}
   if mode=='day':
     plano=(payload.get('context') or {}).get('plano') or []
-    faltam=[m.get('id') for m in plano if isinstance(m,dict) and m.get('id') in COACH_MEALS and not m.get('done')] if plano else COACH_MEALS
-    if not faltam: raise Exception('Todas as refeicoes de hoje ja foram marcadas como feitas')
+    faltam=[m.get('id') for m in plano if isinstance(m,dict) and m.get('id') in COACH_MEALS and not m.get('done') and not m.get('jejum')] if plano else COACH_MEALS
+    if not faltam: raise Exception('Nao falta nenhuma refeicao hoje (ja feitas ou fora da janela de jejum)')
     prompt=(head+'Refeicoes que faltam hoje (use exatamente estes ids no campo "meal"): '+', '.join(faltam)+'.\n'
       'Tarefa: monte o cardapio de HOJE para essas refeicoes, variando '
       'em relacao ao plano base mas usando alimentos da rotina dela e da regiao, batendo as metas do dia '
