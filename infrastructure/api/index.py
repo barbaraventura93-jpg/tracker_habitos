@@ -198,6 +198,12 @@ def _coach_ctx(c):
     if isinstance(v,list): v=', '.join(_cs(x,60) for x in v[:12])
     v=_cs(v,400)
     if v: L.append(lbl+': '+v+'.')
+  if fp.get('modoFome'):
+    L.append('IMPORTANTE: a pessoa come POR FOME, sem horario fixo. NAO imponha "coma de 3 em 3h" '
+             'nem lanche obrigatorio. Respeite a fome dela; o que importa e fechar o dia nas metas de '
+             'calorias e proteina, nao o numero de refeicoes.')
+  elif fp.get('horarios'):
+    L.append('Horarios de refeicao que a pessoa escolheu: '+_cs(fp.get('horarios'),200)+'. Sugira dentro desses horarios.')
   lv=c.get('livres') or {}
   if lv.get('limite'):
     L.append('Refeicoes livres: usou %d de %d permitidas no periodo (%s).'%(_ci(lv.get('usadas')),_ci(lv.get('limite')),_cs(lv.get('periodo'),20)))
