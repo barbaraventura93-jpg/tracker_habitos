@@ -3898,15 +3898,88 @@ function prgBarChart(p){
     <div style="display:flex;gap:12px;font-size:10px;color:#6F7B73;margin-top:6px;flex-wrap:wrap">
       <span><span style="color:#7DB892">■</span> na meta</span><span><span style="color:#DC8E8C">■</span> acima</span><span><span style="color:#E5CC8D">■</span> abaixo</span><span><span style="color:#D3DED0">■</span> sem registro</span></div>`;
 }
+// Ritmo real medido nas pesagens (kg/semana; negativo = perdendo).
+function weighingRate(){
+  const s=[...bodyEntries].filter(e=>e.weight!=null).sort((a,b)=>a.date.localeCompare(b.date));
+  if(s.length<2) return null;
+  const first=s[0],last=s[s.length-1];
+  const days=Math.round((new Date(last.date)-new Date(first.date))/86400000);
+  if(days<7) return null; // pouco tempo para um ritmo confiável
+  return{kgWeek:(last.weight-first.weight)/days*7,first:first.weight,last:last.weight,days,n:s.length};
+}
+// Projeção da meta de peso PELO QUE VEM SENDO CUMPRIDO: compara a média real de
+// calorias registradas (p.kcal) com o gasto (TDEE) para estimar o ritmo.
+function planProjection(p,pesoAtual){
+  const peso=pesoAtual||parseFloat(goals.pesoAtual)||0;
+  const meta=parseFloat(goals.pesoMeta)||0;
+  const obj=goals.objetivo||'manutencao';
+  if(!(peso>0)) return null;
+  if(obj==='recomp_fat'||obj==='recomp_lean') return{recomp:true};
+  if(!(meta>0)) return{noMeta:true};
+  const diff=+(meta-peso).toFixed(1);
+  if(Math.abs(diff)<0.5) return{done:true};
+  const bmr=calcBMR(goals.sexo||'f',peso,parseFloat(goals.altura)||0,parseInt(goals.idade)||0);
+  const [,fac]=activityFactor(goals.treinosSemana||5);
+  const tdee=bmr?Math.round(bmr*fac):0;
+  if(!(p.tracked>0&&p.kcal>0&&tdee>0)) return{noData:true,diff,meta};
+  const effective=p.kcal-tdee;                 // <0 = déficit real (emagrecendo)
+  const toward=(diff<0&&effective<0)||(diff>0&&effective>0);
+  const kgWeek=Math.abs(effective)*7/KCAL_PER_KG;
+  if(!toward||kgWeek<0.02) return{stalled:true,diff,meta,effective,tdee,kcal:p.kcal};
+  const weeks=Math.abs(diff)/kgWeek;
+  const date=new Date();date.setDate(date.getDate()+Math.round(weeks*7));
+  return{ok:true,diff,meta,effective,tdee,kcal:p.kcal,kgWeek,weeks,date,lose:diff<0};
+}
+function prgWeightCard(p){
+  const sorted=[...bodyEntries].sort((a,b)=>a.date.localeCompare(b.date));
+  const wEntries=sorted.filter(e=>e.weight!=null);
+  const latestW=wEntries.length?wEntries[wEntries.length-1].weight:(parseFloat(goals.pesoAtual)||0);
+  const meta=parseFloat(goals.pesoMeta)||0;
+  const wr=weighingRate();
+  const proj=planProjection(p,latestW);
+  const fmt=v=>(Math.round(v*10)/10).toString().replace('.',',');
+  const diff=(meta>0&&latestW>0)?+(meta-latestW).toFixed(1):null;
+  const tile=(lbl,val,c)=>`<div style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:12px;padding:10px 6px;text-align:center"><div style="font-size:9px;color:#6F7B73;font-weight:600;letter-spacing:.06em">${lbl}</div><div style="font-size:18px;font-weight:600;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;color:${c};margin-top:3px">${val}</div></div>`;
+  const tiles=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+    ${tile('PESO ATUAL',latestW>0?fmt(latestW)+' <span style=\"font-size:10px;color:#6F7B73\">kg</span>':'—','#8DBCCB')}
+    ${tile('META',meta>0?fmt(meta)+' <span style=\"font-size:10px;color:#6F7B73\">kg</span>':'—','#4E8A62')}
+    ${tile('FALTAM',diff!=null?fmt(Math.abs(diff))+' <span style=\"font-size:10px;color:#6F7B73\">kg</span>':'—','#E2A07C')}
+  </div>`;
+  const chart=wEntries.length>=2?renderBodyChart(sorted,'weight')
+    :`<div style="text-align:center;color:#6F7B73;font-size:12px;padding:14px 8px;line-height:1.6">Registre seu peso ao menos 2 vezes para ver a curva.<br><button onclick="showBodyComp()" style="margin-top:8px;padding:8px 16px;background:#6E9C7E;color:#fff;border-radius:9px;font-size:12px;font-weight:600">Registrar peso</button></div>`;
+  let totalHtml='';
+  if(wr) totalHtml=`<div style="font-size:11px;color:#6F7B73;margin-top:8px">Variação medida: <b style="color:${wr.last-wr.first<0?'#7DB892':'#E2A07C'}">${wr.last-wr.first>0?'+':''}${fmt(wr.last-wr.first)} kg</b> em ${wr.days} dias (${wr.n} pesagens)</div>`;
+  // Texto da projeção pelo plano
+  let projHtml='';
+  const box=(bg,bd,html)=>`<div style="margin-top:10px;background:${bg};border:1px solid ${bd};border-radius:10px;padding:11px 12px;font-size:12px;color:#3F4B43;line-height:1.55">${html}</div>`;
+  if(proj&&proj.recomp) projHtml=box('#F7FAF5','#E4EBE2','💪 Seu foco é <b>recomposição</b> — o peso tende a ficar estável enquanto você troca gordura por músculo. Acompanhe gordura e massa magra na <b>Composição Corporal</b> (Mais).');
+  else if(proj&&proj.noMeta) projHtml=box('#F7FAF5','#E4EBE2','Defina uma <b>meta de peso</b> em Configurações de Saúde para eu projetar quando você chega lá.');
+  else if(proj&&proj.done) projHtml=box('#EFF6EF','#CDE4D1','🎉 Você já está na sua meta de peso!');
+  else if(proj&&proj.noData) projHtml=box('#F7FAF5','#E4EBE2','Marque as refeições e registre o que comeu por alguns dias — aí eu projeto a meta <b>pelo que você vem cumprindo do plano</b>.');
+  else if(proj&&proj.stalled){
+    const motivo=proj.effective>=0?(proj.diff<0?'você vem comendo em torno do gasto, sem déficit':'você ainda não está em superávit'):'o déficit está pequeno demais para andar';
+    projHtml=box('#FBF7EC','#EEE0B2',`No ritmo atual — média de <b>${proj.kcal} kcal/dia</b> vs gasto de <b>~${proj.tdee} kcal</b> — ${motivo}. Apertar a adesão ao plano faz a meta de <b>${fmt(proj.meta)} kg</b> andar.`);
+  } else if(proj&&proj.ok){
+    const quando=proj.date.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+    projHtml=box('#EFF4F6','#CFE0E6',`📅 Pelo que você vem cumprindo do plano — <b>~${proj.kcal} kcal/dia</b> (gasto ~${proj.tdee}) — o ritmo é <b>${fmt(proj.kgWeek)} kg/semana</b>: a meta de <b>${fmt(proj.meta)} kg</b> chega em <b>${projDuration(proj.weeks)}</b> <span style="color:#A3AEA6">(por volta de ${quando})</span>.`);
+  }
+  // Ritmo real das pesagens, como complemento, quando anda na direção da meta
+  if(wr&&diff!=null&&Math.abs(wr.kgWeek)>=0.05&&((diff<0&&wr.kgWeek<0)||(diff>0&&wr.kgWeek>0))){
+    const wWeeks=Math.abs(diff)/Math.abs(wr.kgWeek);
+    projHtml+=`<div style="font-size:11px;color:#6F7B73;margin-top:8px">⚖️ Nas suas pesagens, o ritmo real é <b>${fmt(Math.abs(wr.kgWeek))} kg/semana</b> de ${wr.kgWeek<0?'perda':'ganho'} → ~${projDuration(wWeeks)} para a meta.</div>`;
+  }
+  return`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-scale"/></svg> PESO E PROJEÇÃO</div></div>
+    ${tiles}${chart}${totalHtml}${projHtml}</div>`;
+}
 function renderProgresso(){
   const body=document.getElementById('progresso-body');if(!body) return;
   const p=progressStats(_prgDays);
   const seg=`<div style="display:flex;gap:4px;background:#EEF3EB;border-radius:10px;padding:3px;margin-bottom:12px">
     ${[7,14,30].map(n=>`<button class="prg-seg ${_prgDays===n?'on':''}" onclick="setPrgDays(${n})">${n} dias</button>`).join('')}</div>`;
   if(!p.tracked){
-    body.innerHTML=`<div class="fade-in">${seg}<div class="card" style="text-align:center;padding:28px 16px">
+    body.innerHTML=`<div class="fade-in">${seg}${prgWeightCard(p)}<div class="card" style="text-align:center;padding:28px 16px">
       <div style="font-size:34px;margin-bottom:8px;color:var(--accent)">${ic('trend')}</div>
-      <div style="font-size:14px;font-weight:600;color:#2E3A33;margin-bottom:6px">Ainda sem dados suficientes</div>
+      <div style="font-size:14px;font-weight:600;color:#2E3A33;margin-bottom:6px">Ainda sem dados do plano</div>
       <div style="font-size:12px;color:#6F7B73;line-height:1.6">Marque as refeições que fez e registre o que comeu fora do plano na tela Hoje. Em poucos dias eu mostro aqui onde está dando certo e onde dá para ajustar.</div>
       <button onclick="showBnav('hoje')" style="margin-top:14px;padding:10px 18px;background:#6E9C7E;color:#fff;border-radius:10px;font-size:13px;font-weight:600">Ir para Hoje</button></div></div>`;
     return;
@@ -3921,6 +3994,7 @@ function renderProgresso(){
     <div style="flex:1;height:7px;background:#E4EBE2;border-radius:99px;overflow:hidden"><div style="width:${pc}%;height:100%;background:${pc>=80?'#7DB892':pc>=50?'#E5CC8D':'#DC8E8C'}"></div></div>
     <div style="font-size:10px;color:#6F7B73;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;width:34px;text-align:right">${done}/${tot}</div></div>`;}).join('');
   body.innerHTML=`<div class="fade-in">${seg}
+    ${prgWeightCard(p)}
     <div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-flame"/></svg> CALORIAS POR DIA</div><span style="font-size:10px;color:#6F7B73">${p.tracked} dias com registro</span></div>${prgBarChart(p)}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       ${tile('MÉDIA KCAL',p.kcal,`${pctc(p.kcal,p.T.kcal)}% da meta`,'#E2A07C')}

@@ -160,7 +160,14 @@ e `'coach'` continuam aceitos e caem em Hoje. Treino é só indicação de apps
 - **Consumo e metas** — use `dayIntake(dd)` e `nutriTargets()`; não recalcule na mão.
 - **Progresso** — `progressStats(n)` olha os N dias **antes de hoje** e ignora dia sem
   registro nenhum. `progressInsights()` são regras locais (sem IA); cada uma pode
-  levar uma pergunta pronta para o coach (`coachAsk`).
+  levar uma pergunta pronta para o coach (`coachAsk`). O topo da tela tem o card
+  **Peso e projeção** (`prgWeightCard`): peso atual/meta/faltam, a curva de peso
+  (reaproveita `renderBodyChart` com os `bodyEntries`) e a projeção da meta **pelo que
+  vem sendo cumprido** — `planProjection(p,peso)` compara a média real de calorias
+  registradas (`p.kcal`) com o gasto (TDEE recalculado do perfil) e estima o ritmo;
+  `weighingRate()` dá o ritmo real medido nas pesagens como complemento. O card aparece
+  mesmo sem registro de refeições (a projeção então pede dados). Objetivo de
+  recomposição não projeta peso (mostra nota sobre composição).
 - **Conversa** — `coachMsgs` em `ht:coach_chat` (local, não sincroniza, últimas 60).
 - **Jejum intermitente** — `foodProfile.jejum = {proto, inicio}`; `proto` é
   `12:12|14:10|16:8|18:6` (janela diária), `flex` (às vezes pula o café) ou `nenhum`;
