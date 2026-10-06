@@ -2182,6 +2182,7 @@ async function enterApp(){
   await render(true);
   flushOutbox();
   if(needsOnboarding()) startOnboarding();
+  else maybeShowWhatsNew();
 }
 
 // ─── ONBOARDING — assistente de primeiro acesso ──────────────────────────────
@@ -2343,6 +2344,7 @@ function onbSkip(){
 // não reaparecer a cada login.
 function onbQuit(){
   lsSet('ht:onboard_done','1');
+  markWhatsNewSeen();
   _onbDraft=null;
   showScreen('home');setBnavActive('hoje');render(true);
 }
@@ -2592,6 +2594,7 @@ function onbFinish(){
   }
 
   lsSet('ht:onboard_done','1');
+  markWhatsNewSeen(); // quem acabou de onboardar já viu tudo novo — não mostrar "novidades"
   _onbDraft=null;
   flushOutbox();
   showScreen('home');setBnavActive('hoje');
@@ -3640,6 +3643,30 @@ function sheetHead(icon,title,sub){
     <button onclick="closeSheet()" style="font-size:18px;background:none;color:#A3AEA6;padding:2px 6px">✕</button></div>`;
 }
 function sheetLoading(t){return`<div style="text-align:center;padding:26px 0;color:#6F7B73;font-size:13px"><div class="coach-dots" style="font-size:22px;margin-bottom:6px">⏳</div>${t}</div>`;}
+
+// Aviso único de novidades para quem já usava o app antes destas mudanças.
+// Por usuário (chave no escopo do uid) e por versão — some depois de visto.
+const WHATS_NEW_VER='2026-10-coach';
+function markWhatsNewSeen(){try{lsSet('ht:whatsnew',WHATS_NEW_VER);}catch{}}
+function maybeShowWhatsNew(){
+  let seen='';try{seen=lsGet('ht:whatsnew')||'';}catch{}
+  if(seen===WHATS_NEW_VER) return;
+  const items=[
+    ['💧','Água agora é calculada','Sua meta de água sai do seu peso (35 ml/kg) — não precisa mais escolher copos.'],
+    ['🎯','Objetivo pela meta de peso','Defina seu peso-meta e o app já ajusta as calorias (déficit/superávit) com base científica — nada de escolher cutting/bulking na mão.'],
+    ['💪','Recomposição corporal','Com o peso estável, dá para escolher <b>perder gordura</b> ou <b>ganhar massa magra</b> sem mudar a balança — e o coach reforça o treino de força que faz isso acontecer.'],
+    ['📈','Peso e projeção no Progresso','A tela Progresso mostra sua curva de peso e <b>quando você chega na meta</b>, pelo que vem cumprindo do plano.'],
+  ];
+  const rows=items.map(([ic,t,s])=>`<div style="display:flex;gap:11px;background:#F7FAF5;border:1px solid #E4EBE2;border-radius:12px;padding:11px 13px;margin-bottom:7px">
+    <div style="font-size:18px;line-height:1.3">${ic}</div>
+    <div style="min-width:0"><div style="font-size:13px;font-weight:600;color:#2E3A33">${t}</div>
+    <div style="font-size:11px;color:#6F7B73;margin-top:2px;line-height:1.5">${s}</div></div></div>`).join('');
+  openSheet(sheetHead('✨','Novidades no seu coach','Mudamos alguns cálculos para deixar seus números mais precisos. Vale revisar seu perfil — idade, altura, peso e meta de peso são a base de tudo.')
+    +rows
+    +`<button onclick="closeSheet();showGoals()" style="width:100%;padding:12px;background:#6E9C7E;color:#fff;border-radius:10px;font-size:14px;font-weight:600;margin-top:4px">Revisar meus objetivos</button>
+    <button onclick="closeSheet()" style="width:100%;padding:11px;background:none;color:#6F7B73;font-size:13px;font-weight:600;margin-top:6px">Agora não</button>`);
+  markWhatsNewSeen(); // marca ao exibir — não reaparece mesmo fechando pelo fundo
+}
 function sheetError(e,retry){return`<div style="background:#FBF2F1;border:1px solid #F1D2D1;border-radius:10px;padding:11px;font-size:12px;color:#A44E4D;margin-bottom:10px">❌ ${cEsc(e.message||e)}</div>${retry?`<button onclick="${retry}" style="width:100%;padding:11px;background:#EEF3EB;border-radius:10px;font-size:13px">Tentar de novo</button>`:''}`;}
 
 // Trocar uma refeição de hoje

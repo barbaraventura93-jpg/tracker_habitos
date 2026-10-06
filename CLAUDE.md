@@ -123,6 +123,16 @@ dois e devolve o objetivo efetivo, que pode ser `cutting`, `bulking`, `manutenca
 onboarding e no card de OBJETIVO das Configurações, só quando o peso está estável;
 `saveGoalsForm`/`onbFinish` gravam `objetivo` (efetivo) e `recomp`.
 
+**Migração de usuários antigos:** nada quebra e nada muda sozinho nos números salvos
+— `goals.objetivo`, `goals.aguaCopos` e `goals.calorias` antigos só são recalculados
+(derivados do peso/meta) quando a pessoa **abre e salva** as Configurações de Saúde,
+ou refaz o onboarding. Quem tinha objetivo manual sem meta de peso distinta vira
+"peso estável" (manutenção/recomposição) ao reabrir as metas. Para dar ciência, um
+aviso único de **Novidades** (`maybeShowWhatsNew`, sheet) aparece no `enterApp` para
+quem já tinha `ht:onboard_done`, com atalho para revisar os objetivos; é por usuário e
+por versão (`ht:whatsnew` = `WHATS_NEW_VER`), marcado como visto ao exibir e também no
+fim do onboarding (para conta nova não ver).
+
 O ajuste calórico segue o objetivo efetivo: `calorieAdjust(objetivo,tdee)` devolve
 déficit de 20% do TDEE no cutting (300–750 kcal), superávit de 12% no bulking (200–450
 kcal), déficit leve de 10% no `recomp_fat` (150–400), superávit leve de 8% no
