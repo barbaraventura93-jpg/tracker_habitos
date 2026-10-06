@@ -2523,6 +2523,10 @@ function onbFinish(){
     g.protMeta=calcProtein(peso,d.objetivo);
     g.aguaCopos=calcWaterCups(peso);
     g.treinosSemana=onbTreinosSemana();
+    // Perfil é obrigatório, então a meta calórica já sai calculada daqui —
+    // mesmo que a etapa de alimentação seja pulada. A dieta só sobrescreve.
+    const calP=onbCalorias();
+    if(calP>0) g.calorias=calP;
   }
   if(!d.skipped.dieta){
     const cal=d.calorias||onbCalorias();
