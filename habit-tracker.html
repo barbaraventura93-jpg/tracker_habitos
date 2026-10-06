@@ -283,6 +283,7 @@ body.auth-on .screens-wrap{padding-bottom:0!important;}
   <!-- AUTH SCREEN -->
   <div id="screen-auth" class="screen active">
     <div class="auth-wrap">
+     <div style="width:100%;max-width:380px;display:flex;flex-direction:column">
       <div class="auth-card">
         <div style="text-align:center;margin-bottom:28px">
           <div class="brand-mark" style="width:54px;height:54px;border-radius:18px;font-size:26px;margin:0 auto 14px"><svg class="i"><use href="#i-leaf"/></svg></div>
@@ -356,6 +357,9 @@ body.auth-on .screens-wrap{padding-bottom:0!important;}
           </div>
         </div>
       </div>
+      <!-- Instalar o app — preenchido por renderAuthInstall(); some quando não dá pra instalar -->
+      <div id="auth-install"></div>
+     </div>
     </div>
   </div>
 
@@ -5324,7 +5328,7 @@ function deleteGoalCompletely(id){
 // ─── ACTIONS ─────────────────────────────────────────────────────────────────
 function save(){saveDay(currentDate,dayData);}
 function changeDay(n){currentDate=addDays(currentDate,n);render();}
-function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+id).classList.add('active');document.body.classList.toggle('coach-on',id==='coach');document.body.classList.toggle('auth-on',id==='auth'||id==='onboarding');}
+function showScreen(id){document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));document.getElementById('screen-'+id).classList.add('active');document.body.classList.toggle('coach-on',id==='coach');document.body.classList.toggle('auth-on',id==='auth'||id==='onboarding');if(id==='auth')renderAuthInstall();}
 function toggleMeal(id){dayData.meals[id]=!dayData.meals[id];save();renderUI();}
 function toggleSup(id){dayData.sups[id]=!dayData.sups[id];save();renderUI();}
 function toggle(k){dayData[k]=!dayData[k];save();renderUI();}
@@ -5350,29 +5354,60 @@ function installState(){
   if(/iPhone|iPad|iPod/.test(ua)||(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1)) return{mode:'ios'};
   return{mode:'none'};
 }
+// Reaplica o card de instalar na tela que estiver visível — Mais (dentro do app)
+// e também a tela de login/início, onde a pessoa procura antes de ter conta.
+function refreshInstallUI(){
+  if(document.getElementById('screen-mais')?.classList.contains('active')) renderMais();
+  if(document.getElementById('screen-auth')?.classList.contains('active')) renderAuthInstall();
+}
+function renderAuthInstall(){
+  const el=document.getElementById('auth-install'); if(!el) return;
+  const html=installCardHtml();                 // '' só quando já está instalado
+  el.innerHTML=html?`<div style="margin-top:14px">${html}</div>`:'';
+}
 window.addEventListener('beforeinstallprompt',e=>{
   e.preventDefault();          // sem isso o Chrome mostra o próprio banner e não devolve o evento
   _deferredInstall=e;
-  if(document.getElementById('screen-mais')?.classList.contains('active')) renderMais();
+  refreshInstallUI();
 });
 window.addEventListener('appinstalled',()=>{
   _deferredInstall=null;
   showToast('✓ App instalado');
-  if(document.getElementById('screen-mais')?.classList.contains('active')) renderMais();
+  refreshInstallUI();
 });
 async function installApp(){
   const p=_deferredInstall;
-  if(!p){renderMais();return;}
+  if(!p){refreshInstallUI();return;}
   _deferredInstall=null;       // o evento só pode ser usado uma vez
   try{
     p.prompt();
     await p.userChoice;        // {outcome:'accepted'|'dismissed'}
   }catch{}
-  renderMais();
+  refreshInstallUI();
 }
 function installCardHtml(){
   const st=installState();
-  if(st.mode==='installed'||st.mode==='none') return '';
+  if(st.mode==='installed') return '';
+  if(st.mode==='none'){
+    // Navegador que ainda não ofereceu o prompt nativo (Chrome no Android antes
+    // de "engajar", Chrome/Edge no desktop, ou um navegador embutido). Em vez de
+    // esconder tudo — que é o que fazia a pessoa achar que "não aparece" —
+    // mostramos o caminho pelo menu do próprio navegador.
+    return `<div style="background:#EEF4EC;border:1px solid #CFE2D3;border-radius:14px;padding:16px;margin-bottom:16px">
+      <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
+        <div style="width:42px;height:42px;border-radius:14px;background:#6E9C7E1A;border:1px solid #6E9C7E33;display:flex;align-items:center;justify-content:center;color:#4F7F60">${ic('download')}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:600;color:#2E3A33">Instalar o app</div>
+          <div style="font-size:12px;color:#6F7B73;margin-top:2px">Abre em tela cheia, carrega mais rápido e libera os lembretes.</div>
+        </div>
+      </div>
+      <div style="font-size:12.5px;color:#4A564E;line-height:1.7;padding-left:4px">
+        No <b>Android (Chrome)</b>: toque no menu <b>⋮</b> (canto superior direito) → <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.<br>
+        No <b>computador (Chrome/Edge)</b>: clique no ícone de instalar na barra de endereço, ao lado da estrela.
+      </div>
+      <div style="font-size:11px;color:#8A948C;margin-top:8px;padding-left:4px">Se a opção não estiver no menu, use o app normalmente por alguns instantes e tente de novo — alguns navegadores só liberam depois de um primeiro uso.</div>
+    </div>`;
+  }
   if(st.mode==='ready'){
     return `<div style="background:#EEF4EC;border:1px solid #CFE2D3;border-radius:14px;padding:16px;margin-bottom:16px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
