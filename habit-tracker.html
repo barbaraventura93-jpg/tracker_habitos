@@ -1539,6 +1539,19 @@ function projLine(peso,metaPeso,adj){
 function calcWaterCups(peso){
   return peso>0?Math.max(6,Math.min(12,Math.round(peso*35/250))):8;
 }
+// Objetivo DERIVADO da meta de peso (a meta é a única fonte): perder → cutting,
+// ganhar → bulking, diferença ≤1 kg (ruído) ou sem meta → manutenção.
+function objFromWeights(peso,metaPeso){
+  if(!(peso>0&&metaPeso>0)) return 'manutencao';
+  const diff=metaPeso-peso;
+  if(Math.abs(diff)<=1) return 'manutencao';
+  return diff<0?'cutting':'bulking';
+}
+const OBJ_INFO={
+  cutting:{ic:'📉',l:'Cutting',sub:'déficit calórico para perder gordura',c:'#78A8B9'},
+  manutencao:{ic:'⚖️',l:'Manutenção',sub:'manter o peso e a composição atual',c:'#4E8A62'},
+  bulking:{ic:'📈',l:'Bulking',sub:'superávit calórico para ganhar massa',c:'#C08848'},
+};
 let goals=loadGoals();
 function loadGoalsDefs(){try{const s=JSON.parse(lsGet('ht:goalsdefs')||'null');if(Array.isArray(s))return s;}catch{}return[];}
 function loadGoalLogs(){try{const s=JSON.parse(lsGet('ht:goallogs')||'null');if(Array.isArray(s))return s;}catch{}return[];}
@@ -1562,28 +1575,10 @@ function showGoals(){
   const dias=[1,2,3,4,5,6,7];
   const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:600;background:${sel?'#4E8A62':'#F7FAF5'};color:${sel?'#fff':'#6F7B73'};border:1px solid ${sel?'#4E8A62':'#E4EBE2'}">${n}d</button>`;}).join('');
   const isMasc=g.sexo==='m';
-  const objAtual=goals.objetivo||'manutencao';
-  const objOpts=[
-    {v:'cutting',  l:'📉 Cutting',   sub:'Perda de gordura · déficit calórico',  c:'#78A8B9'},
-    {v:'manutencao',l:'⚖️ Manutenção',sub:'Manter peso e composição atual',       c:'#4E8A62'},
-    {v:'bulking',  l:'📈 Bulking',   sub:'Ganho de massa · superávit calórico',  c:'#C08848'},
-  ];
-  const objCards=objOpts.map(o=>{
-    const sel=objAtual===o.v;
-    return`<button onclick="goalsSelectObj('${o.v}')" id="gobj-${o.v}" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:2px solid ${sel?o.c:'#E4EBE2'};background:${sel?o.c+'0D':'#F7FAF5'};margin-bottom:6px;text-align:left">
-      <div style="font-size:18px;margin-top:1px">${o.l.split(' ')[0]}</div>
-      <div>
-        <div style="font-size:13px;font-weight:600;color:${sel?o.c:'#2E3A33'}">${o.l.slice(3)}</div>
-        <div style="font-size:11px;color:#6F7B73;margin-top:2px">${o.sub}</div>
-      </div>
-      ${sel?`<div style="margin-left:auto;font-size:14px;color:${o.c}">✓</div>`:''}
-    </button>`;
-  }).join('');
   document.getElementById('goals-body').innerHTML=`
     <div class="card fade-in">
-      <div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-target"/></svg> OBJETIVO ATUAL</div></div>
-      <input type="hidden" id="g-objetivo" value="${objAtual}">
-      ${objCards}
+      <div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-target"/></svg> OBJETIVO</div><span style="font-size:10px;color:#6F7B73">definido pela meta de peso</span></div>
+      <div id="g-obj-derived" style="border-radius:10px;border:2px solid #E4EBE2;background:#F7FAF5;padding:11px 13px;margin-bottom:6px"></div>
       <div id="g-obj-prot-preview" style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:8px;padding:10px 12px;margin-top:4px;font-size:11px;color:#6F7B73;line-height:1.6"></div>
     </div>
     <div class="card fade-in">
@@ -1823,22 +1818,6 @@ function goalsSelectTreinos(n){
   document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#4E8A62':'#F7FAF5';b.style.color=sel?'#fff':'#6F7B73';b.style.borderColor=sel?'#4E8A62':'#E4EBE2';});
   goalsCalcUpdate();
 }
-function goalsSelectObj(v){
-  goals={...goals,objetivo:v};
-  const colors={cutting:'#78A8B9',manutencao:'#4E8A62',bulking:'#C08848'};
-  ['cutting','manutencao','bulking'].forEach(o=>{
-    const b=document.getElementById('gobj-'+o);if(!b)return;
-    const sel=o===v;const c=colors[o];
-    b.style.borderColor=sel?c:'#E4EBE2';
-    b.style.background=sel?c+'0D':'#F7FAF5';
-    b.querySelector('div:first-child+div div:first-child').style.color=sel?c:'#2E3A33';
-    const tick=b.querySelector('div[style*="margin-left:auto"]');
-    if(sel&&!tick){const d=document.createElement('div');d.style.cssText=`margin-left:auto;font-size:14px;color:${c}`;d.textContent='✓';b.appendChild(d);}
-    else if(!sel&&tick) tick.remove();
-  });
-  const el=document.getElementById('g-objetivo');if(el)el.value=v;
-  goalsCalcUpdate();
-}
 function goalsCalcUpdate(){
   const peso=parseFloat(document.getElementById('g-peso-atual')?.value)||0;
   const meta=parseFloat(document.getElementById('g-peso-meta')?.value)||0;
@@ -1846,6 +1825,10 @@ function goalsCalcUpdate(){
   const idade=parseInt(document.getElementById('g-idade')?.value)||0;
   const sexo=goals.sexo||'f';
   const treinos=goals.treinosSemana||5;
+
+  // Objetivo derivado da meta de peso — guia calorias e proteína.
+  const objCal=objFromWeights(peso,meta);
+  goals={...goals,objetivo:objCal};
 
   // Peso info
   const pesoInfoEl=document.getElementById('g-peso-info');
@@ -1855,6 +1838,15 @@ function goalsCalcUpdate(){
     else if(diff<0) pesoInfoEl.innerHTML=`<span style="color:#8DBCCB">↓ Objetivo: perder ${Math.abs(diff)} kg</span>`;
     else pesoInfoEl.innerHTML=`<span style="color:#E2A07C">↑ Objetivo: ganhar ${diff} kg</span>`;
   } else if(pesoInfoEl) pesoInfoEl.innerHTML='';
+
+  // Indicador do objetivo (derivado, não escolhido)
+  const objDerivedEl=document.getElementById('g-obj-derived');
+  if(objDerivedEl){
+    const o=OBJ_INFO[objCal];
+    const hint=(peso>0&&meta>0)?'A partir do seu peso atual e da meta.':'Defina peso atual e meta de peso para calcular.';
+    objDerivedEl.style.borderColor=o.c;
+    objDerivedEl.innerHTML=`<div style="display:flex;align-items:center;gap:10px"><div style="font-size:18px">${o.ic}</div><div><div style="font-size:13px;font-weight:600;color:${o.c}">${o.l}</div><div style="font-size:11px;color:#6F7B73;margin-top:2px">${o.sub}</div></div></div><div style="font-size:10px;color:#A3AEA6;margin-top:7px">${hint}</div>`;
+  }
 
   // ── Água: 35 ml/kg (recomendação EFSA/IOM) — calculada do peso, sem escolha manual ──
   const aguaFormulaEl=document.getElementById('g-agua-formula');
@@ -1875,7 +1867,6 @@ function goalsCalcUpdate(){
   const calFormulaEl=document.getElementById('g-cal-formula');
   const calInpEl=document.getElementById('g-calorias');
   const calBadgeEl=document.getElementById('g-cal-badge');
-  const objCal=goals.objetivo||'manutencao';
   const pesoProjEl=document.getElementById('g-peso-proj');
   if(peso>0&&alt>0&&idade>0){
     const bmr=calcBMR(sexo,peso,alt,idade);
@@ -1900,7 +1891,7 @@ function goalsCalcUpdate(){
   // ── Proteína meta (ISSN 2017) ─────────────────────────────────────────────
   const objEl=document.getElementById('g-obj-prot-preview');
   if(objEl&&peso>0){
-    const obj=goals.objetivo||'manutencao';
+    const obj=objCal;
     const factor=PROT_FACTORS[obj]||1.6;
     const protMeta=calcProtein(peso,obj);
     const objLabel={cutting:'cutting (déficit)',manutencao:'manutenção',bulking:'bulking (superávit)'}[obj]||obj;
@@ -1918,16 +1909,17 @@ function saveGoalsForm(){
     showToast('Preencha idade, altura e peso atual — são a base de todos os cálculos');
     return;
   }
+  const metaV=parseFloat(document.getElementById('g-peso-meta')?.value)||0;
   const g={
     ...goals,
-    objetivo:document.getElementById('g-objetivo')?.value||'manutencao',
+    objetivo:objFromWeights(pesoV,metaV),
     pesoAtual:document.getElementById('g-peso-atual').value,
     pesoMeta:document.getElementById('g-peso-meta').value,
     altura:document.getElementById('g-altura').value,
     idade:document.getElementById('g-idade').value,
     sexo:goals.sexo||'f',
     calorias:parseInt(document.getElementById('g-calorias').value)||1800,
-    aguaCopos:calcWaterCups(parseFloat(document.getElementById('g-peso-atual')?.value)||0),
+    aguaCopos:calcWaterCups(pesoV),
     treinosSemana:goals.treinosSemana,
     regiao:(document.getElementById('g-regiao')?.value||'').trim(),
     restricoes:(document.getElementById('g-restricoes')?.value||'').trim(),
@@ -2270,6 +2262,7 @@ function onbCapture(){
     d.altura=val('onb-altura')??d.altura;
     d.pesoAtual=val('onb-peso')??d.pesoAtual;
     d.pesoMeta=val('onb-peso-meta')??d.pesoMeta;
+    d.objetivo=objFromWeights(onbNum(d.pesoAtual),onbNum(d.pesoMeta)); // derivado da meta
   }else if(step==='rotina'){
     pfCapture();
   }else if(step==='dieta'){
@@ -2315,7 +2308,6 @@ function onbQuit(){
 
 // ── passo: perfil ───────────────────────────────────────────────────────────
 function onbSetSexo(v){onbCapture();_onbDraft.sexo=v;renderOnboarding();}
-function onbSetObj(v){onbCapture();_onbDraft.objetivo=v;renderOnboarding();}
 function onbPerfilPreview(){
   const el=document.getElementById('onb-perfil-preview');
   if(!el) return;
@@ -2331,7 +2323,12 @@ function onbPerfilPreview(){
   const adj=calorieAdjust(d.objetivo,tdee);
   const cal=onbCalorias(),prot=calcProtein(peso,d.objetivo),copos=calcWaterCups(peso);
   const proj=projLine(peso,onbNum(d.pesoMeta),adj);
-  el.innerHTML=`<div style="display:flex;gap:14px;flex-wrap:wrap">
+  const o=OBJ_INFO[d.objetivo]||OBJ_INFO.manutencao;
+  el.innerHTML=`<div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+    <div style="font-size:16px">${o.ic}</div>
+    <div><span style="font-size:10px;color:var(--dim);letter-spacing:.06em">OBJETIVO</span> <b style="font-size:13px;color:${o.c}">${o.l}</b> <span style="font-size:11px;color:var(--muted)">— ${o.sub}</span></div>
+  </div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap">
     <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">CALORIAS</div><div style="font-size:16px;font-weight:600;color:#E2A07C;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums">${cal}<span style="font-size:10px;color:var(--muted)"> kcal</span></div></div>
     <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">PROTEÍNA</div><div style="font-size:16px;font-weight:600;color:#4E8A62;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums">${prot}<span style="font-size:10px;color:var(--muted)"> g</span></div></div>
     <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">ÁGUA</div><div style="font-size:16px;font-weight:600;color:#8DBCCB;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums">${copos}<span style="font-size:10px;color:var(--muted)"> copos</span></div></div>
@@ -2343,7 +2340,7 @@ function onbPerfilPreview(){
 const ONB_BODY={
 welcome:()=>{
   const itens=[
-    ['👤','Perfil','peso, altura e objetivo — daí saem calorias, proteína e água'],
+    ['👤','Perfil','peso atual e meta — daí saem o objetivo, as calorias, a proteína e a água'],
     ['💬','Sua rotina','uma conversa rápida: onde mora, o que come, o que não gosta e onde falha'],
     ['🍽️','Alimentação','meta de calorias e o esqueleto das cinco refeições'],
     ['💊','Suplementos','o que você toma, e em quais dias aparece'],
@@ -2364,17 +2361,6 @@ welcome:()=>{
 perfil:()=>{
   const d=_onbDraft;
   const sexoBtn=(v,l)=>{const on=d.sexo===v;return`<button onclick="onbSetSexo('${v}')" style="flex:1;padding:11px;border-radius:9px;font-size:13px;font-weight:600;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'#F7FAF5'};color:${on?'#fff':'var(--muted)'}">${l}</button>`;};
-  const objs=[
-    {v:'cutting',   l:'Cutting',    ic:'📉',sub:'Perder gordura · déficit calórico',c:'#78A8B9'},
-    {v:'manutencao',l:'Manutenção', ic:'⚖️',sub:'Manter peso e composição atual',   c:'#4E8A62'},
-    {v:'bulking',   l:'Bulking',    ic:'📈',sub:'Ganhar massa · superávit calórico',c:'#C08848'},
-  ];
-  const objCards=objs.map(o=>{const on=d.objetivo===o.v;return`<button onclick="onbSetObj('${o.v}')" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:2px solid ${on?o.c:'var(--border)'};background:${on?o.c+'0D':'#F7FAF5'};margin-bottom:6px;text-align:left">
-    <div style="font-size:18px;line-height:1.2">${o.ic}</div>
-    <div style="min-width:0"><div style="font-size:13px;font-weight:600;color:${on?o.c:'var(--txt)'}">${o.l}</div>
-    <div style="font-size:11px;color:var(--muted);margin-top:2px">${o.sub}</div></div>
-    ${on?`<div style="margin-left:auto;font-size:14px;color:${o.c}">✓</div>`:''}
-  </button>`;}).join('');
   return `${onbSection('SEXO BIOLÓGICO','Entra na fórmula de gasto energético — só isso.')}
   <div style="display:flex;gap:7px;margin-bottom:18px">${sexoBtn('f','Feminino')}${sexoBtn('m','Masculino')}</div>
   ${onbSection('MEDIDAS')}
@@ -2384,17 +2370,16 @@ perfil:()=>{
     <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Altura (cm)</div>
       <input id="onb-altura" type="number" inputmode="numeric" value="${onbEsc(d.altura)}" oninput="onbPerfilPreview()" placeholder="165" style="${ONB_INPUT}"></div>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:18px">
+  <div style="display:flex;gap:8px;margin-bottom:5px">
     <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Peso atual (kg)</div>
       <input id="onb-peso" type="number" inputmode="decimal" step="0.1" value="${onbEsc(d.pesoAtual)}" oninput="onbPerfilPreview()" placeholder="68" style="${ONB_INPUT}"></div>
     <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Peso meta (kg)</div>
       <input id="onb-peso-meta" type="number" inputmode="decimal" step="0.1" value="${onbEsc(d.pesoMeta)}" oninput="onbPerfilPreview()" placeholder="63" style="${ONB_INPUT}"></div>
   </div>
+  <div style="font-size:10px;color:var(--dim);margin-bottom:18px;line-height:1.5">A meta de peso define seu objetivo (perder → cutting, ganhar → bulking, manter → manutenção) e o déficit/superávit de calorias.</div>
   ${onbSection('ATIVIDADE FÍSICA','Quantos dias por semana você se exercita? Entra no cálculo do gasto calórico.')}
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:18px">${[[1,'Quase nunca'],[3,'1–3 dias'],[5,'4–5 dias'],[7,'6–7 dias']].map(([n,l])=>{const on=+d.atividade===n;return`<button onclick="onbSetAtiv(${n})" style="padding:10px 2px;border-radius:9px;font-size:11px;font-weight:600;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'#F7FAF5'};color:${on?'#fff':'var(--muted)'}">${l}</button>`;}).join('')}</div>
-  ${onbSection('OBJETIVO')}
-  ${objCards}
-  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px;margin-top:14px" id="onb-perfil-preview"></div>`;
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px" id="onb-perfil-preview"></div>`;
 },
 
 rotina:()=>`<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px">Responda como se estivesse conversando. Pode pular qualquer pergunta.</div><div id="onb-pf">${pfRender()}</div>`,
@@ -2519,8 +2504,8 @@ function onbFinish(){
   const g={...goals,sexo:d.sexo};
   if(!d.skipped.perfil&&peso>0){
     g.idade=d.idade;g.altura=d.altura;g.pesoAtual=d.pesoAtual;g.pesoMeta=d.pesoMeta;
-    g.objetivo=d.objetivo;
-    g.protMeta=calcProtein(peso,d.objetivo);
+    g.objetivo=objFromWeights(peso,onbNum(d.pesoMeta)); // derivado da meta de peso
+    g.protMeta=calcProtein(peso,g.objetivo);
     g.aguaCopos=calcWaterCups(peso);
     g.treinosSemana=onbTreinosSemana();
     // Perfil é obrigatório, então a meta calórica já sai calculada daqui —

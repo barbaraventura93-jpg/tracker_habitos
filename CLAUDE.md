@@ -107,15 +107,23 @@ vira `treinosSemana`, que só alimenta o fator de gasto calórico); rotina →
 `__mealplan__` (kcal/proteína distribuídos por `ONB_MEAL_SPLIT`, descrição em
 branco); suplementos → `__csups__`; hábitos → `__habits__`.
 
-As fórmulas nutricionais (`calcBMR`, `activityFactor`, `calorieAdjust`,
-`calcCalories`, `calcProtein`, `calcWaterCups`, `weightProjection`/`projLine`) são
-compartilhadas com a tela de Configurações de Saúde — as duas telas têm que chegar
-no mesmo número. O ajuste calórico é guiado pelo **objetivo**, não pela diferença de
-peso: `calorieAdjust(objetivo,tdee)` devolve déficit de 20% do TDEE no cutting
-(300–750 kcal), superávit de 12% no bulking (200–450 kcal) e 0 na manutenção. A meta
-de peso (`pesoMeta`) não entra mais no cálculo das calorias — serve só para a
-**projeção** de quando a meta é atingida (`weightProjection`, ~7700 kcal/kg), exibida
-no preview do onboarding e no card de PESO das Configurações (`#g-peso-proj`).
+As fórmulas nutricionais (`calcBMR`, `activityFactor`, `objFromWeights`,
+`calorieAdjust`, `calcCalories`, `calcProtein`, `calcWaterCups`,
+`weightProjection`/`projLine`) são compartilhadas com a tela de Configurações de
+Saúde — as duas telas têm que chegar no mesmo número.
+
+O **objetivo é derivado**, não escolhido: `objFromWeights(peso,pesoMeta)` devolve
+`cutting` (meta < peso), `bulking` (meta > peso) ou `manutencao` (diferença ≤1 kg ou
+sem meta). Não há mais seletor manual de objetivo — nem no onboarding, nem nas
+Configurações (as duas telas mostram o objetivo calculado e `saveGoalsForm`/`onbFinish`
+gravam o derivado). Mudar a meta de peso muda o objetivo.
+
+O ajuste calórico segue esse objetivo (não a diferença de peso crua):
+`calorieAdjust(objetivo,tdee)` devolve déficit de 20% do TDEE no cutting (300–750
+kcal), superávit de 12% no bulking (200–450 kcal) e 0 na manutenção. A meta de peso
+(`pesoMeta`) alimenta o objetivo e a **projeção** de quando a meta é atingida
+(`weightProjection`, ~7700 kcal/kg), exibida no preview do onboarding e no card de
+PESO das Configurações (`#g-peso-proj`).
 
 ## Coach alimentar
 
