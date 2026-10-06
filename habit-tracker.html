@@ -674,13 +674,35 @@ const DAYS_LONG=['Domingo','Segunda-feira','Terça-feira','Quarta-feira','Quinta
 const MONTHS_LONG=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 // Ícone de traço fino do sprite #i-* (ver <svg> logo após o <body>)
 function ic(n){return '<svg class="i"><use href="#i-'+n+'"/></svg>';}
-const MEALS=[
+// Esqueleto canônico das refeições. O plano alimentar (__mealplan__) e os
+// overrides do dia continuam sempre com estes ids — o que a pessoa configura em
+// `foodProfile.meals` é QUAIS refeições aparecem e EM QUE HORÁRIO (ela pode
+// desligar o lanche, a ceia, mudar os horários). `MEALS` é derivado disso por
+// rebuildMeals(), que roda no boot, no login/logout (reloadUserState) e sempre
+// que o perfil é salvo. `MEALS` pode ficar com menos de 5 itens — ou vazio, se
+// a pessoa desligar tudo — então nada pode assumir as 5 refeições fixas.
+const MEAL_BASE=[
   {id:'cafe',  label:'Café da manhã',icon:'☀️',time:'08:00'},
   {id:'almoco',label:'Almoço',       icon:'🥗',time:'12:00'},
   {id:'lanche',label:'Lanche',       icon:'🥛',time:'16:00'},
   {id:'jantar',label:'Jantar',       icon:'🌙',time:'19:00'},
   {id:'ceia',  label:'Ceia',         icon:'🍓',time:'21:00'},
 ];
+let MEALS=MEAL_BASE.map(m=>({...m}));
+function mealSchedule(){
+  const cfg=(typeof foodProfile!=='undefined'&&foodProfile&&foodProfile.meals)||null;
+  return cfg&&typeof cfg==='object'?cfg:null;
+}
+// Aplica os horários/ativação do perfil ao esqueleto e ordena por horário.
+function rebuildMeals(){
+  const cfg=mealSchedule();
+  const list=MEAL_BASE
+    .map(m=>{const c=cfg&&cfg[m.id];const time=(c&&/^\d{1,2}:\d{2}$/.test(c.time))?c.time:m.time;return{...m,time,_on:c?c.on!==false:true};})
+    .filter(m=>m._on)
+    .map(({_on,...m})=>m);
+  list.sort((a,b)=>(_toMin(a.time)||0)-(_toMin(b.time)||0));
+  MEALS=list;
+}
 // ── Plano Alimentar ──────────────────────────────────────────────────────────
 const DEFAULT_MEAL_PLAN={
   cafe:{
@@ -2005,6 +2027,7 @@ function reloadUserState(){
   _reportMonth=today().slice(0,7);
   _foodEst=null;
   foodProfile=loadFoodProfile();
+  rebuildMeals();
   coachMsgs=loadCoachMsgs();
   _coachBusy=false;
 }
@@ -2311,7 +2334,7 @@ welcome:()=>{
   const itens=[
     ['👤','Perfil','peso, altura e objetivo — daí saem calorias, proteína e água'],
     ['💬','Sua rotina','uma conversa rápida: onde mora, o que come, o que não gosta e onde falha'],
-    ['🍽️','Alimentação','meta de calorias e o esqueleto das cinco refeições'],
+    ['🍽️','Alimentação','meta de calorias e o esqueleto das refeições que você escolher'],
     ['💊','Suplementos','o que você toma, e em quais dias aparece'],
     ['🎯','Metas','hábitos diários para acompanhar'],
   ];
@@ -2382,8 +2405,8 @@ dieta:()=>{
   <button onclick="onbTogglePlano()" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border-radius:10px;border:2px solid ${d.criarPlano?'var(--accent)':'var(--border)'};background:${d.criarPlano?'var(--accent-light)':'#F7FAF5'};text-align:left">
     <div style="font-size:16px;color:${d.criarPlano?'var(--accent)':'var(--dim)'}">${d.criarPlano?'☑':'☐'}</div>
     <div style="min-width:0">
-      <div style="font-size:13px;font-weight:600;color:var(--txt)">Criar as cinco refeições com metas de macro</div>
-      <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5">Café, almoço, lanche, jantar e ceia já vêm com calorias e proteína distribuídas. A descrição da comida fica em branco — o coach monta o cardápio do dia ou você preenche em Mais › Plano Alimentar.</div>
+      <div style="font-size:13px;font-weight:600;color:var(--txt)">Criar as refeições com metas de macro</div>
+      <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5">As refeições que você manteve ligadas já vêm com calorias e proteína distribuídas. A descrição da comida fica em branco — o coach monta o cardápio do dia ou você preenche em Mais › Plano Alimentar.</div>
     </div>
   </button>`;
 },
@@ -2427,7 +2450,7 @@ done:()=>{
   const peso=onbNum(d.pesoAtual);
   if(peso>0) linhas.push(['👤',`${peso} kg · ${onbNum(d.altura)} cm · ${onbNum(d.idade)} anos`,{cutting:'Cutting',manutencao:'Manutenção',bulking:'Bulking'}[d.objetivo]]);
   if(!d.skipped.rotina&&_pf&&_pf.a){
-    const a=_pf.a,bits=[a.cidade,a.livresQtd?`${a.livresQtd} refeição(ões) livre(s) por ${a.livresPeriodo==='mes'?'mês':a.livresPeriodo}`:''].filter(Boolean);
+    const a=_pf.a,bits=[a.cidade,a.modoFome?'come quando bate fome':'',a.livresQtd?`${a.livresQtd} refeição(ões) livre(s) por ${a.livresPeriodo==='mes'?'mês':a.livresPeriodo}`:''].filter(Boolean);
     if(bits.length||a.rotina||(a.falhas||[]).length) linhas.push(['💬','Rotina alimentar registrada',bits.join(' · ')]);
   }
   if(!d.skipped.dieta){
@@ -2500,13 +2523,20 @@ function onbFinish(){
 
   if(!d.skipped.dieta&&d.criarPlano){
     const cal=g.calorias||0,prot=g.protMeta||0;
+    // Só distribui entre as refeições que a pessoa manteve ligadas (ela pode ter
+    // desligado lanche/ceia na entrevista). Renormaliza as frações para que o
+    // total continue batendo a meta do dia.
+    const sched=(_pf&&_pf.a&&_pf.a.meals)||null;
+    const entries=ONB_MEAL_SPLIT.filter(([id])=>sched&&sched[id]?sched[id].on!==false:true);
+    const fracTot=entries.reduce((a,[,f])=>a+f,0)||1;
     const plan={};
-    for(const [id,frac] of ONB_MEAL_SPLIT){
-      const kc=Math.round(cal*frac/5)*5,pr=Math.round(prot*frac);
+    for(const [id,frac] of entries){
+      const f=frac/fracTot;
+      const kc=Math.round(cal*f/5)*5,pr=Math.round(prot*f);
       const ft=Math.max(0,Math.round(kc*0.25/9)),cb=Math.max(0,Math.round((kc-pr*4-ft*9)/4));
       plan[id]={default:{kcal:kc,prot:pr,carb:cb,fat:ft,hint:'',badge:''}};
     }
-    mealPlan=plan;saveMealPlan();
+    if(Object.keys(plan).length){mealPlan=plan;saveMealPlan();}
   }
 
   if(!d.skipped.sups){
@@ -2801,7 +2831,20 @@ function calcScore(d, date){
   const sups=getSups();
   // em dia de jejum, refeição fora da janela não entra na conta
   const am=activeMeals(d);
-  const mD=am.filter(m=>meals[m.id]).length;
+  // Modo "comer por fome": não cobramos refeição em horário fixo. A dimensão de
+  // alimentação vira um único alvo — fechar o dia na meta de proteína (ou, sem
+  // meta de proteína, ter registrado algo). Assim ninguém é penalizado por não
+  // comer lanche nem por comer fora de hora.
+  const hunger=!!(foodProfile&&foodProfile.modoFome);
+  let mD,mealTotal;
+  if(hunger){
+    const T=nutriTargets(),I=dayIntake(d);
+    mD=(T.prot>0?I.prot>=T.prot*0.85:I.kcal>0)?1:0;
+    mealTotal=1;
+  }else{
+    mD=am.filter(m=>meals[m.id]).length;
+    mealTotal=am.length;
+  }
   const wD=d.water>=goals.aguaCopos?1:0;
   const slD=SLEEPS.find(s=>s.id===d.sleep)?.ok?1:0;
   const coD=d.sleepOk?1:0;
@@ -2811,9 +2854,9 @@ function calcScore(d, date){
   const dueHabits=date?habitsDueOn(date):[];
   const hDone=(d.habits||{});
   const hD=dueHabits.filter(h=>hDone[h.id]).length;
-  const total=am.length+1+2+sups.length+tT+dueHabits.length;
+  const total=mealTotal+1+2+sups.length+tT+dueHabits.length;
   const done=mD+wD+slD+coD+spD+tD+hD;
-  return{meals:{d:mD,t:am.length},water:{d:wD,t:1},sleep:{d:slD+coD,t:2},
+  return{meals:{d:mD,t:mealTotal,hunger},water:{d:wD,t:1},sleep:{d:slD+coD,t:2},
          sups:{d:spD,t:sups.length},treino:{d:tD,t:tT},habits:{d:hD,t:dueHabits.length},
          pct:total>0?Math.round(done/total*100):0,done,total};
 }
@@ -2964,7 +3007,7 @@ function renderHoje(body,sc){
   const sub=pct===100?'Você cuidou de tudo hoje.':pct>=80?'Falta pouquinho para fechar.':pct>=55?'Mais da metade já foi.':pct>0?'Amanhã é um novo começo — e hoje ainda dá.':'Marque o que já fez e eu acompanho você.';
   const ring=2*Math.PI*40;
   const bars=[
-    {l:'Refeições',s:sc.meals,c:'#E2A07C'},{l:'Água',s:sc.water,c:'#8DBCCB'},
+    {l:sc.meals.hunger?'Alimentação':'Refeições',s:sc.meals,c:'#E2A07C'},{l:'Água',s:sc.water,c:'#8DBCCB'},
     {l:'Sono',s:sc.sleep,c:'#A596C8'},
     {l:'Suplementos',s:sc.sups,c:'#D7B56A'},
     ...(sc.habits&&sc.habits.t>0?[{l:'Hábitos',s:sc.habits,c:'#7DB892'}]:[]),
@@ -3038,7 +3081,8 @@ function renderHoje(body,sc){
   </div>`;
   // PENDÊNCIAS
   const missing=[];
-  activeMeals(dayData).forEach(m=>{if(!dayData.meals[m.id])missing.push(m.icon+' '+m.label);});
+  // No modo "comer por fome" não listamos refeição como pendência.
+  if(!sc.meals.hunger) activeMeals(dayData).forEach(m=>{if(!dayData.meals[m.id])missing.push(m.icon+' '+m.label);});
   if(dayData.water<goals.aguaCopos) missing.push('💧 Água — '+dayData.water+'/'+goals.aguaCopos+' copos');
   getSups().forEach(s=>{if(!dayData.sups[s.id])missing.push(s.icon+' '+s.label);});
   habitsDueOn(currentDate).forEach(h=>{if(!(dayData.habits||{})[h.id])missing.push((h.icon||'🌱')+' '+h.name);});
@@ -3222,7 +3266,9 @@ function renderFreeFoodCard(){
 function mealsCardHtml(sc){
   // ── Checklist de refeições ────────────────────────────────────────────────
   const isToday=currentDate===today();
+  const hunger=!!sc.meals.hunger;
   const fastOn=isFastDay(dayData),fw=fastWindow();
+  const T=nutriTargets(),I=dayIntake(dayData);
   const mealCards=MEALS.map(m=>{const det=getMealDetail(m.id,dayData);const done=!!dayData.meals[m.id];const ov=!!(dayData.mealOverrides&&dayData.mealOverrides[m.id]);
     if(!done&&mealFasted(m,dayData)) return`<button class="meal-card" onclick="toggleMeal('${m.id}')" style="opacity:.6"><div class="check-circle" style="border-style:dashed"></div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:600;color:#6F7B73">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#6F7B73;font-variant-numeric:tabular-nums">${m.time}</span></div><div style="font-size:11.5px;color:#6F7B73">⏳ Em jejum — fora da janela (${minToHHMM(fw.start)}–${minToHHMM(fw.end)}). Não conta como pulada.</div></div></button>`;
     // trocar só faz sentido para hoje e para o que ainda não foi comido
@@ -3230,8 +3276,15 @@ function mealsCardHtml(sc){
     const acts=(isToday&&!done)?`<div style="display:flex;gap:14px;margin-top:7px"><span role="button" onclick="event.stopPropagation();openSwapSheet('${m.id}')" style="font-size:11px;font-weight:600;color:#6E9C7E">${ic('refresh')} Trocar</span>${ov?`<span role="button" onclick="event.stopPropagation();clearOverride('${m.id}')" style="font-size:11px;color:#6F7B73;text-decoration:underline">↩ voltar ao plano</span>`:''}${skip}</div>`:'';
     return`<button class="meal-card ${done?'done':''}" onclick="toggleMeal('${m.id}')"><div class="check-circle ${done?'done':''}">${done?'✓':''}</div><div style="flex:1"><div style="display:flex;align-items:center;gap:6px;margin-bottom:3px"><span style="font-size:14px">${m.icon}</span><span style="font-size:13px;font-weight:600;color:${done?'#6F7B73':'#2E3A33'};text-decoration:${done?'line-through':'none'}">${m.label}</span><span style="margin-left:auto;font-size:10px;color:#6F7B73;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums">${m.time}</span></div><div style="font-size:10px;color:${done?'#4F6B58':'#6F7B73'};font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;margin-bottom:3px">${det.macro}</div><div style="font-size:11px;color:${done?'#4F6B58':'#A3AEA6'};line-height:1.45">${cEsc(det.hint)}</div>${det.badge?`<div class="badge">${cEsc(det.badge)}</div>`:''}${acts}</div></button>`;}).join('');
 
-  return`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-utensils"/></svg> REFEIÇÕES DO DIA</div><span style="font-size:11px;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;color:${sc.meals.d===sc.meals.t?'#E2A07C':'#6F7B73'}">${sc.meals.d}/${sc.meals.t}</span></div>
-    ${mealCards}
+  const lbl=hunger?'QUANDO BATER FOME':'REFEIÇÕES DO DIA';
+  const protOk=T.prot>0&&I.prot>=T.prot*0.85;
+  const count=hunger
+    ?`<span style="font-size:11px;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;color:${protOk?'#4E8A62':'#6F7B73'}">${I.prot}/${T.prot}g prot</span>`
+    :`<span style="font-size:11px;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;color:${sc.meals.d===sc.meals.t?'#E2A07C':'#6F7B73'}">${sc.meals.d}/${sc.meals.t}</span>`;
+  const intro=hunger?`<div style="font-size:11.5px;color:#56625A;line-height:1.5;background:#F2F8F3;border:1px solid #D3E8D9;border-radius:10px;padding:9px 11px;margin-bottom:9px">${ic('leaf')} Sem horário fixo: coma quando sentir fome. Estas são boas opções — marque o que comer. O que conta é fechar o dia na meta de proteína e calorias, não o número de refeições.</div>`:'';
+  const empty=(!MEALS.length)?`<div style="font-size:12px;color:#6F7B73;line-height:1.5;padding:4px 2px 8px">Você não deixou nenhuma refeição fixa. Registre o que comer em <b>“Comeu fora do plano?”</b> abaixo — eu cuido do total do dia.</div>`:'';
+  return`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-utensils"/></svg> ${lbl}</div>${count}</div>
+    ${intro}${empty}${mealCards}
     ${isToday?`<div style="display:flex;gap:6px;margin-top:4px">
       <button onclick="openDaySheet()" style="flex:1;padding:10px;background:#F1F7F2;border:1px solid #C6DDCC;color:#4F7F60;border-radius:99px;font-size:12.5px;font-weight:500">${ic('sparkle')} Variar o cardápio de hoje</button>
       <button onclick="openFlexSheet()" style="flex:1;padding:10px;background:#FBF3EC;border:1px solid #EFD8C3;color:#A8643F;border-radius:99px;font-size:12.5px;font-weight:500">${ic('heart')} Encaixar um extra</button></div>`:''}
@@ -3346,14 +3399,19 @@ function dayIntake(dd){
 }
 
 // ── perfil alimentar (região, rotina, gostos, onde falha, refeições livres) ──
-const FP_DEFAULT={cidade:'',rotina:'',gosta:'',naoGosta:'',restricoes:[],restricoesTxt:'',falhas:[],falhaTxt:'',livresQtd:0,livresPeriodo:'semana',jejum:{proto:'nenhum',inicio:'12:00'},updatedAt:''};
+// `meals`: horários/ativação por refeição — null usa o padrão das 5. `modoFome`:
+// quando true, o app para de cobrar refeição em horário fixo (nada de "comer de
+// 3 em 3h" nem lanche obrigatório) e passa a medir o dia pela meta nutricional.
+const FP_DEFAULT={cidade:'',rotina:'',gosta:'',naoGosta:'',restricoes:[],restricoesTxt:'',falhas:[],falhaTxt:'',livresQtd:0,livresPeriodo:'semana',jejum:{proto:'nenhum',inicio:'12:00'},meals:null,modoFome:false,updatedAt:''};
 let foodProfile=loadFoodProfile();
+rebuildMeals();
 function loadFoodProfile(){
   try{const s=JSON.parse(lsGet('ht:foodprofile')||'null');if(s&&typeof s==='object')return{...FP_DEFAULT,...s};}catch{}
   return{...FP_DEFAULT,cidade:(typeof goals!=='undefined'&&goals&&goals.regiao)||''};
 }
 function saveFoodProfile(fp){
   foodProfile={...FP_DEFAULT,...fp,updatedAt:new Date().toISOString()};
+  rebuildMeals();
   try{lsSet('ht:foodprofile',JSON.stringify(foodProfile));}catch{}
   queuePut('__foodprofile__',foodProfile);
   // `regiao`/`restricoes` em __goals__ alimentam o gerador de plano alimentar
@@ -3364,7 +3422,7 @@ async function syncFoodProfile(){
   if(!USE_API||!authToken||outboxHas('__foodprofile__')) return;
   try{
     const r=await fetch(`${API_URL}?date=__foodprofile__`,{headers:{authorization:'Bearer '+authToken}});
-    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)&&d.updatedAt){foodProfile={...FP_DEFAULT,...d};try{lsSet('ht:foodprofile',JSON.stringify(foodProfile));}catch{}}}
+    if(r.ok){const d=await r.json();if(d&&typeof d==='object'&&!Array.isArray(d)&&d.updatedAt){foodProfile={...FP_DEFAULT,...d};rebuildMeals();try{lsSet('ht:foodprofile',JSON.stringify(foodProfile));}catch{}}}
   }catch{}
 }
 function foodProfileComplete(){const f=foodProfile||{};return !!(f.cidade&&(f.rotina||f.gosta));}
@@ -3399,6 +3457,8 @@ const PF_QS=[
   {k:'falhas',q:'Agora com sinceridade: <b>onde você sente que falha</b> na alimentação? Pode marcar mais de um.',type:'multi',opts:['Doce depois das refeições','Beliscar à tarde','Exagero no fim de semana','Comer tarde da noite','Pular o café da manhã','Delivery / fast-food','Bebida alcoólica','Comer por ansiedade','Porções grandes','Pouca água'],txt:'falhaTxt',ph:'conte mais (opcional)'},
   {k:'livres',q:'Quantas <b>refeições livres</b> você quer se permitir? Eu ajudo a controlar para não virar rotina.',type:'single',opts:[['0:semana','Nenhuma'],['1:semana','1 por semana'],['2:semana','2 por semana'],['3:semana','3 por semana'],['2:mes','2 por mês'],['4:mes','4 por mês']]},
   {k:'jejum',q:'Você faz — ou quer fazer — <b>jejum intermitente</b>? Se sim, eu ajusto as refeições à sua janela. (Os cuidados e o que a ciência diz ficam em Mais › Jejum.)',type:'single',opts:[['nenhum','Não faço'],['flex','Às vezes pulo o café'],['12:12','12:12'],['14:10','14:10'],['16:8','16:8']]},
+  {k:'modoFome',q:'Como você prefere se organizar com as refeições? Não existe certo nem errado: a ciência mostra que o que conta é o <b>total do dia</b> — comer "de 3 em 3h" ou fazer lanche <b>não</b> é obrigatório. (As fontes ficam em Mais › Perfil alimentar.)',type:'single',opts:[['horarios','Prefiro ter horários certos'],['fome','Como quando bate fome']]},
+  {k:'horarios',q:'Em que horários você costuma comer? Deixe ligadas só as refeições que fazem sentido pra você — pode <b>desligar o lanche, a ceia</b> ou o que não combina com sua rotina.',type:'meals'},
 ];
 let _pf=null; // {i, a:{...respostas}, ctx:'onb'|'mais', sel:Set}
 function pfStart(ctx){
@@ -3408,6 +3468,8 @@ function pfStart(ctx){
 function pfAnswerText(q,a){
   if(q.k==='livres'){const n=+a.livresQtd||0;return n?`${n} por ${a.livresPeriodo==='mes'?'mês':a.livresPeriodo}`:'Nenhuma';}
   if(q.k==='jejum'){const o=q.opts.find(([v])=>v===((a.jejum||{}).proto||'nenhum'));return o?o[1]:'Não faço';}
+  if(q.k==='modoFome') return a.modoFome?'Como quando bate fome':'Prefiro ter horários certos';
+  if(q.k==='horarios'){const cfg=a.meals||null;const on=MEAL_BASE.filter(m=>cfg&&cfg[m.id]?cfg[m.id].on!==false:true);return on.length?on.map(m=>{const t=(cfg&&cfg[m.id]&&cfg[m.id].time)||m.time;return m.label.replace(' da manhã','')+' '+t;}).join(' · '):'Nenhuma refeição fixa';}
   if(q.type==='multi'){const arr=(a[q.k]||[]).slice();if(a[q.txt])arr.push(a[q.txt]);return arr.join(', ')||'—';}
   return a[q.k]||'—';
 }
@@ -3424,6 +3486,7 @@ function pfRender(){
   if(_pf.i>=PF_QS.length){
     html+=bot('Anotado! 🙌 Com isso eu monto sugestões com comida da sua região, respeito o que você não gosta e fico de olho nos pontos em que você disse que escorrega.');
     if(_pf.ctx==='mais') html+=`<button onclick="pfSave()" style="width:100%;padding:13px;background:var(--accent);color:#fff;border-radius:10px;font-size:14px;font-weight:600;margin-top:6px">Salvar perfil</button>`;
+    html+=pfSciNote();
     return html;
   }
   const q=PF_QS[_pf.i];
@@ -3437,15 +3500,44 @@ function pfRender(){
     if(!_pf.sel) _pf.sel=new Set(a[q.k]||[]);
     ctl=`<div>${q.opts.map((o,j)=>`<button class="cchip ${_pf.sel.has(o)?'on':''}" onclick="pfToggle(${j})">${o}</button>`).join('')}</div>
       <input id="pf-in" value="${cEsc(a[q.txt])}" placeholder="${q.ph}" style="${inp};margin-top:4px">`;
+  }else if(q.type==='meals'){
+    const cfg=a.meals||null;
+    ctl=`<div style="display:flex;flex-direction:column;gap:7px">${MEAL_BASE.map(m=>{
+      const on=cfg&&cfg[m.id]?cfg[m.id].on!==false:true;
+      const time=(cfg&&cfg[m.id]&&cfg[m.id].time)||m.time;
+      return`<div style="display:flex;align-items:center;gap:9px;background:#fff;border:1px solid var(--border);border-radius:10px;padding:8px 10px;opacity:${on?1:.55}">
+        <button onclick="pfMealToggle('${m.id}')" style="font-size:17px;line-height:1;color:${on?'var(--accent)':'var(--dim)'};background:none;padding:0">${on?'☑':'☐'}</button>
+        <span style="font-size:15px">${m.icon}</span>
+        <span style="flex:1;font-size:13px;font-weight:600;color:var(--txt)">${m.label}</span>
+        <input type="time" value="${time}" ${on?'':'disabled'} onchange="pfMealTime('${m.id}',this.value)" style="background:#F7FAF5;border:1px solid var(--border);border-radius:8px;padding:5px 7px;color:var(--txt);font-size:13px;font-family:'Jost',sans-serif;outline:none">
+      </div>`;}).join('')}</div>`;
   }else if(q.type==='single'){
-    const cur=q.k==='jejum'?((a.jejum||{}).proto||'nenhum'):(+a.livresQtd||0)+':'+(a.livresPeriodo||'semana');
+    const cur=q.k==='jejum'?((a.jejum||{}).proto||'nenhum'):q.k==='modoFome'?(a.modoFome?'fome':'horarios'):(+a.livresQtd||0)+':'+(a.livresPeriodo||'semana');
     ctl=`<div>${q.opts.map(([v,l])=>`<button class="cchip ${cur===v&&_pf.touched?'on':''}" onclick="pfPick('${v}')">${l}</button>`).join('')}</div>`;
   }
   html+=`<div style="background:#F1F7F2;border:1px solid #D7E8DB;border-radius:14px;padding:12px;margin:4px 0 8px">${ctl}
     ${q.type!=='single'?`<div style="display:flex;gap:8px;margin-top:10px"><button onclick="pfNext()" style="flex:1;padding:10px;background:var(--accent);color:#fff;border-radius:10px;font-size:13px;font-weight:600">Responder</button>
       <button onclick="pfSkipQ()" style="padding:10px 14px;background:none;color:var(--muted);font-size:12px;text-decoration:underline">pular</button></div>`:''}
   </div>`;
+  if(_pf.ctx==='mais') html+=pfSciNote();
   return html;
+}
+// Base científica para "comer por fome" / não precisar de lanche ou de 3 em 3h.
+function pfSciNote(){
+  const src=(t,u)=>`<a href="${u}" target="_blank" rel="noopener" style="color:#4F7F60">${t}</a>`;
+  return `<details style="margin-top:12px;background:#F7FAF5;border:1px solid #E4EBE2;border-radius:12px;padding:11px 13px">
+    <summary style="font-size:12.5px;font-weight:600;color:#4F7F60;cursor:pointer;list-style:none">${ic('leaf')} Precisa comer de 3 em 3h? O que a ciência diz</summary>
+    <div style="font-size:12px;color:#56625A;line-height:1.55;margin-top:9px">
+      <p style="margin:0 0 8px"><b>Não.</b> Comer com mais frequência <b>não</b> acelera o metabolismo: o gasto com a digestão depende de <i>quanto</i> você come no dia, não de <i>quantas vezes</i>. O que define o resultado é o total diário de calorias e proteína.</p>
+      <p style="margin:0 0 8px">Lanche também não é obrigatório — ensaios clínicos de 1 ano não acharam diferença de perda de peso entre quem lanchava e quem não lanchava. E comer guiando-se pela fome (“comer intuitivo”) está associado a melhor relação com a comida e melhores indicadores de saúde.</p>
+      <p style="margin:0 0 6px">Fontes:</p>
+      <ul style="margin:0;padding-left:18px">
+        <li>${src('Schoenfeld et al., 2015 — meta-análise sobre frequência de refeições (Nutrition Reviews)','https://pubmed.ncbi.nlm.nih.gov/25686413/')}</li>
+        <li>${src('Revisão sistemática sobre comer intuitivo e saúde (PMC)','https://pmc.ncbi.nlm.nih.gov/articles/PMC10282369/')}</li>
+      </ul>
+      <p style="margin:8px 0 0;font-size:11px;color:#A3AEA6">Sinais de fome/saciedade fogem do normal em algumas condições (diabetes, uso de certos remédios, transtornos alimentares). Na dúvida, fale com seu médico ou nutricionista.</p>
+    </div>
+  </details>`;
 }
 function pfMount(){
   const el=document.getElementById(_pf&&_pf.ctx==='onb'?'onb-pf':'perfilal-body');
@@ -3457,6 +3549,7 @@ function pfMount(){
 function pfCapture(){
   if(!_pf||_pf.i>=PF_QS.length) return;
   const q=PF_QS[_pf.i],v=(document.getElementById('pf-in')?.value||'').trim();
+  if(q.type==='meals') return; // editado direto em _pf.a.meals pelos toggles/horários
   if(q.type==='multi'){
     let sel=[..._pf.sel||[]];
     if(sel.includes('Nenhuma')&&sel.length>1) sel=sel.filter(x=>x!=='Nenhuma');
@@ -3476,8 +3569,23 @@ function pfToggle(j){
 function pfPick(v){
   const q=PF_QS[_pf.i];
   if(q.k==='jejum') _pf.a.jejum={proto:v,inicio:(_pf.a.jejum&&_pf.a.jejum.inicio)||'12:00'};
+  else if(q.k==='modoFome') _pf.a.modoFome=(v==='fome');
   else{const[n,per]=v.split(':');_pf.a.livresQtd=+n;_pf.a.livresPeriodo=per;}
   pfNext();
+}
+// Editor de horários/refeições (tipo 'meals'): grava direto em _pf.a.meals.
+function _pfMealsObj(){if(!_pf.a.meals||typeof _pf.a.meals!=='object')_pf.a.meals={};return _pf.a.meals;}
+function pfMealToggle(id){
+  const m=_pfMealsObj(),base=MEAL_BASE.find(x=>x.id===id)||{time:'08:00'};
+  const curOn=m[id]?m[id].on!==false:true;
+  m[id]={on:!curOn,time:(m[id]&&m[id].time)||base.time};
+  _pf.touched=true;pfMount();
+}
+function pfMealTime(id,val){
+  if(!/^\d{1,2}:\d{2}$/.test(val||''))return;
+  const m=_pfMealsObj(),base=MEAL_BASE.find(x=>x.id===id)||{time:'08:00'};
+  const curOn=m[id]?m[id].on!==false:true;
+  m[id]={on:curOn,time:val};_pf.touched=true;
 }
 function pfSave(){pfCapture();saveFoodProfile(_pf.a);showToast('✓ Perfil alimentar salvo');showMais();}
 function showPerfilAlimentar(){pfStart('mais');showScreen('perfilal');setBnavActive('mais');pfMount();}
@@ -3502,7 +3610,8 @@ function coachContext(){
     perfil:{objetivo:goals.objetivo||'manutencao',pesoAtual:goals.pesoAtual||'',pesoMeta:goals.pesoMeta||'',sexo:goals.sexo,idade:goals.idade},
     metas:T,
     foodProfile:{cidade:foodProfile.cidade||goals.regiao||'',rotina:foodProfile.rotina,gosta:foodProfile.gosta,naoGosta:foodProfile.naoGosta,
-      restricoes:restr||goals.restricoes||'',falhas:[...(foodProfile.falhas||[]),foodProfile.falhaTxt].filter(Boolean)},
+      restricoes:restr||goals.restricoes||'',falhas:[...(foodProfile.falhas||[]),foodProfile.falhaTxt].filter(Boolean),
+      modoFome:!!foodProfile.modoFome,horarios:MEALS.map(m=>m.label+' '+m.time).join(', ')},
     livres:{usadas:fm.usadas,limite:fm.limite,periodo:fm.periodoLbl},
     plano:MEALS.map(m=>{const sl=getMealSlot(m.id,dd)||{};return{id:m.id,label:m.label,hint:sl.hint||'',kcal:sl.kcal||0,prot:sl.prot||0,carb:sl.carb||0,fat:sl.fat||0,done:!!(dd.meals||{})[m.id],jejum:!(dd.meals||{})[m.id]&&mealFasted(m,dd)};}),
     jejum:(()=>{const c=fastCfg(),w=fastWindow();return{protocolo:c.proto,hoje:isFastDay(dd),janela:minToHHMM(w.start)+'–'+minToHHMM(w.end)};})(),
@@ -3772,9 +3881,10 @@ function progressStats(n){
 }
 function progressSummaryText(p){
   const worst=Object.entries(p.skip).sort((a,b)=>b[1]-a[1])[0];
+  const hunger=!!(foodProfile&&foodProfile.modoFome);
   return `Ultimos ${p.n} dias (${p.tracked} com registro): media ${p.kcal} kcal (meta ${p.T.kcal}), proteina media ${p.prot}g (meta ${p.T.prot}g); `
     +`${p.over} dias acima da meta calorica, ${p.under} bem abaixo; proteina batida em ${p.protOk} dias; `
-    +(worst&&worst[1]?`refeicao mais pulada: ${mealLabel(worst[0])} (${worst[1]}x); `:'')
+    +(!hunger&&worst&&worst[1]?`refeicao mais pulada: ${mealLabel(worst[0])} (${worst[1]}x); `:'')
     +`${p.off} itens fora do plano (${p.offNight} depois das 20h, ${p.offWeekend} de sexta a domingo); `
     +`agua batida em ${p.waterOk} dias`+(p.sups!=null?`; suplementos ${p.sups}%`:'')+'.';
 }
@@ -3791,7 +3901,8 @@ function progressInsights(p){
     s:`Bateu a proteína em só ${p.protOk} de ${k} dias. Proteína segura a fome e preserva massa magra.`,
     q:'Minha proteína está abaixo da meta. Como subir com comidas da minha rotina?'});
   const worst=Object.entries(p.skip).sort((a,b)=>b[1]-a[1])[0];
-  if(worst&&worst[1]>=Math.max(2,Math.ceil(k*0.4))) out.push({sev:2,icon:mealIcon(worst[0]),t:`${mealLabel(worst[0])} ficou de fora em ${worst[1]} de ${k} dias`,
+  const hunger=!!(foodProfile&&foodProfile.modoFome);
+  if(!hunger&&worst&&worst[1]>=Math.max(2,Math.ceil(k*0.4))) out.push({sev:2,icon:mealIcon(worst[0]),t:`${mealLabel(worst[0])} ficou de fora em ${worst[1]} de ${k} dias`,
     s:'Refeição pulada costuma virar beliscada ou exagero mais tarde.',
     q:`Eu vivo pulando o ${mealLabel(worst[0]).toLowerCase()}. Me dá opções práticas que eu consiga manter?`});
   if(p.offNight>=2) out.push({sev:2,icon:'🌙',t:`${p.offNight} escapadas depois das 20h`,
@@ -3842,6 +3953,7 @@ function renderProgresso(){
     return;
   }
   const ins=progressInsights(p);
+  const hunger=!!(foodProfile&&foodProfile.modoFome);
   const fm=freeMealStatus();
   const tile=(lbl,val,sub,c)=>`<div style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:12px;padding:10px 11px"><div style="font-size:10px;color:#6F7B73;letter-spacing:.05em">${lbl}</div>
     <div style="font-size:18px;font-weight:600;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;color:${c||'#2E3A33'};margin-top:2px">${val}</div><div style="font-size:10px;color:#A3AEA6">${sub}</div></div>`;
@@ -3865,7 +3977,7 @@ function renderProgresso(){
         ${x.q?`<button onclick="coachAsk(${cEsc(JSON.stringify(x.q))})" style="margin-top:7px;font-size:12px;color:#4F7F60;font-weight:600;background:none;padding:0">💬 Pedir ajuda ao coach →</button>`:''}</div></div></div>`).join('')
       :'<div style="font-size:13px;color:#4E8A62;line-height:1.5">🎉 Nada preocupante no período. Continue assim!</div>'}
     </div>
-    <div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-utensils"/></svg> REFEIÇÕES DO PLANO CUMPRIDAS</div></div>${skipRows}</div>
+    ${hunger||!skipRows?'':`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-utensils"/></svg> REFEIÇÕES DO PLANO CUMPRIDAS</div></div>${skipRows}</div>`}
     <div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-sprout"/></svg> HÁBITOS</div></div>
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
         ${tile('ÁGUA',p.waterOk+'/'+p.tracked,'dias na meta','#8DBCCB')}
@@ -4681,6 +4793,8 @@ function _habitEvents(){
     title:(h.icon||'🌱')+' '+h.name,days:h.days,time:h.time||'08:00',durationMin:15,desc:'Hábito · Rotina Diária'}));
 }
 function _mealEvents(){
+  // Quem come por fome não quer lembrete de refeição em horário fixo.
+  if(foodProfile&&foodProfile.modoFome) return [];
   return MEALS.map(m=>({title:(m.icon||'🍽️')+' '+m.label,days:[0,1,2,3,4,5,6],time:m.time,durationMin:30,desc:'Refeição · Rotina Diária'}));
 }
 function _allAgendaEvents(){return [].concat(_habitEvents(),_mealEvents());}

@@ -84,6 +84,9 @@ Como funciona:
 - `setUserScope()` + `reloadUserState()` rodam no login, no logout e no boot.
   `reloadUserState()` relê todo `let` de estado do escopo novo (inclusive `foodProfile` e `coachMsgs`) — se você adicionar
   um novo `let x=loadX()` no topo do arquivo, **precisa** incluí-lo lá.
+  `reloadUserState()` também chama `rebuildMeals()` (MEALS depende de `foodProfile`,
+  ver "Refeições configuráveis" abaixo) — toda recarga do perfil (boot, login,
+  `saveFoodProfile`, `syncFoodProfile`) refaz MEALS.
 - `claimLegacyKeys()` migra as chaves planas da instalação antiga para o escopo do
   usuário que já estava logado no boot. Num login novo essas chaves são
   descartadas: são de outra pessoa, e o servidor tem tudo.
@@ -101,9 +104,11 @@ tem "pular", e `onbFinish()` **só grava as etapas que não foram puladas** (`d.
 
 Onde cada passo escreve: perfil e alimentação → `__goals__` (o nível de atividade
 vira `treinosSemana`, que só alimenta o fator de gasto calórico); rotina →
-`__foodprofile__`; alimentação com "criar refeições" →
-`__mealplan__` (kcal/proteína distribuídos por `ONB_MEAL_SPLIT`, descrição em
-branco); suplementos → `__csups__`; hábitos → `__habits__`.
+`__foodprofile__` (inclui `meals` e `modoFome`, ver "Refeições configuráveis");
+alimentação com "criar refeições" → `__mealplan__` (kcal/proteína distribuídos por
+`ONB_MEAL_SPLIT`, **só entre as refeições que a pessoa manteve ligadas** — as
+frações são renormalizadas —, descrição em branco); suplementos → `__csups__`;
+hábitos → `__habits__`.
 
 As fórmulas nutricionais (`calcBMR`, `activityFactor`, `calorieAdjust`,
 `calcCalories`, `calcProtein`, `calcWaterCups`) são compartilhadas com a tela de
@@ -122,11 +127,35 @@ e `'coach'` continuam aceitos e caem em Hoje. Treino é só indicação de apps
 
 - **Perfil alimentar** — `foodProfile`, chave `ht:foodprofile` / `__foodprofile__`:
   `cidade`, `rotina`, `gosta`, `naoGosta`, `restricoes[]`+`restricoesTxt`,
-  `falhas[]`+`falhaTxt`, `livresQtd`+`livresPeriodo` (`semana|quinzena|mes`).
+  `falhas[]`+`falhaTxt`, `livresQtd`+`livresPeriodo` (`semana|quinzena|mes`),
+  `meals`, `modoFome`.
   Coletado pela entrevista em formato de chat (`PF_QS`, `pfRender`/`pfMount`), que é
-  o passo `rotina` do onboarding e também a tela Mais › Perfil alimentar.
+  o passo `rotina` do onboarding e também a tela Mais › Perfil alimentar. Além dos
+  tipos `text|area|multi|single`, há o tipo `meals` (editor de refeições com
+  toggle + horário, grava em `_pf.a.meals` via `pfMealToggle`/`pfMealTime`; o
+  `pfCapture` o ignora). O rodapé `pfSciNote()` (só no contexto `mais`) traz as
+  fontes de "não precisa comer de 3 em 3h".
   `saveFoodProfile()` espelha cidade/restrições em `goals.regiao`/`goals.restricoes`
   (que o `generate_meal_plan` lê).
+- **Refeições configuráveis** — `MEAL_BASE` é o esqueleto canônico fixo
+  (café/almoço/lanche/jantar/ceia); `MEALS` é um `let` **derivado** por
+  `rebuildMeals()` a partir de `foodProfile.meals` (`{id:{on,time}}`): só as
+  refeições ligadas, com os horários da pessoa, ordenadas por horário. `MEALS`
+  pode ter menos de 5 itens — ou zero. **Nada pode assumir as 5 refeições fixas.**
+  O plano (`__mealplan__`) e `dayData.mealOverrides` continuam sempre com os ids
+  canônicos; o que muda é quais aparecem. `rebuildMeals()` roda no boot, em
+  `reloadUserState`, `saveFoodProfile` e `syncFoodProfile`.
+- **Comer por fome** (`foodProfile.modoFome`) — quando true, o app não cobra
+  refeição em horário fixo: não há "comer de 3 em 3h" nem lanche obrigatório. Em
+  `calcScore` a dimensão de refeições vira **um único alvo nutricional** (bater
+  ~85% da meta de proteína, ou ter registrado algo se não houver meta) em vez de
+  "X/Y refeições feitas" — `sc.meals.hunger` sinaliza o modo. `mealsCardHtml`
+  mostra as refeições como sugestões opcionais e o contador vira
+  proteína/meta; a barra "Hoje" vira "Alimentação"; as pendências "Amanhã, só
+  isso" e o Progresso omitem o skip de refeições; `_mealEvents()` não gera
+  lembrete de refeição. O backend recebe o modo via `coachContext` e o
+  `_coach_ctx` instrui a IA a respeitar a fome. O modo é um preferência global
+  (não por dia), então vale também na leitura de dias passados.
 - **Ajuste do dia** — `dayData.mealOverrides[refeição] = {hint,kcal,prot,carb,fat,badge}`.
   `getMealSlot()` olha o override antes do plano base, então tudo que lê o plano
   (resumo, progresso, contexto do coach) já enxerga o ajuste. Só vale para a data
