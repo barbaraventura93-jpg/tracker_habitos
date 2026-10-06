@@ -3010,6 +3010,10 @@ function dailyInsightCard(){
   const waterLeft=Math.max(0,(goals.aguaCopos||0)-(dayData.water||0));
   if(next) msgs.unshift({icon:'utensils',txt:'Próximo cuidado: <b>'+next.label+'</b> às '+next.time+(waterLeft?' · faltam '+waterLeft+' copo'+(waterLeft>1?'s':'')+' de água':'')+'.'});
   else if(waterLeft) msgs.unshift({icon:'drop',txt:'Refeições em dia! Faltam <b>'+waterLeft+' copo'+(waterLeft>1?'s':'')+' de água</b> para fechar a hidratação.'});
+  // recomposição: a comida só dá o empurrão calórico — o músculo vem do estímulo.
+  // Reforça treino de força e fica logo após o próximo cuidado para aparecer no card.
+  if(goals.objetivo==='recomp_fat'||goals.objetivo==='recomp_lean')
+    msgs.splice(1,0,{icon:'activity',txt:'Seu foco é recomposição: <b>treino de força 3–4×/semana</b> é o que troca gordura por músculo. A comida ajusta as calorias e a proteína; o estímulo vem do treino — e o sono fecha a conta.'});
   const greet=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
   const fastNow=isFastDay(dayData)&&!inFastWindow(_nowMinutes(),fastWindow());
   const lead=fastNow?'Dia de jejum: água, café ou chá sem açúcar até a janela abrir — e quebre o jejum com proteína e fibra. Eu ajusto as refeições à sua janela.'
@@ -3568,8 +3572,10 @@ function coachContext(){
   const fm=freeMealStatus();
   const p=progressStats(7);
   const restr=[...(foodProfile.restricoes||[]).filter(x=>x!=='Nenhuma'),foodProfile.restricoesTxt].filter(Boolean).join(', ');
+  const obj=goals.objetivo||'manutencao';
   return{
-    perfil:{objetivo:goals.objetivo||'manutencao',pesoAtual:goals.pesoAtual||'',pesoMeta:goals.pesoMeta||'',sexo:goals.sexo,idade:goals.idade},
+    perfil:{objetivo:obj,pesoAtual:goals.pesoAtual||'',pesoMeta:goals.pesoMeta||'',sexo:goals.sexo,idade:goals.idade},
+    foco:(obj==='recomp_fat'||obj==='recomp_lean')?'Recomposição corporal: peso estável, trocando gordura por músculo. Reforce treino de força (3–4×/semana), proteína alta e sono nas orientações — o ajuste calórico sozinho não recompõe.':'',
     metas:T,
     foodProfile:{cidade:foodProfile.cidade||goals.regiao||'',rotina:foodProfile.rotina,gosta:foodProfile.gosta,naoGosta:foodProfile.naoGosta,
       restricoes:restr||goals.restricoes||'',falhas:[...(foodProfile.falhas||[]),foodProfile.falhaTxt].filter(Boolean)},
@@ -3952,7 +3958,7 @@ function prgWeightCard(p){
   // Texto da projeção pelo plano
   let projHtml='';
   const box=(bg,bd,html)=>`<div style="margin-top:10px;background:${bg};border:1px solid ${bd};border-radius:10px;padding:11px 12px;font-size:12px;color:#3F4B43;line-height:1.55">${html}</div>`;
-  if(proj&&proj.recomp) projHtml=box('#F7FAF5','#E4EBE2','💪 Seu foco é <b>recomposição</b> — o peso tende a ficar estável enquanto você troca gordura por músculo. Acompanhe gordura e massa magra na <b>Composição Corporal</b> (Mais).');
+  if(proj&&proj.recomp) projHtml=box('#F7FAF5','#E4EBE2','💪 Seu foco é <b>recomposição</b> — o peso tende a ficar estável enquanto você troca gordura por músculo. O motor disso é o <b>treino de força</b> (3–4×/semana) com proteína e sono; acompanhe gordura e massa magra na <b>Composição Corporal</b> (Mais), não só a balança.');
   else if(proj&&proj.noMeta) projHtml=box('#F7FAF5','#E4EBE2','Defina uma <b>meta de peso</b> em Configurações de Saúde para eu projetar quando você chega lá.');
   else if(proj&&proj.done) projHtml=box('#EFF6EF','#CDE4D1','🎉 Você já está na sua meta de peso!');
   else if(proj&&proj.noData) projHtml=box('#F7FAF5','#E4EBE2','Marque as refeições e registre o que comeu por alguns dias — aí eu projeto a meta <b>pelo que você vem cumprindo do plano</b>.');

@@ -193,6 +193,15 @@ O frontend manda o contexto inteiro em `context` (`coachContext()`) — o Lambda
 lê o DynamoDB nessa action. Todas as respostas passam por `_coach_meal()`, que
 descarta refeição com id inválido ou sem descrição.
 
+Quando o objetivo é recomposição (`recomp_fat`/`recomp_lean`), o coach **reforça
+treino de força** em três lugares: o card do coach em Hoje (`dailyInsightCard`), a
+nota do card de peso no Progresso (`prgWeightCard`) e o prompt da IA — o
+`_coach_ctx` do Lambda mapeia os dois objetivos de recomposição e acrescenta a linha
+"FOCO recomposicao: reforce treino de forca…". O frontend também manda `foco` no
+contexto, mas o backend deriva isso do `objetivo` por conta própria (não depende do
+campo). Treino segue sendo só indicação de apps — o reforço é textual, não
+acompanhamento.
+
 ## Convenções do Lambda
 
 Ações especiais no Lambda usam `?action=<nome>`. As que existem hoje:
