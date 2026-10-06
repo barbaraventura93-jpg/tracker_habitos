@@ -141,7 +141,10 @@ refeições (`mealsCardHtml`) → fora do plano → refeições livres → suple
 resumo nutricional → metas → observações. O planner "Meu dia" saiu. A conversa
 (`screen-coach`) abre por cima de Hoje, com botão de voltar; `showBnav('nutricao')`
 e `'coach'` continuam aceitos e caem em Hoje. Treino é só indicação de apps
-(`showTreinoApps()`, Mais › Treino).
+(`showTreinoApps()`, Mais › Treino): os apps de força levam `forca:true` em
+`TRAIN_APPS` e aparecem numa seção própria; quando o objetivo é recomposição
+(`recomp_fat`/`recomp_lean`), a tela abre com um texto sobre treino de força com
+carga progressiva e lista os apps de força primeiro.
 
 - **Perfil alimentar** — `foodProfile`, chave `ht:foodprofile` / `__foodprofile__`:
   `cidade`, `rotina`, `gosta`, `naoGosta`, `restricoes[]`+`restricoesTxt`,
