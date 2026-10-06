@@ -112,18 +112,25 @@ As fórmulas nutricionais (`calcBMR`, `activityFactor`, `objFromWeights`,
 `weightProjection`/`projLine`) são compartilhadas com a tela de Configurações de
 Saúde — as duas telas têm que chegar no mesmo número.
 
-O **objetivo é derivado**, não escolhido: `objFromWeights(peso,pesoMeta)` devolve
-`cutting` (meta < peso), `bulking` (meta > peso) ou `manutencao` (diferença ≤1 kg ou
-sem meta). Não há mais seletor manual de objetivo — nem no onboarding, nem nas
-Configurações (as duas telas mostram o objetivo calculado e `saveGoalsForm`/`onbFinish`
-gravam o derivado). Mudar a meta de peso muda o objetivo.
+O **objetivo é derivado**, não escolhido por um seletor cutting/bulking/manutenção.
+A meta de peso manda quando há diferença clara (`objFromWeights`: meta < peso →
+`cutting`, meta > peso → `bulking`); com o peso **estável** (diferença ≤1 kg ou sem
+meta — `isStableWeight`) o app pergunta o **foco de recomposição** (`goals.recomp` /
+`d.recomp`: `perder_gordura` | `ganhar_massa` | `manter`), porque dá para trocar
+gordura por músculo sem mexer na balança. `resolveObjetivo(peso,meta,recomp)` junta os
+dois e devolve o objetivo efetivo, que pode ser `cutting`, `bulking`, `manutencao`,
+`recomp_fat` ou `recomp_lean`. A pergunta (`recompQuestionHtml`) aparece no preview do
+onboarding e no card de OBJETIVO das Configurações, só quando o peso está estável;
+`saveGoalsForm`/`onbFinish` gravam `objetivo` (efetivo) e `recomp`.
 
-O ajuste calórico segue esse objetivo (não a diferença de peso crua):
-`calorieAdjust(objetivo,tdee)` devolve déficit de 20% do TDEE no cutting (300–750
-kcal), superávit de 12% no bulking (200–450 kcal) e 0 na manutenção. A meta de peso
-(`pesoMeta`) alimenta o objetivo e a **projeção** de quando a meta é atingida
-(`weightProjection`, ~7700 kcal/kg), exibida no preview do onboarding e no card de
-PESO das Configurações (`#g-peso-proj`).
+O ajuste calórico segue o objetivo efetivo: `calorieAdjust(objetivo,tdee)` devolve
+déficit de 20% do TDEE no cutting (300–750 kcal), superávit de 12% no bulking (200–450
+kcal), déficit leve de 10% no `recomp_fat` (150–400), superávit leve de 8% no
+`recomp_lean` (150–350) e 0 na manutenção. Proteína (`PROT_FACTORS`): 2,2 cutting, 1,8
+bulking, 2,0 nos dois recomp, 1,6 manutenção. A meta de peso (`pesoMeta`) alimenta a
+direção e a **projeção** de quando a meta é atingida (`weightProjection`, ~7700
+kcal/kg), exibida no preview do onboarding e no card de PESO das Configurações
+(`#g-peso-proj`).
 
 ## Coach alimentar
 
