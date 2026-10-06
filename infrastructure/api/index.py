@@ -187,8 +187,12 @@ def _coach_ctx(c):
   fp=c.get('foodProfile') or {}
   mt=c.get('metas') or {}
   L=[]
-  obj={'cutting':'perder gordura','bulking':'ganhar massa','manutencao':'manter o peso'}.get(pf.get('objetivo'),'manter o peso')
+  obj={'cutting':'perder gordura','bulking':'ganhar massa','manutencao':'manter o peso',
+       'recomp_fat':'recomposicao (peso estavel, perder gordura trocando por musculo)',
+       'recomp_lean':'recomposicao (peso estavel, ganhar massa magra)'}.get(pf.get('objetivo'),'manter o peso')
   L.append('Objetivo: '+obj+'.')
+  if pf.get('objetivo') in ('recomp_fat','recomp_lean'):
+    L.append('FOCO recomposicao: reforce treino de forca (3-4x/semana), proteina alta e sono em toda orientacao — o ajuste calorico sozinho nao recompoe.')
   if pf.get('pesoAtual'): L.append('Peso atual: '+_cs(pf.get('pesoAtual'),10)+' kg; meta: '+(_cs(pf.get('pesoMeta'),10) or '?')+' kg.')
   if mt: L.append('Metas diarias: %d kcal, %dg proteina, %dg carbo, %dg gordura, %d copos de agua.'%(_ci(mt.get('kcal')),_ci(mt.get('prot')),_ci(mt.get('carb')),_ci(mt.get('fat')),_ci(mt.get('agua'))))
   for k,lbl in (('cidade','Mora em'),('rotina','Alimentos que ja fazem parte da rotina'),('gosta','Gosta de'),

@@ -99,8 +99,10 @@ lista de suplementos vazia e sem plano alimentar — não com a rotina de outra 
 
 Assistente de 7 passos em `screen-onboarding`, disparado por `needsOnboarding()`
 dentro de `enterApp()`: boas-vindas → perfil (inclui nível de atividade) → rotina
-alimentar (entrevista em chat) → alimentação → suplementos → metas/hábitos → resumo. Só o perfil pede preenchimento; todo o resto
-tem "pular", e `onbFinish()` **só grava as etapas que não foram puladas** (`d.skipped`).
+alimentar (entrevista em chat) → alimentação → suplementos → metas/hábitos → resumo. O perfil é **obrigatório**
+(idade, altura e peso atual — base de todos os cálculos) e não tem "pular"; todo o resto
+tem, e `onbFinish()` **só grava as etapas que não foram puladas** (`d.skipped`). As Configurações de Saúde
+(`saveGoalsForm`) exigem os mesmos três campos antes de salvar.
 
 Onde cada passo escreve: perfil e alimentação → `__goals__` (o nível de atividade
 vira `treinosSemana`, que só alimenta o fator de gasto calórico); rotina →
@@ -110,9 +112,40 @@ alimentação com "criar refeições" → `__mealplan__` (kcal/proteína distrib
 frações são renormalizadas —, descrição em branco); suplementos → `__csups__`;
 hábitos → `__habits__`.
 
-As fórmulas nutricionais (`calcBMR`, `activityFactor`, `calorieAdjust`,
-`calcCalories`, `calcProtein`, `calcWaterCups`) são compartilhadas com a tela de
-Configurações de Saúde — as duas telas têm que chegar no mesmo número.
+As fórmulas nutricionais (`calcBMR`, `activityFactor`, `objFromWeights`,
+`calorieAdjust`, `calcCalories`, `calcProtein`, `calcWaterCups`,
+`weightProjection`/`projLine`) são compartilhadas com a tela de Configurações de
+Saúde — as duas telas têm que chegar no mesmo número.
+
+O **objetivo é derivado**, não escolhido por um seletor cutting/bulking/manutenção.
+A meta de peso manda quando há diferença clara (`objFromWeights`: meta < peso →
+`cutting`, meta > peso → `bulking`); com o peso **estável** (diferença ≤1 kg ou sem
+meta — `isStableWeight`) o app pergunta o **foco de recomposição** (`goals.recomp` /
+`d.recomp`: `perder_gordura` | `ganhar_massa` | `manter`), porque dá para trocar
+gordura por músculo sem mexer na balança. `resolveObjetivo(peso,meta,recomp)` junta os
+dois e devolve o objetivo efetivo, que pode ser `cutting`, `bulking`, `manutencao`,
+`recomp_fat` ou `recomp_lean`. A pergunta (`recompQuestionHtml`) aparece no preview do
+onboarding e no card de OBJETIVO das Configurações, só quando o peso está estável;
+`saveGoalsForm`/`onbFinish` gravam `objetivo` (efetivo) e `recomp`.
+
+**Migração de usuários antigos:** nada quebra e nada muda sozinho nos números salvos
+— `goals.objetivo`, `goals.aguaCopos` e `goals.calorias` antigos só são recalculados
+(derivados do peso/meta) quando a pessoa **abre e salva** as Configurações de Saúde,
+ou refaz o onboarding. Quem tinha objetivo manual sem meta de peso distinta vira
+"peso estável" (manutenção/recomposição) ao reabrir as metas. Para dar ciência, um
+aviso único de **Novidades** (`maybeShowWhatsNew`, sheet) aparece no `enterApp` para
+quem já tinha `ht:onboard_done`, com atalho para revisar os objetivos; é por usuário e
+por versão (`ht:whatsnew` = `WHATS_NEW_VER`), marcado como visto ao exibir e também no
+fim do onboarding (para conta nova não ver).
+
+O ajuste calórico segue o objetivo efetivo: `calorieAdjust(objetivo,tdee)` devolve
+déficit de 20% do TDEE no cutting (300–750 kcal), superávit de 12% no bulking (200–450
+kcal), déficit leve de 10% no `recomp_fat` (150–400), superávit leve de 8% no
+`recomp_lean` (150–350) e 0 na manutenção. Proteína (`PROT_FACTORS`): 2,2 cutting, 1,8
+bulking, 2,0 nos dois recomp, 1,6 manutenção. A meta de peso (`pesoMeta`) alimenta a
+direção e a **projeção** de quando a meta é atingida (`weightProjection`, ~7700
+kcal/kg), exibida no preview do onboarding e no card de PESO das Configurações
+(`#g-peso-proj`).
 
 ## Coach alimentar
 
@@ -123,7 +156,10 @@ refeições (`mealsCardHtml`) → fora do plano → refeições livres → suple
 resumo nutricional → metas → observações. O planner "Meu dia" saiu. A conversa
 (`screen-coach`) abre por cima de Hoje, com botão de voltar; `showBnav('nutricao')`
 e `'coach'` continuam aceitos e caem em Hoje. Treino é só indicação de apps
-(`showTreinoApps()`, Mais › Treino).
+(`showTreinoApps()`, Mais › Treino): os apps de força levam `forca:true` em
+`TRAIN_APPS` e aparecem numa seção própria; quando o objetivo é recomposição
+(`recomp_fat`/`recomp_lean`), a tela abre com um texto sobre treino de força com
+carga progressiva e lista os apps de força primeiro.
 
 - **Perfil alimentar** — `foodProfile`, chave `ht:foodprofile` / `__foodprofile__`:
   `cidade`, `rotina`, `gosta`, `naoGosta`, `restricoes[]`+`restricoesTxt`,
@@ -166,7 +202,14 @@ e `'coach'` continuam aceitos e caem em Hoje. Treino é só indicação de apps
 - **Consumo e metas** — use `dayIntake(dd)` e `nutriTargets()`; não recalcule na mão.
 - **Progresso** — `progressStats(n)` olha os N dias **antes de hoje** e ignora dia sem
   registro nenhum. `progressInsights()` são regras locais (sem IA); cada uma pode
-  levar uma pergunta pronta para o coach (`coachAsk`).
+  levar uma pergunta pronta para o coach (`coachAsk`). O topo da tela tem o card
+  **Peso e projeção** (`prgWeightCard`): peso atual/meta/faltam, a curva de peso
+  (reaproveita `renderBodyChart` com os `bodyEntries`) e a projeção da meta **pelo que
+  vem sendo cumprido** — `planProjection(p,peso)` compara a média real de calorias
+  registradas (`p.kcal`) com o gasto (TDEE recalculado do perfil) e estima o ritmo;
+  `weighingRate()` dá o ritmo real medido nas pesagens como complemento. O card aparece
+  mesmo sem registro de refeições (a projeção então pede dados). Objetivo de
+  recomposição não projeta peso (mostra nota sobre composição).
 - **Conversa** — `coachMsgs` em `ht:coach_chat` (local, não sincroniza, últimas 60).
 - **Jejum intermitente** — `foodProfile.jejum = {proto, inicio}`; `proto` é
   `12:12|14:10|16:8|18:6` (janela diária), `flex` (às vezes pula o café) ou `nenhum`;
@@ -191,6 +234,15 @@ Backend: **uma action só, `coach` (POST)**, com `mode` = `chat | swap | flex | 
 O frontend manda o contexto inteiro em `context` (`coachContext()`) — o Lambda não
 lê o DynamoDB nessa action. Todas as respostas passam por `_coach_meal()`, que
 descarta refeição com id inválido ou sem descrição.
+
+Quando o objetivo é recomposição (`recomp_fat`/`recomp_lean`), o coach **reforça
+treino de força** em três lugares: o card do coach em Hoje (`dailyInsightCard`), a
+nota do card de peso no Progresso (`prgWeightCard`) e o prompt da IA — o
+`_coach_ctx` do Lambda mapeia os dois objetivos de recomposição e acrescenta a linha
+"FOCO recomposicao: reforce treino de forca…". O frontend também manda `foco` no
+contexto, mas o backend deriva isso do `objetivo` por conta própria (não depende do
+campo). Treino segue sendo só indicação de apps — o reforço é textual, não
+acompanhamento.
 
 ## Convenções do Lambda
 

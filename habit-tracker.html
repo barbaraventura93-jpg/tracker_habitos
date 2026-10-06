@@ -1501,11 +1501,11 @@ function importSelectedBio(){
 }
 
 // ─── GOALS ───────────────────────────────────────────────────────────────────
-const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,regiao:'',restricoes:''};
+const DEFAULT_GOALS={pesoAtual:'',pesoMeta:'',altura:'',idade:'',sexo:'f',calorias:1800,aguaCopos:8,treinosSemana:5,regiao:'',restricoes:'',recomp:'manter'};
 // Fórmulas nutricionais compartilhadas entre a tela de Configurações de Saúde e
 // o assistente de primeiro acesso — as duas precisam chegar no mesmo número.
 const ACTIVITY_FACTORS=[[1,1.2,'sedentário'],[3,1.375,'leve'],[5,1.55,'moderado'],[7,1.725,'intenso']];
-const PROT_FACTORS={cutting:2.2,manutencao:1.6,bulking:1.8};
+const PROT_FACTORS={cutting:2.2,manutencao:1.6,bulking:1.8,recomp_fat:2.0,recomp_lean:2.0};
 function calcBMR(sexo,peso,alt,idade){
   if(!(peso>0&&alt>0&&idade>0)) return 0;
   return sexo==='m'?(10*peso+6.25*alt-5*idade+5):(10*peso+6.25*alt-5*idade-161);
@@ -1513,22 +1513,99 @@ function calcBMR(sexo,peso,alt,idade){
 function activityFactor(treinosSemana){
   return ACTIVITY_FACTORS.find(([d])=>treinosSemana<=d)||ACTIVITY_FACTORS[ACTIVITY_FACTORS.length-1];
 }
-// Diferença menor que 1 kg entre peso atual e meta é ruído: não vira déficit.
-function calorieAdjust(peso,metaPeso){
-  if(!(metaPeso>0)||Math.abs(metaPeso-peso)<=1) return 0;
-  return metaPeso<peso?-400:300;
+// Energia de ~1 kg de massa corporal — padrão clínico (≈7700 kcal).
+const KCAL_PER_KG=7700;
+// Ajuste calórico guiado pelo OBJETIVO (não pela diferença de peso) e como
+// fração do gasto (TDEE), para escalar com o tamanho da pessoa. Limites de
+// segurança baseados em evidência:
+//   cutting      → déficit de 20% do TDEE (300–750 kcal) ≈ 0,3–0,7 kg/semana (ACSM: ≤1%/sem)
+//   bulking      → superávit de 12% do TDEE (200–450 kcal), ganho enxuto (ISSN)
+//   recomp_fat   → recomposição com peso estável, foco em perder gordura: déficit leve de 10% (150–400)
+//   recomp_lean  → recomposição com peso estável, foco em massa magra: superávit leve de 8% (150–350)
+//   manutenção   → 0
+function calorieAdjust(objetivo,tdee){
+  if(!(tdee>0)) return 0;
+  if(objetivo==='cutting')     return -Math.round(Math.min(750,Math.max(300,tdee*0.20)));
+  if(objetivo==='bulking')     return  Math.round(Math.min(450,Math.max(200,tdee*0.12)));
+  if(objetivo==='recomp_fat')  return -Math.round(Math.min(400,Math.max(150,tdee*0.10)));
+  if(objetivo==='recomp_lean') return  Math.round(Math.min(350,Math.max(150,tdee*0.08)));
+  return 0;
 }
-function calcCalories(sexo,peso,alt,idade,treinosSemana,metaPeso){
+function calcCalories(sexo,peso,alt,idade,treinosSemana,objetivo){
   const bmr=calcBMR(sexo,peso,alt,idade);
   if(!bmr) return 0;
   const [,fac]=activityFactor(treinosSemana);
-  return Math.round(bmr*fac)+calorieAdjust(peso,metaPeso);
+  const tdee=Math.round(bmr*fac);
+  return tdee+calorieAdjust(objetivo,tdee);
 }
 function calcProtein(peso,objetivo){
   return peso>0?Math.round(peso*(PROT_FACTORS[objetivo]||1.6)):0;
 }
+// Projeção de quando a meta de peso é atingida, a partir do déficit/superávit
+// diário. Só devolve algo quando o ajuste empurra na direção da meta.
+function weightProjection(peso,metaPeso,dailyAdjust){
+  if(!(peso>0&&metaPeso>0)||!dailyAdjust) return null;
+  const diff=+(metaPeso-peso).toFixed(1);                         // alvo − atual (negativo: perder)
+  if(Math.abs(diff)<0.5) return null;                             // já na meta
+  if((diff<0&&dailyAdjust>=0)||(diff>0&&dailyAdjust<=0)) return null; // ajuste na direção errada
+  const kgWeek=Math.abs(dailyAdjust)*7/KCAL_PER_KG;
+  if(!(kgWeek>0)) return null;
+  const weeks=Math.abs(diff)/kgWeek;
+  const date=new Date();date.setDate(date.getDate()+Math.round(weeks*7));
+  return{diff,kgWeek,weeks,date,lose:diff<0};
+}
+function projDuration(weeks){
+  if(weeks<1) return 'menos de 1 semana';
+  if(weeks<9){const n=Math.round(weeks);return`~${n} semana${n>1?'s':''}`;}
+  const m=Math.round(weeks/4.345);return`~${m} ${m>1?'meses':'mês'}`;
+}
+// Linha pronta de projeção, reaproveitada no onboarding e nas Configurações.
+function projLine(peso,metaPeso,adj){
+  const p=weightProjection(peso,metaPeso,adj);
+  if(!p) return '';
+  const quando=p.date.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  const rate=p.kgWeek.toFixed(2).replace('.',',');
+  return`📅 No ritmo de <b>${rate} kg/semana</b>, você chega aos <b>${metaPeso} kg</b> em <b>${projDuration(p.weeks)}</b> <span style="color:#A3AEA6">(por volta de ${quando})</span>`;
+}
 function calcWaterCups(peso){
   return peso>0?Math.max(6,Math.min(12,Math.round(peso*35/250))):8;
+}
+// Direção derivada da meta de peso: perder → cutting, ganhar → bulking,
+// diferença ≤1 kg (ruído) ou sem meta → peso estável (manutenção/recomposição).
+function objFromWeights(peso,metaPeso){
+  if(!(peso>0&&metaPeso>0)) return 'manutencao';
+  const diff=metaPeso-peso;
+  if(Math.abs(diff)<=1) return 'manutencao';
+  return diff<0?'cutting':'bulking';
+}
+// Peso estável = a balança não muda, mas ainda dá para recompor (trocar gordura
+// por músculo). É quando perguntamos o foco (`recomp`).
+function isStableWeight(peso,metaPeso){return objFromWeights(peso,metaPeso)==='manutencao';}
+// Objetivo EFETIVO: a meta de peso manda quando há diferença clara; com o peso
+// estável, o foco de recomposição escolhido pela pessoa decide.
+function resolveObjetivo(peso,metaPeso,recomp){
+  const base=objFromWeights(peso,metaPeso);
+  if(base!=='manutencao') return base;
+  if(recomp==='perder_gordura') return 'recomp_fat';
+  if(recomp==='ganhar_massa')   return 'recomp_lean';
+  return 'manutencao';
+}
+const OBJ_INFO={
+  cutting:{ic:'📉',l:'Cutting',sub:'déficit calórico para perder gordura',c:'#78A8B9'},
+  manutencao:{ic:'⚖️',l:'Manutenção',sub:'manter o peso e a composição atual',c:'#4E8A62'},
+  bulking:{ic:'📈',l:'Bulking',sub:'superávit calórico para ganhar massa',c:'#C08848'},
+  recomp_fat:{ic:'📉',l:'Perder gordura',sub:'peso estável, trocando gordura por músculo',c:'#78A8B9'},
+  recomp_lean:{ic:'💪',l:'Ganhar massa magra',sub:'peso estável, ganhando músculo',c:'#C08848'},
+};
+// Pergunta de recomposição (peso estável), reaproveitada no onboarding e nas
+// Configurações. `handler` recebe o valor do foco escolhido.
+function recompQuestionHtml(recomp,handler){
+  const opts=[['perder_gordura','📉','Perder gordura'],['ganhar_massa','💪','Ganhar massa magra'],['manter','⚖️','Só manter']];
+  const btns=opts.map(([v,ic,l])=>{const on=(recomp||'manter')===v;
+    return`<button onclick="${handler}('${v}')" style="flex:1;min-width:90px;padding:9px 6px;border-radius:9px;border:1px solid ${on?'#6E9C7E':'#E4EBE2'};background:${on?'#4F7F60':'#F7FAF5'};color:${on?'#fff':'#6F7B73'};font-size:11px;font-weight:600;line-height:1.3;text-align:center"><div style="font-size:15px;margin-bottom:2px">${ic}</div>${l}</button>`;
+  }).join('');
+  return`<div style="font-size:11px;color:#6F7B73;line-height:1.5;margin-bottom:7px">Seu peso está estável — mas dá para <b>trocar gordura por músculo</b> sem mudar o número da balança. Qual seu foco?</div>
+  <div style="display:flex;gap:6px;flex-wrap:wrap">${btns}</div>`;
 }
 let goals=loadGoals();
 function loadGoalsDefs(){try{const s=JSON.parse(lsGet('ht:goalsdefs')||'null');if(Array.isArray(s))return s;}catch{}return[];}
@@ -1553,28 +1630,10 @@ function showGoals(){
   const dias=[1,2,3,4,5,6,7];
   const diasBtns=dias.map(n=>{const sel=g.treinosSemana===n;return`<button onclick="goalsSelectTreinos(${n})" id="gt-${n}" style="padding:10px 4px;border-radius:8px;font-size:13px;font-weight:600;background:${sel?'#4E8A62':'#F7FAF5'};color:${sel?'#fff':'#6F7B73'};border:1px solid ${sel?'#4E8A62':'#E4EBE2'}">${n}d</button>`;}).join('');
   const isMasc=g.sexo==='m';
-  const objAtual=goals.objetivo||'manutencao';
-  const objOpts=[
-    {v:'cutting',  l:'📉 Cutting',   sub:'Perda de gordura · déficit calórico',  c:'#78A8B9'},
-    {v:'manutencao',l:'⚖️ Manutenção',sub:'Manter peso e composição atual',       c:'#4E8A62'},
-    {v:'bulking',  l:'📈 Bulking',   sub:'Ganho de massa · superávit calórico',  c:'#C08848'},
-  ];
-  const objCards=objOpts.map(o=>{
-    const sel=objAtual===o.v;
-    return`<button onclick="goalsSelectObj('${o.v}')" id="gobj-${o.v}" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:2px solid ${sel?o.c:'#E4EBE2'};background:${sel?o.c+'0D':'#F7FAF5'};margin-bottom:6px;text-align:left">
-      <div style="font-size:18px;margin-top:1px">${o.l.split(' ')[0]}</div>
-      <div>
-        <div style="font-size:13px;font-weight:600;color:${sel?o.c:'#2E3A33'}">${o.l.slice(3)}</div>
-        <div style="font-size:11px;color:#6F7B73;margin-top:2px">${o.sub}</div>
-      </div>
-      ${sel?`<div style="margin-left:auto;font-size:14px;color:${o.c}">✓</div>`:''}
-    </button>`;
-  }).join('');
   document.getElementById('goals-body').innerHTML=`
     <div class="card fade-in">
-      <div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-target"/></svg> OBJETIVO ATUAL</div></div>
-      <input type="hidden" id="g-objetivo" value="${objAtual}">
-      ${objCards}
+      <div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-target"/></svg> OBJETIVO</div><span style="font-size:10px;color:#6F7B73">definido pela meta de peso</span></div>
+      <div id="g-obj-derived" style="border-radius:10px;border:2px solid #E4EBE2;background:#F7FAF5;padding:11px 13px;margin-bottom:6px"></div>
       <div id="g-obj-prot-preview" style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:8px;padding:10px 12px;margin-top:4px;font-size:11px;color:#6F7B73;line-height:1.6"></div>
     </div>
     <div class="card fade-in">
@@ -1617,6 +1676,7 @@ function showGoals(){
         </div>
       </div>
       <div id="g-peso-info" style="margin-top:8px;font-size:11px;min-height:16px"></div>
+      <div id="g-peso-proj" style="font-size:11px;color:#6F7B73;line-height:1.6"></div>
     </div>
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-activity"/></svg> ATIVIDADE FÍSICA</div></div>
@@ -1631,9 +1691,7 @@ function showGoals(){
     </div>
     <div class="card">
       <div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-drop"/></svg> ÁGUA</div><span id="g-agua-badge" style="font-size:10px;color:#6F7B73"></span></div>
-      <div id="g-agua-formula" style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:11px;color:#6F7B73;line-height:1.6">Preencha o peso atual para calcular automaticamente</div>
-      <div style="font-size:11px;color:#6F7B73;margin-bottom:7px">Copos por dia — aceite o sugerido ou ajuste:</div>
-      <div id="g-agua-btns" style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px"></div>
+      <div id="g-agua-formula" style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:8px;padding:10px 12px;font-size:11px;color:#6F7B73;line-height:1.6">Preencha o peso atual para calcular automaticamente</div>
     </div>
     ${renderPushCard()}
     <button onclick="saveGoalsForm()" style="width:100%;padding:14px;background:#6E9C7E;border-radius:12px;color:#fff;font-size:15px;font-weight:600;margin-bottom:10px">Salvar metas</button>`;
@@ -1810,31 +1868,12 @@ function goalsSelectSexo(s){
   if(m){m.style.background=isMasc?'#6E9C7E':'#F7FAF5';m.style.color=isMasc?'#fff':'#6F7B73';m.style.borderColor=isMasc?'#6E9C7E':'#E4EBE2';}
   goalsCalcUpdate();
 }
-function goalsSelectAgua(n){
-  goals={...goals,aguaCopos:n};
-  goalsCalcUpdate();
-}
 function goalsSelectTreinos(n){
   goals={...goals,treinosSemana:n};
   document.querySelectorAll('[id^="gt-"]').forEach(b=>{const sel=b.id===`gt-${n}`;b.style.background=sel?'#4E8A62':'#F7FAF5';b.style.color=sel?'#fff':'#6F7B73';b.style.borderColor=sel?'#4E8A62':'#E4EBE2';});
   goalsCalcUpdate();
 }
-function goalsSelectObj(v){
-  goals={...goals,objetivo:v};
-  const colors={cutting:'#78A8B9',manutencao:'#4E8A62',bulking:'#C08848'};
-  ['cutting','manutencao','bulking'].forEach(o=>{
-    const b=document.getElementById('gobj-'+o);if(!b)return;
-    const sel=o===v;const c=colors[o];
-    b.style.borderColor=sel?c:'#E4EBE2';
-    b.style.background=sel?c+'0D':'#F7FAF5';
-    b.querySelector('div:first-child+div div:first-child').style.color=sel?c:'#2E3A33';
-    const tick=b.querySelector('div[style*="margin-left:auto"]');
-    if(sel&&!tick){const d=document.createElement('div');d.style.cssText=`margin-left:auto;font-size:14px;color:${c}`;d.textContent='✓';b.appendChild(d);}
-    else if(!sel&&tick) tick.remove();
-  });
-  const el=document.getElementById('g-objetivo');if(el)el.value=v;
-  goalsCalcUpdate();
-}
+function goalsSetRecomp(v){goals={...goals,recomp:v};goalsCalcUpdate();}
 function goalsCalcUpdate(){
   const peso=parseFloat(document.getElementById('g-peso-atual')?.value)||0;
   const meta=parseFloat(document.getElementById('g-peso-meta')?.value)||0;
@@ -1842,6 +1881,12 @@ function goalsCalcUpdate(){
   const idade=parseInt(document.getElementById('g-idade')?.value)||0;
   const sexo=goals.sexo||'f';
   const treinos=goals.treinosSemana||5;
+
+  // Objetivo efetivo: meta de peso quando há diferença clara; peso estável cai
+  // no foco de recomposição escolhido. Guia calorias e proteína.
+  const stable=isStableWeight(peso,meta);
+  const objCal=resolveObjetivo(peso,meta,goals.recomp);
+  goals={...goals,objetivo:objCal};
 
   // Peso info
   const pesoInfoEl=document.getElementById('g-peso-info');
@@ -1852,59 +1897,70 @@ function goalsCalcUpdate(){
     else pesoInfoEl.innerHTML=`<span style="color:#E2A07C">↑ Objetivo: ganhar ${diff} kg</span>`;
   } else if(pesoInfoEl) pesoInfoEl.innerHTML='';
 
-  // ── Água: 35 ml/kg (recomendação EFSA/IOM) ─────────────────────────────
+  // Indicador do objetivo: derivado da meta, com a pergunta de recomposição
+  // quando o peso está estável.
+  const objDerivedEl=document.getElementById('g-obj-derived');
+  if(objDerivedEl){
+    if(peso>0){
+      const o=OBJ_INFO[objCal];
+      let html=`<div style="display:flex;align-items:center;gap:10px"><div style="font-size:18px">${o.ic}</div><div><div style="font-size:13px;font-weight:600;color:${o.c}">${o.l}</div><div style="font-size:11px;color:#6F7B73;margin-top:2px">${o.sub}</div></div></div>`;
+      if(stable) html+=`<div style="margin-top:10px;padding-top:10px;border-top:1px solid #E4EBE2">${recompQuestionHtml(goals.recomp,'goalsSetRecomp')}</div>`;
+      else html+=`<div style="font-size:10px;color:#A3AEA6;margin-top:7px">Definido pela sua meta de peso.</div>`;
+      objDerivedEl.style.borderColor=o.c;
+      objDerivedEl.innerHTML=html;
+    } else {
+      objDerivedEl.style.borderColor='#E4EBE2';
+      objDerivedEl.innerHTML='<div style="font-size:11px;color:#6F7B73">Defina peso atual e meta de peso para calcular o objetivo.</div>';
+    }
+  }
+
+  // ── Água: 35 ml/kg (recomendação EFSA/IOM) — calculada do peso, sem escolha manual ──
   const aguaFormulaEl=document.getElementById('g-agua-formula');
-  const aguaBtnsEl=document.getElementById('g-agua-btns');
   const aguaBadgeEl=document.getElementById('g-agua-badge');
-  let aguaSug=goals.aguaCopos;
   if(peso>0){
     const ml=Math.round(peso*35);
     const copos=calcWaterCups(peso);
     const liters=(ml/1000).toFixed(1).replace('.',',');
-    aguaSug=copos;
+    goals={...goals,aguaCopos:copos};
     if(aguaFormulaEl) aguaFormulaEl.innerHTML=`🧮 <b>${peso} kg</b> × 35 ml = <b>${ml} ml</b> (<b>${liters} L</b>) ÷ 250 ml/copo = <span style="color:#8DBCCB;font-weight:600">${copos} copos · ${liters} L/dia</span><br><span style="color:#A3AEA6;font-size:10px">Base: 30–40 ml/kg — EFSA & Institute of Medicine</span>`;
     if(aguaBadgeEl) aguaBadgeEl.textContent='calculado automaticamente';
   } else {
     if(aguaFormulaEl) aguaFormulaEl.innerHTML='Preencha o peso atual para calcular automaticamente';
     if(aguaBadgeEl) aguaBadgeEl.textContent='';
   }
-  if(aguaBtnsEl){
-    const coposList=[6,7,8,9,10,11,12];
-    const cur=goals.aguaCopos;
-    aguaBtnsEl.innerHTML=coposList.map(n=>{
-      const sel=cur===n;const isSug=n===aguaSug&&peso>0;
-      return`<button onclick="goalsSelectAgua(${n})" id="ga-${n}" style="padding:8px 2px;border-radius:8px;font-size:12px;font-weight:600;background:${sel?'#4F7F60':'#F7FAF5'};color:${sel?'#fff':'#6F7B73'};border:1px solid ${sel?'#6E9C7E':isSug?'#38bdf860':'#E4EBE2'}">${n}${isSug?'<sup style="color:#8DBCCB;font-size:8px">✦</sup>':''}</button>`;
-    }).join('');
-  }
 
   // ── Calorias: Mifflin-St Jeor + fator atividade + ajuste de meta ────────
   const calFormulaEl=document.getElementById('g-cal-formula');
   const calInpEl=document.getElementById('g-calorias');
   const calBadgeEl=document.getElementById('g-cal-badge');
+  const pesoProjEl=document.getElementById('g-peso-proj');
   if(peso>0&&alt>0&&idade>0){
     const bmr=calcBMR(sexo,peso,alt,idade);
     const [,fac,lbl]=activityFactor(treinos);
     const tdee=Math.round(bmr*fac);
-    const adj=calorieAdjust(peso,meta);
+    const adj=calorieAdjust(objCal,tdee);
     let adjHtml='';
-    if(adj<0) adjHtml=` <span style="color:#8DBCCB">− ${-adj} kcal <span style="color:#A3AEA6">(déficit para perda)</span></span>`;
-    else if(adj>0) adjHtml=` <span style="color:#E2A07C">+ ${adj} kcal <span style="color:#A3AEA6">(superávit para ganho)</span></span>`;
+    if(adj<0){const pct=objCal==='recomp_fat'?'10%':'20%',nm=objCal==='recomp_fat'?'recomposição':'cutting';adjHtml=` <span style="color:#8DBCCB">− ${-adj} kcal <span style="color:#A3AEA6">(déficit de ${pct} — ${nm})</span></span>`;}
+    else if(adj>0){const pct=objCal==='recomp_lean'?'8%':'12%',nm=objCal==='recomp_lean'?'recomposição':'bulking';adjHtml=` <span style="color:#E2A07C">+ ${adj} kcal <span style="color:#A3AEA6">(superávit de ${pct} — ${nm})</span></span>`;}
+    else adjHtml=` <span style="color:#A3AEA6">(sem ajuste — manutenção)</span>`;
     const cal=tdee+adj;
-    if(calFormulaEl) calFormulaEl.innerHTML=`🧮 BMR <span style="color:#A3AEA6;font-weight:400">(gasto em repouso)</span> <b>${Math.round(bmr)}</b> kcal × <b>${fac}</b> <span style="color:#6F7B73">(treino ${lbl})</span> = <b>${tdee}</b> kcal${adjHtml}<br>→ <span style="color:#E2A07C;font-weight:600">${cal} kcal/dia</span><br><span style="color:#A3AEA6;font-size:10px">Fórmula Mifflin-St Jeor (2005) — padrão ISSN/ACSM</span>`;
+    if(calFormulaEl) calFormulaEl.innerHTML=`🧮 BMR <span style="color:#A3AEA6;font-weight:400">(gasto em repouso)</span> <b>${Math.round(bmr)}</b> kcal × <b>${fac}</b> <span style="color:#6F7B73">(treino ${lbl})</span> = <b>${tdee}</b> kcal${adjHtml}<br>→ <span style="color:#E2A07C;font-weight:600">${cal} kcal/dia</span><br><span style="color:#A3AEA6;font-size:10px">Mifflin-St Jeor (2005) · déficit/superávit pelo objetivo — padrão ISSN/ACSM</span>`;
     if(calInpEl) calInpEl.value=cal;
     if(calBadgeEl) calBadgeEl.textContent='calculado automaticamente';
+    if(pesoProjEl){const pl=projLine(peso,meta,adj);pesoProjEl.innerHTML=pl;pesoProjEl.style.marginTop=pl?'7px':'0';}
   } else {
     if(calFormulaEl) calFormulaEl.innerHTML='Preencha perfil, peso e altura para calcular automaticamente';
     if(calBadgeEl) calBadgeEl.textContent='';
+    if(pesoProjEl) pesoProjEl.innerHTML='';
   }
 
   // ── Proteína meta (ISSN 2017) ─────────────────────────────────────────────
   const objEl=document.getElementById('g-obj-prot-preview');
   if(objEl&&peso>0){
-    const obj=goals.objetivo||'manutencao';
+    const obj=objCal;
     const factor=PROT_FACTORS[obj]||1.6;
     const protMeta=calcProtein(peso,obj);
-    const objLabel={cutting:'cutting (déficit)',manutencao:'manutenção',bulking:'bulking (superávit)'}[obj]||obj;
+    const objLabel={cutting:'cutting (déficit)',manutencao:'manutenção',bulking:'bulking (superávit)',recomp_fat:'recomposição · perder gordura',recomp_lean:'recomposição · massa magra'}[obj]||obj;
     objEl.innerHTML=`🥩 Meta de proteína: <b style="color:#2E3A33">${protMeta}g/dia</b> <span style="color:#A3AEA6">(${factor}g/kg × ${peso}kg — ${objLabel} · ISSN 2017)</span>`;
     goals={...goals,protMeta};
   } else if(objEl){
@@ -1912,16 +1968,25 @@ function goalsCalcUpdate(){
   }
 }
 function saveGoalsForm(){
+  const pesoV=parseFloat(document.getElementById('g-peso-atual')?.value)||0;
+  const idadeV=parseInt(document.getElementById('g-idade')?.value)||0;
+  const altV=parseFloat(document.getElementById('g-altura')?.value)||0;
+  if(!(pesoV>0&&idadeV>0&&altV>0)){
+    showToast('Preencha idade, altura e peso atual — são a base de todos os cálculos');
+    return;
+  }
+  const metaV=parseFloat(document.getElementById('g-peso-meta')?.value)||0;
   const g={
     ...goals,
-    objetivo:document.getElementById('g-objetivo')?.value||'manutencao',
+    objetivo:resolveObjetivo(pesoV,metaV,goals.recomp),
+    recomp:goals.recomp||'manter',
     pesoAtual:document.getElementById('g-peso-atual').value,
     pesoMeta:document.getElementById('g-peso-meta').value,
     altura:document.getElementById('g-altura').value,
     idade:document.getElementById('g-idade').value,
     sexo:goals.sexo||'f',
     calorias:parseInt(document.getElementById('g-calorias').value)||1800,
-    aguaCopos:goals.aguaCopos,
+    aguaCopos:calcWaterCups(pesoV),
     treinosSemana:goals.treinosSemana,
     regiao:(document.getElementById('g-regiao')?.value||'').trim(),
     restricoes:(document.getElementById('g-restricoes')?.value||'').trim(),
@@ -2145,6 +2210,7 @@ async function enterApp(){
   await render(true);
   flushOutbox();
   if(needsOnboarding()) startOnboarding();
+  else maybeShowWhatsNew();
 }
 
 // ─── ONBOARDING — assistente de primeiro acesso ──────────────────────────────
@@ -2195,6 +2261,7 @@ function startOnboarding(){
     pesoAtual:goals.pesoAtual||'',
     pesoMeta:goals.pesoMeta||'',
     objetivo:goals.objetivo||'manutencao',
+    recomp:goals.recomp||'manter',
     regiao:goals.regiao||'',
     restricoes:goals.restricoes||'',
     atividade:+goals.treinosSemana||3,
@@ -2217,7 +2284,7 @@ function onbTreinosSemana(){return +_onbDraft.atividade||0;}
 function onbSetAtiv(n){onbCapture();_onbDraft.atividade=n;renderOnboarding();}
 function onbCalorias(){
   const d=_onbDraft;
-  return calcCalories(d.sexo,onbNum(d.pesoAtual),onbNum(d.altura),onbNum(d.idade),onbTreinosSemana()||1,onbNum(d.pesoMeta));
+  return calcCalories(d.sexo,onbNum(d.pesoAtual),onbNum(d.altura),onbNum(d.idade),onbTreinosSemana()||1,d.objetivo);
 }
 function onbEsc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');}
 
@@ -2265,6 +2332,7 @@ function onbCapture(){
     d.altura=val('onb-altura')??d.altura;
     d.pesoAtual=val('onb-peso')??d.pesoAtual;
     d.pesoMeta=val('onb-peso-meta')??d.pesoMeta;
+    d.objetivo=resolveObjetivo(onbNum(d.pesoAtual),onbNum(d.pesoMeta),d.recomp); // meta + foco
   }else if(step==='rotina'){
     pfCapture();
   }else if(step==='dieta'){
@@ -2287,7 +2355,7 @@ function onbNext(){
     onbCapture();
     const d=_onbDraft;
     if(!(onbNum(d.pesoAtual)>0&&onbNum(d.altura)>0&&onbNum(d.idade)>0)){
-      showToast('Preencha idade, altura e peso — ou pule esta etapa');
+      showToast('Preencha idade, altura e peso atual para continuar');
       return;
     }
     d.calorias=onbCalorias();
@@ -2304,13 +2372,14 @@ function onbSkip(){
 // não reaparecer a cada login.
 function onbQuit(){
   lsSet('ht:onboard_done','1');
+  markWhatsNewSeen();
   _onbDraft=null;
   showScreen('home');setBnavActive('hoje');render(true);
 }
 
 // ── passo: perfil ───────────────────────────────────────────────────────────
 function onbSetSexo(v){onbCapture();_onbDraft.sexo=v;renderOnboarding();}
-function onbSetObj(v){onbCapture();_onbDraft.objetivo=v;renderOnboarding();}
+function onbSetRecomp(v){_onbDraft.recomp=v;onbPerfilPreview();}
 function onbPerfilPreview(){
   const el=document.getElementById('onb-perfil-preview');
   if(!el) return;
@@ -2320,19 +2389,33 @@ function onbPerfilPreview(){
     el.innerHTML='<span style="color:var(--dim)">Preencha idade, altura e peso e suas metas aparecem aqui, calculadas.</span>';
     return;
   }
+  const meta=onbNum(d.pesoMeta);
+  const stable=isStableWeight(peso,meta);
+  const bmr=calcBMR(d.sexo,peso,onbNum(d.altura),onbNum(d.idade));
+  const [,fac]=activityFactor(onbTreinosSemana()||1);
+  const tdee=Math.round(bmr*fac);
+  const adj=calorieAdjust(d.objetivo,tdee);
   const cal=onbCalorias(),prot=calcProtein(peso,d.objetivo),copos=calcWaterCups(peso);
-  el.innerHTML=`<div style="display:flex;gap:14px;flex-wrap:wrap">
+  const proj=projLine(peso,meta,adj);
+  const o=OBJ_INFO[d.objetivo]||OBJ_INFO.manutencao;
+  el.innerHTML=`${stable?`<div style="margin-bottom:11px;padding-bottom:11px;border-bottom:1px solid var(--border)">${recompQuestionHtml(d.recomp,'onbSetRecomp')}</div>`:''}
+  <div style="display:flex;align-items:center;gap:7px;margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+    <div style="font-size:16px">${o.ic}</div>
+    <div><span style="font-size:10px;color:var(--dim);letter-spacing:.06em">OBJETIVO</span> <b style="font-size:13px;color:${o.c}">${o.l}</b> <span style="font-size:11px;color:var(--muted)">— ${o.sub}</span></div>
+  </div>
+  <div style="display:flex;gap:14px;flex-wrap:wrap">
     <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">CALORIAS</div><div style="font-size:16px;font-weight:600;color:#E2A07C;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums">${cal}<span style="font-size:10px;color:var(--muted)"> kcal</span></div></div>
     <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">PROTEÍNA</div><div style="font-size:16px;font-weight:600;color:#4E8A62;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums">${prot}<span style="font-size:10px;color:var(--muted)"> g</span></div></div>
     <div><div style="font-size:10px;color:var(--dim);letter-spacing:.06em">ÁGUA</div><div style="font-size:16px;font-weight:600;color:#8DBCCB;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums">${copos}<span style="font-size:10px;color:var(--muted)"> copos</span></div></div>
   </div>
-  <div style="font-size:10px;color:var(--dim);margin-top:7px;line-height:1.5">Mifflin-St Jeor (calorias) · ISSN 2017 (proteína) · 35 ml/kg (água). Dá para ajustar tudo depois em Configurações de Saúde.</div>`;
+  ${proj?`<div style="font-size:11px;color:var(--muted);margin-top:9px;padding-top:9px;border-top:1px solid var(--border);line-height:1.5">${proj}</div>`:''}
+  <div style="font-size:10px;color:var(--dim);margin-top:7px;line-height:1.5">Mifflin-St Jeor (calorias) · déficit/superávit pelo objetivo · ISSN 2017 (proteína) · 35 ml/kg (água). Dá para ajustar tudo depois em Configurações de Saúde.</div>`;
 }
 
 const ONB_BODY={
 welcome:()=>{
   const itens=[
-    ['👤','Perfil','peso, altura e objetivo — daí saem calorias, proteína e água'],
+    ['👤','Perfil','peso atual e meta — daí saem o objetivo, as calorias, a proteína e a água'],
     ['💬','Sua rotina','uma conversa rápida: onde mora, o que come, o que não gosta e onde falha'],
     ['🍽️','Alimentação','meta de calorias e o esqueleto das refeições que você escolher'],
     ['💊','Suplementos','o que você toma, e em quais dias aparece'],
@@ -2353,17 +2436,6 @@ welcome:()=>{
 perfil:()=>{
   const d=_onbDraft;
   const sexoBtn=(v,l)=>{const on=d.sexo===v;return`<button onclick="onbSetSexo('${v}')" style="flex:1;padding:11px;border-radius:9px;font-size:13px;font-weight:600;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'#F7FAF5'};color:${on?'#fff':'var(--muted)'}">${l}</button>`;};
-  const objs=[
-    {v:'cutting',   l:'Cutting',    ic:'📉',sub:'Perder gordura · déficit calórico',c:'#78A8B9'},
-    {v:'manutencao',l:'Manutenção', ic:'⚖️',sub:'Manter peso e composição atual',   c:'#4E8A62'},
-    {v:'bulking',   l:'Bulking',    ic:'📈',sub:'Ganhar massa · superávit calórico',c:'#C08848'},
-  ];
-  const objCards=objs.map(o=>{const on=d.objetivo===o.v;return`<button onclick="onbSetObj('${o.v}')" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:11px 13px;border-radius:10px;border:2px solid ${on?o.c:'var(--border)'};background:${on?o.c+'0D':'#F7FAF5'};margin-bottom:6px;text-align:left">
-    <div style="font-size:18px;line-height:1.2">${o.ic}</div>
-    <div style="min-width:0"><div style="font-size:13px;font-weight:600;color:${on?o.c:'var(--txt)'}">${o.l}</div>
-    <div style="font-size:11px;color:var(--muted);margin-top:2px">${o.sub}</div></div>
-    ${on?`<div style="margin-left:auto;font-size:14px;color:${o.c}">✓</div>`:''}
-  </button>`;}).join('');
   return `${onbSection('SEXO BIOLÓGICO','Entra na fórmula de gasto energético — só isso.')}
   <div style="display:flex;gap:7px;margin-bottom:18px">${sexoBtn('f','Feminino')}${sexoBtn('m','Masculino')}</div>
   ${onbSection('MEDIDAS')}
@@ -2373,17 +2445,16 @@ perfil:()=>{
     <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Altura (cm)</div>
       <input id="onb-altura" type="number" inputmode="numeric" value="${onbEsc(d.altura)}" oninput="onbPerfilPreview()" placeholder="165" style="${ONB_INPUT}"></div>
   </div>
-  <div style="display:flex;gap:8px;margin-bottom:18px">
+  <div style="display:flex;gap:8px;margin-bottom:5px">
     <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Peso atual (kg)</div>
       <input id="onb-peso" type="number" inputmode="decimal" step="0.1" value="${onbEsc(d.pesoAtual)}" oninput="onbPerfilPreview()" placeholder="68" style="${ONB_INPUT}"></div>
     <div style="flex:1"><div style="font-size:10px;color:var(--dim);margin-bottom:4px">Peso meta (kg)</div>
       <input id="onb-peso-meta" type="number" inputmode="decimal" step="0.1" value="${onbEsc(d.pesoMeta)}" oninput="onbPerfilPreview()" placeholder="63" style="${ONB_INPUT}"></div>
   </div>
+  <div style="font-size:10px;color:var(--dim);margin-bottom:18px;line-height:1.5">A meta de peso define seu objetivo (perder → cutting, ganhar → bulking, manter → manutenção) e o déficit/superávit de calorias.</div>
   ${onbSection('ATIVIDADE FÍSICA','Quantos dias por semana você se exercita? Entra no cálculo do gasto calórico.')}
   <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:18px">${[[1,'Quase nunca'],[3,'1–3 dias'],[5,'4–5 dias'],[7,'6–7 dias']].map(([n,l])=>{const on=+d.atividade===n;return`<button onclick="onbSetAtiv(${n})" style="padding:10px 2px;border-radius:9px;font-size:11px;font-weight:600;border:1px solid ${on?'var(--accent)':'var(--border)'};background:${on?'var(--accent)':'#F7FAF5'};color:${on?'#fff':'var(--muted)'}">${l}</button>`;}).join('')}</div>
-  ${onbSection('OBJETIVO')}
-  ${objCards}
-  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px;margin-top:14px" id="onb-perfil-preview"></div>`;
+  <div style="background:var(--card);border:1px solid var(--border);border-radius:12px;padding:12px 13px" id="onb-perfil-preview"></div>`;
 },
 
 rotina:()=>`<div style="font-size:12px;color:var(--muted);line-height:1.55;margin-bottom:12px">Responda como se estivesse conversando. Pode pular qualquer pergunta.</div><div id="onb-pf">${pfRender()}</div>`,
@@ -2391,16 +2462,18 @@ rotina:()=>`<div style="font-size:12px;color:var(--muted);line-height:1.55;margi
 dieta:()=>{
   const d=_onbDraft;
   const cal=d.calorias||onbCalorias();
-  const prot=calcProtein(onbNum(d.pesoAtual),d.objetivo);
-  const copos=[6,7,8,9,10,11,12].map(n=>{
-    const on=d.aguaCopos===n;
-    return`<button onclick="onbSetAgua(${n})" style="flex:1;padding:9px 2px;border-radius:8px;font-size:12px;font-weight:600;border:1px solid ${on?'#8DBCCB':'var(--border)'};background:${on?'#8DBCCB':'#F7FAF5'};color:${on?'#fff':'var(--muted)'}">${n}</button>`;
-  }).join('');
+  const peso=onbNum(d.pesoAtual);
+  const prot=calcProtein(peso,d.objetivo);
+  const copos=d.aguaCopos||calcWaterCups(peso);
+  const aguaL=((peso>0?peso*35:copos*250)/1000).toFixed(1).replace('.',',');
   return `${onbSection('META DE CALORIAS','Já vem calculada a partir do seu perfil. Ajuste se você segue outra recomendação.')}
   <input id="onb-cal" type="number" inputmode="numeric" value="${cal||''}" placeholder="1800" style="${ONB_INPUT};margin-bottom:6px">
   ${prot?`<div style="font-size:11px;color:var(--muted);margin-bottom:18px">🥩 Meta de proteína: <b style="color:var(--txt)">${prot} g/dia</b> — calculada do peso e do objetivo.</div>`:'<div style="margin-bottom:18px"></div>'}
-  ${onbSection('COPOS DE ÁGUA POR DIA','Copo de 250 ml.')}
-  <div style="display:flex;gap:5px;margin-bottom:18px">${copos}</div>
+  ${onbSection('ÁGUA','Calculada do seu peso — 35 ml/kg. Copo de 250 ml.')}
+  <div style="display:flex;align-items:center;gap:9px;background:var(--card);border:1px solid var(--border);border-radius:10px;padding:11px 13px;margin-bottom:18px">
+    <div style="font-size:16px">💧</div>
+    <div style="font-size:13px;color:var(--txt)"><b style="color:#8DBCCB">${copos} copos</b> · ${aguaL} L/dia${peso>0?` <span style="color:var(--muted)">(${peso} kg × 35 ml)</span>`:''}</div>
+  </div>
   ${onbSection('PLANO ALIMENTAR')}
   <button onclick="onbTogglePlano()" style="width:100%;display:flex;align-items:flex-start;gap:10px;padding:12px 13px;border-radius:10px;border:2px solid ${d.criarPlano?'var(--accent)':'var(--border)'};background:${d.criarPlano?'var(--accent-light)':'#F7FAF5'};text-align:left">
     <div style="font-size:16px;color:${d.criarPlano?'var(--accent)':'var(--dim)'}">${d.criarPlano?'☑':'☐'}</div>
@@ -2448,7 +2521,7 @@ done:()=>{
   const d=_onbDraft;
   const linhas=[];
   const peso=onbNum(d.pesoAtual);
-  if(peso>0) linhas.push(['👤',`${peso} kg · ${onbNum(d.altura)} cm · ${onbNum(d.idade)} anos`,{cutting:'Cutting',manutencao:'Manutenção',bulking:'Bulking'}[d.objetivo]]);
+  if(peso>0) linhas.push(['👤',`${peso} kg · ${onbNum(d.altura)} cm · ${onbNum(d.idade)} anos`,(OBJ_INFO[d.objetivo]||OBJ_INFO.manutencao).l]);
   if(!d.skipped.rotina&&_pf&&_pf.a){
     const a=_pf.a,bits=[a.cidade,a.modoFome?'come quando bate fome':'',a.livresQtd?`${a.livresQtd} refeição(ões) livre(s) por ${a.livresPeriodo==='mes'?'mês':a.livresPeriodo}`:''].filter(Boolean);
     if(bits.length||a.rotina||(a.falhas||[]).length) linhas.push(['💬','Rotina alimentar registrada',bits.join(' · ')]);
@@ -2476,7 +2549,7 @@ done:()=>{
 
 const ONB_FOOT={
   welcome:()=>onbPrimary('Começar','onbNext()')+onbSkipLink('Configuro tudo depois','onbQuit()'),
-  perfil: ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Pular esta etapa'),
+  perfil: ()=>onbPrimary('Continuar','onbNext()'),
   rotina: ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Conto depois'),
   dieta:  ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Pular alimentação'),
   sups:   ()=>onbPrimary('Continuar','onbNext()')+onbSkipLink('Não tomo suplementos'),
@@ -2484,7 +2557,6 @@ const ONB_FOOT={
   done:   ()=>onbPrimary('Entrar no app','onbFinish()'),
 };
 
-function onbSetAgua(n){onbCapture();_onbDraft.aguaCopos=n;renderOnboarding();}
 function onbTogglePlano(){onbCapture();_onbDraft.criarPlano=!_onbDraft.criarPlano;renderOnboarding();}
 function onbToggleSup(id){
   const a=_onbDraft.sups,i=a.indexOf(id);
@@ -2507,14 +2579,19 @@ function onbFinish(){
   const g={...goals,sexo:d.sexo};
   if(!d.skipped.perfil&&peso>0){
     g.idade=d.idade;g.altura=d.altura;g.pesoAtual=d.pesoAtual;g.pesoMeta=d.pesoMeta;
-    g.objetivo=d.objetivo;
-    g.protMeta=calcProtein(peso,d.objetivo);
+    g.objetivo=resolveObjetivo(peso,onbNum(d.pesoMeta),d.recomp); // meta de peso + foco
+    g.recomp=d.recomp||'manter';
+    g.protMeta=calcProtein(peso,g.objetivo);
+    g.aguaCopos=calcWaterCups(peso);
     g.treinosSemana=onbTreinosSemana();
+    // Perfil é obrigatório, então a meta calórica já sai calculada daqui —
+    // mesmo que a etapa de alimentação seja pulada. A dieta só sobrescreve.
+    const calP=onbCalorias();
+    if(calP>0) g.calorias=calP;
   }
   if(!d.skipped.dieta){
     const cal=d.calorias||onbCalorias();
     if(cal>0) g.calorias=cal;
-    g.aguaCopos=d.aguaCopos;
   }
   saveGoals(g);
 
@@ -2552,6 +2629,7 @@ function onbFinish(){
   }
 
   lsSet('ht:onboard_done','1');
+  markWhatsNewSeen(); // quem acabou de onboardar já viu tudo novo — não mostrar "novidades"
   _onbDraft=null;
   flushOutbox();
   showScreen('home');setBnavActive('hoje');
@@ -2983,6 +3061,10 @@ function dailyInsightCard(){
   const waterLeft=Math.max(0,(goals.aguaCopos||0)-(dayData.water||0));
   if(next) msgs.unshift({icon:'utensils',txt:'Próximo cuidado: <b>'+next.label+'</b> às '+next.time+(waterLeft?' · faltam '+waterLeft+' copo'+(waterLeft>1?'s':'')+' de água':'')+'.'});
   else if(waterLeft) msgs.unshift({icon:'drop',txt:'Refeições em dia! Faltam <b>'+waterLeft+' copo'+(waterLeft>1?'s':'')+' de água</b> para fechar a hidratação.'});
+  // recomposição: a comida só dá o empurrão calórico — o músculo vem do estímulo.
+  // Reforça treino de força e fica logo após o próximo cuidado para aparecer no card.
+  if(goals.objetivo==='recomp_fat'||goals.objetivo==='recomp_lean')
+    msgs.splice(1,0,{icon:'activity',txt:'Seu foco é recomposição: <b>treino de força 3–4×/semana</b> é o que troca gordura por músculo. A comida ajusta as calorias e a proteína; o estímulo vem do treino — e o sono fecha a conta.'});
   const greet=h<12?'Bom dia':h<18?'Boa tarde':'Boa noite';
   const fastNow=isFastDay(dayData)&&!inFastWindow(_nowMinutes(),fastWindow());
   const lead=fastNow?'Dia de jejum: água, café ou chá sem açúcar até a janela abrir — e quebre o jejum com proteína e fibra. Eu ajusto as refeições à sua janela.'
@@ -3606,8 +3688,10 @@ function coachContext(){
   const fm=freeMealStatus();
   const p=progressStats(7);
   const restr=[...(foodProfile.restricoes||[]).filter(x=>x!=='Nenhuma'),foodProfile.restricoesTxt].filter(Boolean).join(', ');
+  const obj=goals.objetivo||'manutencao';
   return{
-    perfil:{objetivo:goals.objetivo||'manutencao',pesoAtual:goals.pesoAtual||'',pesoMeta:goals.pesoMeta||'',sexo:goals.sexo,idade:goals.idade},
+    perfil:{objetivo:obj,pesoAtual:goals.pesoAtual||'',pesoMeta:goals.pesoMeta||'',sexo:goals.sexo,idade:goals.idade},
+    foco:(obj==='recomp_fat'||obj==='recomp_lean')?'Recomposição corporal: peso estável, trocando gordura por músculo. Reforce treino de força (3–4×/semana), proteína alta e sono nas orientações — o ajuste calórico sozinho não recompõe.':'',
     metas:T,
     foodProfile:{cidade:foodProfile.cidade||goals.regiao||'',rotina:foodProfile.rotina,gosta:foodProfile.gosta,naoGosta:foodProfile.naoGosta,
       restricoes:restr||goals.restricoes||'',falhas:[...(foodProfile.falhas||[]),foodProfile.falhaTxt].filter(Boolean),
@@ -3673,6 +3757,30 @@ function sheetHead(icon,title,sub){
     <button onclick="closeSheet()" style="font-size:18px;background:none;color:#A3AEA6;padding:2px 6px">✕</button></div>`;
 }
 function sheetLoading(t){return`<div style="text-align:center;padding:26px 0;color:#6F7B73;font-size:13px"><div class="coach-dots" style="font-size:22px;margin-bottom:6px">⏳</div>${t}</div>`;}
+
+// Aviso único de novidades para quem já usava o app antes destas mudanças.
+// Por usuário (chave no escopo do uid) e por versão — some depois de visto.
+const WHATS_NEW_VER='2026-10-coach';
+function markWhatsNewSeen(){try{lsSet('ht:whatsnew',WHATS_NEW_VER);}catch{}}
+function maybeShowWhatsNew(){
+  let seen='';try{seen=lsGet('ht:whatsnew')||'';}catch{}
+  if(seen===WHATS_NEW_VER) return;
+  const items=[
+    ['💧','Água agora é calculada','Sua meta de água sai do seu peso (35 ml/kg) — não precisa mais escolher copos.'],
+    ['🎯','Objetivo pela meta de peso','Defina seu peso-meta e o app já ajusta as calorias (déficit/superávit) com base científica — nada de escolher cutting/bulking na mão.'],
+    ['💪','Recomposição corporal','Com o peso estável, dá para escolher <b>perder gordura</b> ou <b>ganhar massa magra</b> sem mudar a balança — e o coach reforça o treino de força que faz isso acontecer.'],
+    ['📈','Peso e projeção no Progresso','A tela Progresso mostra sua curva de peso e <b>quando você chega na meta</b>, pelo que vem cumprindo do plano.'],
+  ];
+  const rows=items.map(([ic,t,s])=>`<div style="display:flex;gap:11px;background:#F7FAF5;border:1px solid #E4EBE2;border-radius:12px;padding:11px 13px;margin-bottom:7px">
+    <div style="font-size:18px;line-height:1.3">${ic}</div>
+    <div style="min-width:0"><div style="font-size:13px;font-weight:600;color:#2E3A33">${t}</div>
+    <div style="font-size:11px;color:#6F7B73;margin-top:2px;line-height:1.5">${s}</div></div></div>`).join('');
+  openSheet(sheetHead('✨','Novidades no seu coach','Mudamos alguns cálculos para deixar seus números mais precisos. Vale revisar seu perfil — idade, altura, peso e meta de peso são a base de tudo.')
+    +rows
+    +`<button onclick="closeSheet();showGoals()" style="width:100%;padding:12px;background:#6E9C7E;color:#fff;border-radius:10px;font-size:14px;font-weight:600;margin-top:4px">Revisar meus objetivos</button>
+    <button onclick="closeSheet()" style="width:100%;padding:11px;background:none;color:#6F7B73;font-size:13px;font-weight:600;margin-top:6px">Agora não</button>`);
+  markWhatsNewSeen(); // marca ao exibir — não reaparece mesmo fechando pelo fundo
+}
 function sheetError(e,retry){return`<div style="background:#FBF2F1;border:1px solid #F1D2D1;border-radius:10px;padding:11px;font-size:12px;color:#A44E4D;margin-bottom:10px">❌ ${cEsc(e.message||e)}</div>${retry?`<button onclick="${retry}" style="width:100%;padding:11px;background:#EEF3EB;border-radius:10px;font-size:13px">Tentar de novo</button>`:''}`;}
 
 // Trocar uma refeição de hoje
@@ -3939,15 +4047,88 @@ function prgBarChart(p){
     <div style="display:flex;gap:12px;font-size:10px;color:#6F7B73;margin-top:6px;flex-wrap:wrap">
       <span><span style="color:#7DB892">■</span> na meta</span><span><span style="color:#DC8E8C">■</span> acima</span><span><span style="color:#E5CC8D">■</span> abaixo</span><span><span style="color:#D3DED0">■</span> sem registro</span></div>`;
 }
+// Ritmo real medido nas pesagens (kg/semana; negativo = perdendo).
+function weighingRate(){
+  const s=[...bodyEntries].filter(e=>e.weight!=null).sort((a,b)=>a.date.localeCompare(b.date));
+  if(s.length<2) return null;
+  const first=s[0],last=s[s.length-1];
+  const days=Math.round((new Date(last.date)-new Date(first.date))/86400000);
+  if(days<7) return null; // pouco tempo para um ritmo confiável
+  return{kgWeek:(last.weight-first.weight)/days*7,first:first.weight,last:last.weight,days,n:s.length};
+}
+// Projeção da meta de peso PELO QUE VEM SENDO CUMPRIDO: compara a média real de
+// calorias registradas (p.kcal) com o gasto (TDEE) para estimar o ritmo.
+function planProjection(p,pesoAtual){
+  const peso=pesoAtual||parseFloat(goals.pesoAtual)||0;
+  const meta=parseFloat(goals.pesoMeta)||0;
+  const obj=goals.objetivo||'manutencao';
+  if(!(peso>0)) return null;
+  if(obj==='recomp_fat'||obj==='recomp_lean') return{recomp:true};
+  if(!(meta>0)) return{noMeta:true};
+  const diff=+(meta-peso).toFixed(1);
+  if(Math.abs(diff)<0.5) return{done:true};
+  const bmr=calcBMR(goals.sexo||'f',peso,parseFloat(goals.altura)||0,parseInt(goals.idade)||0);
+  const [,fac]=activityFactor(goals.treinosSemana||5);
+  const tdee=bmr?Math.round(bmr*fac):0;
+  if(!(p.tracked>0&&p.kcal>0&&tdee>0)) return{noData:true,diff,meta};
+  const effective=p.kcal-tdee;                 // <0 = déficit real (emagrecendo)
+  const toward=(diff<0&&effective<0)||(diff>0&&effective>0);
+  const kgWeek=Math.abs(effective)*7/KCAL_PER_KG;
+  if(!toward||kgWeek<0.02) return{stalled:true,diff,meta,effective,tdee,kcal:p.kcal};
+  const weeks=Math.abs(diff)/kgWeek;
+  const date=new Date();date.setDate(date.getDate()+Math.round(weeks*7));
+  return{ok:true,diff,meta,effective,tdee,kcal:p.kcal,kgWeek,weeks,date,lose:diff<0};
+}
+function prgWeightCard(p){
+  const sorted=[...bodyEntries].sort((a,b)=>a.date.localeCompare(b.date));
+  const wEntries=sorted.filter(e=>e.weight!=null);
+  const latestW=wEntries.length?wEntries[wEntries.length-1].weight:(parseFloat(goals.pesoAtual)||0);
+  const meta=parseFloat(goals.pesoMeta)||0;
+  const wr=weighingRate();
+  const proj=planProjection(p,latestW);
+  const fmt=v=>(Math.round(v*10)/10).toString().replace('.',',');
+  const diff=(meta>0&&latestW>0)?+(meta-latestW).toFixed(1):null;
+  const tile=(lbl,val,c)=>`<div style="background:#F7FAF5;border:1px solid #E4EBE2;border-radius:12px;padding:10px 6px;text-align:center"><div style="font-size:9px;color:#6F7B73;font-weight:600;letter-spacing:.06em">${lbl}</div><div style="font-size:18px;font-weight:600;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;color:${c};margin-top:3px">${val}</div></div>`;
+  const tiles=`<div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-bottom:10px">
+    ${tile('PESO ATUAL',latestW>0?fmt(latestW)+' <span style=\"font-size:10px;color:#6F7B73\">kg</span>':'—','#8DBCCB')}
+    ${tile('META',meta>0?fmt(meta)+' <span style=\"font-size:10px;color:#6F7B73\">kg</span>':'—','#4E8A62')}
+    ${tile('FALTAM',diff!=null?fmt(Math.abs(diff))+' <span style=\"font-size:10px;color:#6F7B73\">kg</span>':'—','#E2A07C')}
+  </div>`;
+  const chart=wEntries.length>=2?renderBodyChart(sorted,'weight')
+    :`<div style="text-align:center;color:#6F7B73;font-size:12px;padding:14px 8px;line-height:1.6">Registre seu peso ao menos 2 vezes para ver a curva.<br><button onclick="showBodyComp()" style="margin-top:8px;padding:8px 16px;background:#6E9C7E;color:#fff;border-radius:9px;font-size:12px;font-weight:600">Registrar peso</button></div>`;
+  let totalHtml='';
+  if(wr) totalHtml=`<div style="font-size:11px;color:#6F7B73;margin-top:8px">Variação medida: <b style="color:${wr.last-wr.first<0?'#7DB892':'#E2A07C'}">${wr.last-wr.first>0?'+':''}${fmt(wr.last-wr.first)} kg</b> em ${wr.days} dias (${wr.n} pesagens)</div>`;
+  // Texto da projeção pelo plano
+  let projHtml='';
+  const box=(bg,bd,html)=>`<div style="margin-top:10px;background:${bg};border:1px solid ${bd};border-radius:10px;padding:11px 12px;font-size:12px;color:#3F4B43;line-height:1.55">${html}</div>`;
+  if(proj&&proj.recomp) projHtml=box('#F7FAF5','#E4EBE2','💪 Seu foco é <b>recomposição</b> — o peso tende a ficar estável enquanto você troca gordura por músculo. O motor disso é o <b>treino de força</b> (3–4×/semana) com proteína e sono; acompanhe gordura e massa magra na <b>Composição Corporal</b> (Mais), não só a balança.');
+  else if(proj&&proj.noMeta) projHtml=box('#F7FAF5','#E4EBE2','Defina uma <b>meta de peso</b> em Configurações de Saúde para eu projetar quando você chega lá.');
+  else if(proj&&proj.done) projHtml=box('#EFF6EF','#CDE4D1','🎉 Você já está na sua meta de peso!');
+  else if(proj&&proj.noData) projHtml=box('#F7FAF5','#E4EBE2','Marque as refeições e registre o que comeu por alguns dias — aí eu projeto a meta <b>pelo que você vem cumprindo do plano</b>.');
+  else if(proj&&proj.stalled){
+    const motivo=proj.effective>=0?(proj.diff<0?'você vem comendo em torno do gasto, sem déficit':'você ainda não está em superávit'):'o déficit está pequeno demais para andar';
+    projHtml=box('#FBF7EC','#EEE0B2',`No ritmo atual — média de <b>${proj.kcal} kcal/dia</b> vs gasto de <b>~${proj.tdee} kcal</b> — ${motivo}. Apertar a adesão ao plano faz a meta de <b>${fmt(proj.meta)} kg</b> andar.`);
+  } else if(proj&&proj.ok){
+    const quando=proj.date.toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+    projHtml=box('#EFF4F6','#CFE0E6',`📅 Pelo que você vem cumprindo do plano — <b>~${proj.kcal} kcal/dia</b> (gasto ~${proj.tdee}) — o ritmo é <b>${fmt(proj.kgWeek)} kg/semana</b>: a meta de <b>${fmt(proj.meta)} kg</b> chega em <b>${projDuration(proj.weeks)}</b> <span style="color:#A3AEA6">(por volta de ${quando})</span>.`);
+  }
+  // Ritmo real das pesagens, como complemento, quando anda na direção da meta
+  if(wr&&diff!=null&&Math.abs(wr.kgWeek)>=0.05&&((diff<0&&wr.kgWeek<0)||(diff>0&&wr.kgWeek>0))){
+    const wWeeks=Math.abs(diff)/Math.abs(wr.kgWeek);
+    projHtml+=`<div style="font-size:11px;color:#6F7B73;margin-top:8px">⚖️ Nas suas pesagens, o ritmo real é <b>${fmt(Math.abs(wr.kgWeek))} kg/semana</b> de ${wr.kgWeek<0?'perda':'ganho'} → ~${projDuration(wWeeks)} para a meta.</div>`;
+  }
+  return`<div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-scale"/></svg> PESO E PROJEÇÃO</div></div>
+    ${tiles}${chart}${totalHtml}${projHtml}</div>`;
+}
 function renderProgresso(){
   const body=document.getElementById('progresso-body');if(!body) return;
   const p=progressStats(_prgDays);
   const seg=`<div style="display:flex;gap:4px;background:#EEF3EB;border-radius:10px;padding:3px;margin-bottom:12px">
     ${[7,14,30].map(n=>`<button class="prg-seg ${_prgDays===n?'on':''}" onclick="setPrgDays(${n})">${n} dias</button>`).join('')}</div>`;
   if(!p.tracked){
-    body.innerHTML=`<div class="fade-in">${seg}<div class="card" style="text-align:center;padding:28px 16px">
+    body.innerHTML=`<div class="fade-in">${seg}${prgWeightCard(p)}<div class="card" style="text-align:center;padding:28px 16px">
       <div style="font-size:34px;margin-bottom:8px;color:var(--accent)">${ic('trend')}</div>
-      <div style="font-size:14px;font-weight:600;color:#2E3A33;margin-bottom:6px">Ainda sem dados suficientes</div>
+      <div style="font-size:14px;font-weight:600;color:#2E3A33;margin-bottom:6px">Ainda sem dados do plano</div>
       <div style="font-size:12px;color:#6F7B73;line-height:1.6">Marque as refeições que fez e registre o que comeu fora do plano na tela Hoje. Em poucos dias eu mostro aqui onde está dando certo e onde dá para ajustar.</div>
       <button onclick="showBnav('hoje')" style="margin-top:14px;padding:10px 18px;background:#6E9C7E;color:#fff;border-radius:10px;font-size:13px;font-weight:600">Ir para Hoje</button></div></div>`;
     return;
@@ -3963,6 +4144,7 @@ function renderProgresso(){
     <div style="flex:1;height:7px;background:#E4EBE2;border-radius:99px;overflow:hidden"><div style="width:${pc}%;height:100%;background:${pc>=80?'#7DB892':pc>=50?'#E5CC8D':'#DC8E8C'}"></div></div>
     <div style="font-size:10px;color:#6F7B73;font-family:'Jost',sans-serif;font-variant-numeric:tabular-nums;width:34px;text-align:right">${done}/${tot}</div></div>`;}).join('');
   body.innerHTML=`<div class="fade-in">${seg}
+    ${prgWeightCard(p)}
     <div class="card"><div class="sec-hdr"><div class="sec-lbl"><svg class="i"><use href="#i-flame"/></svg> CALORIAS POR DIA</div><span style="font-size:10px;color:#6F7B73">${p.tracked} dias com registro</span></div>${prgBarChart(p)}</div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
       ${tile('MÉDIA KCAL',p.kcal,`${pctc(p.kcal,p.T.kcal)}% da meta`,'#E2A07C')}
@@ -4113,20 +4295,33 @@ function renderJejum(){
 
 // ── treinos: só indicação ───────────────────────────────────────────────────
 const TRAIN_APPS=[
-  {n:'Fitbod',ic:'💪',d:'Monta o treino de musculação sozinho e ajusta pela sua recuperação.',u:'https://fitbod.me'},
-  {n:'Hevy',ic:'📒',d:'Registro de treino simples, com histórico e comunidade.',u:'https://www.hevyapp.com'},
-  {n:'Strong',ic:'🏋️',d:'Caderno de treino direto ao ponto para quem já tem a ficha.',u:'https://www.strong.app'},
-  {n:'Nike Training Club',ic:'✔️',d:'Aulas guiadas gratuitas, em casa ou na academia.',u:'https://www.nike.com/ntc-app'},
-  {n:'Strava',ic:'🏃',d:'Corrida, pedal e caminhada com GPS.',u:'https://www.strava.com'},
+  {n:'Fitbod',ic:'💪',d:'Monta o treino de musculação sozinho, com carga progressiva e ajuste pela recuperação.',u:'https://fitbod.me',forca:true},
+  {n:'Hevy',ic:'📒',d:'Registro de musculação simples, com histórico e acompanhamento da progressão de carga.',u:'https://www.hevyapp.com',forca:true},
+  {n:'Strong',ic:'🏋️',d:'Caderno de treino de força direto ao ponto para quem já tem a ficha.',u:'https://www.strong.app',forca:true},
+  {n:'Boostcamp',ic:'📈',d:'Programas de força estruturados e gratuitos (hipertrofia e progressão) — ótimo para recomposição.',u:'https://www.boostcamp.app',forca:true},
+  {n:'Nike Training Club',ic:'✔️',d:'Aulas guiadas gratuitas, com força e mobilidade, em casa ou na academia.',u:'https://www.nike.com/ntc-app'},
+  {n:'Strava',ic:'🏃',d:'Corrida, pedal e caminhada com GPS — para o cardio.',u:'https://www.strava.com'},
 ];
 function showTreinoApps(){
-  document.getElementById('treinoapps-body').innerHTML=`<div class="fade-in">
-    <div class="card" style="background:#EFF6F0;border-color:#C6DDCC"><div style="font-size:13px;color:#2E3A33;line-height:1.6">Este app agora cuida só de <b>alimentação, suplementação e hábitos</b>. Para o treino, o ideal é um educador físico — e, para acompanhar, estes apps são ótimos:</div></div>
-    ${TRAIN_APPS.map(a=>`<a href="${a.u}" target="_blank" rel="noopener" class="card" style="display:flex;gap:12px;align-items:center;text-decoration:none">
-      <div style="width:42px;height:42px;border-radius:10px;background:#EEF3EB;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${a.ic}</div>
-      <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:#2E3A33">${a.n}</div><div style="font-size:12px;color:#6F7B73;margin-top:2px">${a.d}</div></div>
-      <span style="color:#D3DED0;font-size:16px">↗</span></a>`).join('')}
-    <div style="font-size:11px;color:#A3AEA6;text-align:center;line-height:1.5;margin-top:4px">Indicações sem vínculo comercial. O seu histórico de treinos antigo continua na sua conta e sai no “Exportar dados”.</div>
+  const isRecomp=goals.objetivo==='recomp_fat'||goals.objetivo==='recomp_lean';
+  const appCard=a=>`<a href="${a.u}" target="_blank" rel="noopener" class="card" style="display:flex;gap:12px;align-items:center;text-decoration:none">
+    <div style="width:42px;height:42px;border-radius:10px;background:#EEF3EB;display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0">${a.ic}</div>
+    <div style="flex:1;min-width:0"><div style="font-size:14px;font-weight:600;color:#2E3A33">${a.n}</div><div style="font-size:12px;color:#6F7B73;margin-top:2px">${a.d}</div></div>
+    <span style="color:#D3DED0;font-size:16px">↗</span></a>`;
+  const secLbl=t=>`<div style="font-size:11px;font-weight:600;letter-spacing:.06em;color:#6F7B73;margin:14px 2px 6px">${t}</div>`;
+  const forca=TRAIN_APPS.filter(a=>a.forca),outros=TRAIN_APPS.filter(a=>!a.forca);
+  let inner;
+  if(isRecomp){
+    inner=`<div class="card" style="background:#F3F0F8;border-color:#DACEEA"><div style="font-size:13px;color:#2E3A33;line-height:1.6">Seu objetivo é <b>recomposição</b> — trocar gordura por músculo com o peso estável. O motor disso é <b>treino de força com carga progressiva</b>, 3–4×/semana, focando exercícios compostos. A alimentação (que este app cuida) dá o suporte; o estímulo vem do treino. Estes apps montam e acompanham isso:</div></div>
+      ${secLbl('PARA RECOMPOSIÇÃO · TREINO DE FORÇA')}${forca.map(appCard).join('')}
+      ${secLbl('CARDIO E AULAS (COMPLEMENTO)')}${outros.map(appCard).join('')}`;
+  } else {
+    inner=`<div class="card" style="background:#EFF6F0;border-color:#C6DDCC"><div style="font-size:13px;color:#2E3A33;line-height:1.6">Este app agora cuida só de <b>alimentação, suplementação e hábitos</b>. Para o treino, o ideal é um educador físico — e, para acompanhar, estes apps são ótimos:</div></div>
+      ${secLbl('TREINO DE FORÇA')}${forca.map(appCard).join('')}
+      ${secLbl('CARDIO E AULAS')}${outros.map(appCard).join('')}`;
+  }
+  document.getElementById('treinoapps-body').innerHTML=`<div class="fade-in">${inner}
+    <div style="font-size:11px;color:#A3AEA6;text-align:center;line-height:1.5;margin-top:10px">Indicações sem vínculo comercial. O seu histórico de treinos antigo continua na sua conta e sai no “Exportar dados”.</div>
   </div>`;
   showScreen('treinoapps');setBnavActive('mais');
 }
