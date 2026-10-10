@@ -305,10 +305,15 @@ body.auth-on .screens-wrap{padding-bottom:0!important;}
           </div>
         </div>
         <div id="auth-confirm" style="display:none">
-          <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:16px;line-height:1.5">Enviamos um código para o seu e-mail.<br>Digite abaixo para confirmar a conta.</div>
+          <div style="font-size:13px;color:var(--muted);text-align:center;margin-bottom:16px;line-height:1.5">Enviamos um código para <strong id="auth-confirm-email" style="color:var(--txt)"></strong>.<br>Digite abaixo para confirmar a conta.<br><span style="color:var(--accent-deep)">Não chegou? Verifique a caixa de spam/lixo eletrônico.</span></div>
           <input id="auth-code" type="text" inputmode="numeric" placeholder="000000" style="width:100%;background:#F7FAF5;border:1px solid var(--border);border-radius:10px;padding:13px 14px;color:var(--txt);font-size:22px;margin-bottom:6px;outline:none;text-align:center;letter-spacing:8px">
           <div id="auth-confirm-error" style="font-size:12px;color:#B9595A;min-height:18px;margin-bottom:8px;text-align:center"></div>
           <button onclick="confirmCode()" style="width:100%;padding:14px;background:#4E8A62;border-radius:10px;color:#fff;font-size:15px;font-weight:500">Confirmar e-mail</button>
+          <div style="text-align:center;margin-top:12px">
+            <a href="#" onclick="resendSignupCode(event)" style="font-size:12px;color:var(--muted);text-decoration:underline">Reenviar código</a>
+            &nbsp;·&nbsp;
+            <a href="#" onclick="cancelConfirm(event)" style="font-size:12px;color:var(--muted);text-decoration:underline">Voltar</a>
+          </div>
         </div>
 
         <!-- Recuperação de senha -->
@@ -2145,17 +2150,75 @@ async function authSubmit(){
     const res=await cognito('SignUp',{ClientId:COGNITO_CLIENT_ID,Username:email,Password:password,UserAttributes:[{Name:'email',Value:email}]});
     if(res.UserSub){
       pendingEmail=email;
-      document.getElementById('auth-form').style.display='none';
-      document.getElementById('auth-tabs').style.display='none';
-      document.getElementById('auth-confirm').style.display='block';
+      showConfirmScreen();
     }else{
       const t=res.__type||'';
-      if(t.includes('UsernameExists')) errEl.textContent='E-mail já cadastrado.';
+      if(t.includes('UsernameExists')){
+        // Pode ser conta já confirmada OU um cadastro que ficou pela metade
+        // (a pessoa não confirmou o e-mail e voltou a tentar). O Cognito
+        // devolve UsernameExists nos dois casos, então pedimos um novo código:
+        // se ele for entregue, a conta estava pendente e retomamos a
+        // confirmação; se o Cognito recusar (já confirmada), é só fazer login.
+        pendingEmail=email;
+        const rc=await cognito('ResendConfirmationCode',{ClientId:COGNITO_CLIENT_ID,Username:email});
+        if(rc.CodeDeliveryDetails){
+          showConfirmScreen();
+          document.getElementById('auth-confirm-error').textContent='';
+          showToast('Este e-mail já tinha um cadastro em aberto. Enviamos um novo código.');
+        }else{
+          authTab('login');
+          document.getElementById('auth-email').value=email;
+          errEl.textContent='E-mail já cadastrado. Faça login.';
+        }
+      }
       else if(t.includes('InvalidPassword')) errEl.textContent='Senha fraca. Use pelo menos 8 caracteres.';
       else errEl.textContent='Erro ao criar conta. Tente novamente.';
     }
   }
   btn.disabled=false;btn.textContent=authMode==='login'?'Entrar':'Criar conta';
+}
+// Troca da tela de login/cadastro para a de "digite o código". Mostra o e-mail
+// de destino para a pessoa conferir que não errou nada.
+function showConfirmScreen(){
+  document.getElementById('auth-form').style.display='none';
+  document.getElementById('auth-tabs').style.display='none';
+  document.getElementById('auth-confirm').style.display='block';
+  const em=document.getElementById('auth-confirm-email');if(em) em.textContent=pendingEmail||'o seu e-mail';
+  const err=document.getElementById('auth-confirm-error');if(err) err.textContent='';
+}
+// Volta da tela de código para o login/cadastro (ex.: errou o e-mail).
+function cancelConfirm(e){
+  e&&e.preventDefault();
+  document.getElementById('auth-confirm').style.display='none';
+  document.getElementById('auth-tabs').style.display='flex';
+  document.getElementById('auth-form').style.display='block';
+  const code=document.getElementById('auth-code');if(code) code.value='';
+  authTab(authMode);
+}
+// Reenvia o código de confirmação do cadastro. Se o Cognito disser que a conta
+// já está confirmada, não há o que confirmar: manda a pessoa para o login.
+async function resendSignupCode(e){
+  e&&e.preventDefault();
+  if(!pendingEmail) return;
+  const errEl=document.getElementById('auth-confirm-error');
+  errEl.textContent='';
+  const res=await cognito('ResendConfirmationCode',{ClientId:COGNITO_CLIENT_ID,Username:pendingEmail});
+  if(res.CodeDeliveryDetails){
+    showToast('Novo código enviado. Confira também o spam/lixo eletrônico.');
+  }else{
+    const t=res.__type||'';
+    if(t.includes('InvalidParameter')){
+      // "User is already confirmed" — a conta já está pronta, é só entrar.
+      cancelConfirm(null);
+      authTab('login');
+      document.getElementById('auth-email').value=pendingEmail;
+      document.getElementById('auth-error').textContent='Conta já confirmada. Faça login.';
+    }else if(t.includes('LimitExceeded')){
+      errEl.textContent='Muitas tentativas. Aguarde alguns minutos e tente de novo.';
+    }else{
+      errEl.textContent='Erro ao reenviar o código. Tente novamente.';
+    }
+  }
 }
 async function confirmCode(){
   const code=document.getElementById('auth-code').value.trim();
