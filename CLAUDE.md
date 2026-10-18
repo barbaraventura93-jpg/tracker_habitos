@@ -9,10 +9,12 @@ de treino foi removido** (frontend e Lambda: log, plano, timer, heatmap, Semana,
 periodização, gerador de treino, `identify_exercise`, `week_suggestion`,
 `generate_workout_plan`, `extract_workout_plan`). Não reintroduza.
 
-Ficou de propósito, por ser infraestrutura e não código: a tabela `exercise-cache`,
-o parâmetro/secret `RapidApiKey` e o passo "Atualizar RAPIDAPI_KEY" do workflow.
+Ficou de propósito, por ser infraestrutura e não código: a tabela `exercise-cache`.
 Tirar a tabela do `template.yaml` faz o CloudFormation **apagá-la** — se for fazer,
-faça num PR próprio e consciente. As chaves antigas de treino no DynamoDB
+faça num PR próprio e consciente. O parâmetro `RapidApiKey` (CloudFormation) e o
+passo "Atualizar RAPIDAPI_KEY" do workflow **foram removidos** — eram resto da época
+do treino e a chave não era mais lida pelo código. O GitHub Secret `RAPIDAPI_KEY`
+pode ser apagado à mão nas configurações do repositório; ninguém mais o usa. As chaves antigas de treino no DynamoDB
 (`gym:<data>:<treino>`, `__gymplan__`, `__workouts__`, `__weekplan__`,
 `__periodization__`) continuam nas contas, aparecem no `export` e são apagadas pelo
 `delete_account`; o app só não as lê mais (`hydrateRange` pula `gym:`).
@@ -347,10 +349,12 @@ A API não tem `requirements.txt`: usa só stdlib + `boto3`, que já vem no runt
 Se um dia precisar de dependência de terceiros, copie o padrão do `push-sender`
 (`pip install -t` antes do zip).
 
-⚠️ O passo "Atualizar RAPIDAPI_KEY" (resto da época do treino — a chave não é mais
-lida pelo código) usa `update-function-configuration
---environment`, que **substitui o mapa inteiro de variáveis**, não faz merge. Toda
-variável declarada no template precisa estar repetida lá, senão some a cada deploy.
+⚠️ As variáveis de ambiente da Lambda da API são definidas **só pelo `template.yaml`**
+(CloudFormation) — não há mais passo de `update-function-configuration --environment`
+no workflow. Se um dia precisar reintroduzir um passo desses, lembre que `--environment`
+**substitui o mapa inteiro de variáveis**, não faz merge: toda variável declarada no
+template precisa estar repetida lá, senão some a cada deploy. Prefira deixar o template
+como fonte única.
 
 ### Chamadas ao Bedrock
 

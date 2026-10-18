@@ -112,7 +112,7 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --region sa-east-1 \
             --no-fail-on-empty-changeset \
-            --parameter-overrides "RapidApiKey=${{ secrets.RAPIDAPI_KEY }}" "VapidPrivateKey=${{ secrets.VAPID_PRIVATE_KEY }}"
+            --parameter-overrides "VapidPrivateKey=${{ secrets.VAPID_PRIVATE_KEY }}"
 
       - name: Diagnosticar falha da stack (se houver)
         if: steps.cfn.outcome == 'failure'
@@ -147,23 +147,6 @@ jobs:
             --s3-bucket tracker-habitos \
             --s3-key lambda-builds/api.zip \
             --region sa-east-1
-          aws lambda wait function-updated \
-            --function-name tracker-habitos-api \
-            --region sa-east-1
-
-      # --environment SUBSTITUI o mapa inteiro, não faz merge: toda variável do
-      # template precisa ser repetida aqui. SUB_TABLE_NAME estava faltando e era
-      # apagada a cada deploy — só não quebrou o push porque o código tem default.
-      - name: Atualizar RAPIDAPI_KEY no Lambda
-        if: steps.cfn.outcome == 'success'
-        env:
-          RAPIDAPI_KEY: ${{ secrets.RAPIDAPI_KEY }}
-        run: |
-          echo "RAPIDAPI_KEY definida: $([ -n "$RAPIDAPI_KEY" ] && echo 'SIM' || echo 'NAO')"
-          aws lambda update-function-configuration \
-            --function-name tracker-habitos-api \
-            --region sa-east-1 \
-            --environment "Variables={TABLE_NAME=tracker-habitos-data,CACHE_TABLE_NAME=exercise-cache,SUB_TABLE_NAME=tracker-habitos-push-subscriptions,RAPIDAPI_KEY=$RAPIDAPI_KEY}"
           aws lambda wait function-updated \
             --function-name tracker-habitos-api \
             --region sa-east-1

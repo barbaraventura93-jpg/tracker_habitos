@@ -2,12 +2,6 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: Tracker Habitos - Backend API
 
 Parameters:
-  RapidApiKey:
-    Type: String
-    NoEcho: true
-    Default: ''
-    Description: RapidAPI key for ExerciseDB (optional — cache still works without it)
-
   VapidPrivateKey:
     Type: String
     NoEcho: true
@@ -162,7 +156,6 @@ Resources:
           TABLE_NAME: tracker-habitos-data
           CACHE_TABLE_NAME: exercise-cache
           SUB_TABLE_NAME: tracker-habitos-push-subscriptions
-          RAPIDAPI_KEY: !Ref RapidApiKey
       # Codigo em infrastructure/api/index.py. O CloudFormation so re-publica
       # quando a S3Key muda, entao o workflow tambem chama update-function-code
       # apos o deploy — mesmo padrao do push-sender.
