@@ -62,6 +62,10 @@ toque de rosé. Tokens no `:root` do `habit-tracker.html` (`--accent` #6E9C7E,
 - **Auth:** AWS Cognito — Lambda extrai `userId` do `AccessToken` via `GetUser`
 - **Infra como código:** `infrastructure/template.yaml` (CloudFormation)
 - **CI/CD:** GitHub Actions — push em `main` → CloudFormation update → deploy S3 → invalidação CloudFront
+- **Região AWS:** `sa-east-1` — **região padrão de todo projeto novo desta conta** (o
+  deploy usa `--region sa-east-1`). Exceção documentada: o `Planejamento_Financeiro`
+  fica em `us-east-1` de propósito (mais barata; ver o doc de custos daquele repo).
+  Ao criar recursos novos, use `sa-east-1` salvo motivo documentado.
 
 ## Multi-usuário
 
