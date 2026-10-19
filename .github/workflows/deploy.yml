@@ -112,6 +112,7 @@ jobs:
             --capabilities CAPABILITY_NAMED_IAM \
             --region sa-east-1 \
             --no-fail-on-empty-changeset \
+            --tags "Project=tracker-habitos" \
             --parameter-overrides "VapidPrivateKey=${{ secrets.VAPID_PRIVATE_KEY }}"
 
       - name: Diagnosticar falha da stack (se houver)

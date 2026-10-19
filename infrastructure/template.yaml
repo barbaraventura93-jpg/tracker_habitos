@@ -134,8 +134,21 @@ Resources:
                   - bedrock:InvokeModel
                 Resource: "*"
 
+  # Log group declarado para FIXAR retenção. Sem isto o Lambda cria o grupo com
+  # retenção infinita e os logs crescem para sempre (custo que só sobe).
+  # ⚠️ No 1º deploy com isto o grupo já existe (criado pelo Lambda na 1ª
+  # invocação) — apague-o UMA vez antes, senão o CloudFormation falha com
+  # "already exists": aws logs delete-log-group --region sa-east-1 \
+  #   --log-group-name /aws/lambda/tracker-habitos-api  (são logs descartáveis)
+  TrackerFunctionLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/tracker-habitos-api
+      RetentionInDays: 30
+
   TrackerFunction:
     Type: AWS::Lambda::Function
+    DependsOn: TrackerFunctionLogGroup
     Properties:
       FunctionName: tracker-habitos-api
       Runtime: python3.12
@@ -226,8 +239,19 @@ Resources:
       InvokedViaFunctionUrl: true
 
   # ── Push notifications (lembretes diários) ──────────────────────────────────
+  # Log group com retenção fixa (ver nota no TrackerFunctionLogGroup). Também
+  # precisa ser apagado uma vez antes do 1º deploy se já existir:
+  #   aws logs delete-log-group --region sa-east-1 \
+  #     --log-group-name /aws/lambda/tracker-habitos-push-sender
+  PushSenderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/lambda/tracker-habitos-push-sender
+      RetentionInDays: 30
+
   PushSenderFunction:
     Type: AWS::Lambda::Function
+    DependsOn: PushSenderLogGroup
     Properties:
       FunctionName: tracker-habitos-push-sender
       Runtime: python3.12
