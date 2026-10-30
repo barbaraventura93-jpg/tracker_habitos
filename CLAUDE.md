@@ -378,3 +378,9 @@ git push origin main
 
 O workflow `Deploy to S3` **não roda em pull requests**, só em push para `main`.
 PRs não têm checks — a validação antes do merge é manual.
+
+---
+
+## Preferências de interação
+
+- Falar sempre em português com a Bárbara.
